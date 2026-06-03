@@ -2003,7 +2003,7 @@ function showImpPreview(data){
 
   prev.innerHTML='<div class="ibox grn" style="display:flex;justify-content:space-between;align-items:center">'+
     '<span>&#10003; '+validBills.length+' bill(s) ready to import</span>'+
-    '<button onclick="clearImport()" style="background:none;border:none;cursor:pointer;font-size:16px;color:#065F46;padding:0 4px" title="Remove file">&#10005;</button>'+
+    '<button onclick="doRemoveImp()" style="background:none;border:none;cursor:pointer;font-size:16px;color:#065F46;padding:0 4px" title="Remove file">&#10005;</button>'+
     '</div>'+rows;
   prev.style.display='block';
   btn.disabled=false;
@@ -2120,12 +2120,7 @@ function handleImpFile(e){
             (b.consignee&&isJW?'<div style="font-size:12px;color:#EA580C">Consignee: '+esc(b.consignee)+'</div>':'')+
           '</div>';
         }).join('');
-        prev.innerHTML=
-          '<div style="display:flex;gap:8px;margin-bottom:10px">'+
-            '<div style="flex:1;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px">'+
-              '<span style="font-size:18px">&#10003;</span><span style="font-weight:700;color:#065F46">'+valid.length+' bill(s) ready to import</span></div>'+
-            '<button onclick="doRemoveScan()" style="padding:0 16px;border-radius:10px;border:2px solid #FCA5A5;background:#FEF2F2;color:#DC2626;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">&#10005; Remove</button>'+
-          '</div>'+billCards;
+        prev.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">&#10003;</span><span style="font-weight:700;color:#065F46">${valid.length} bill(s) ready to import</span></div><button onclick="doRemoveScan()" style="padding:0 16px;border-radius:10px;border:2px solid #FCA5A5;background:#FEF2F2;color:#DC2626;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">&#10005; Remove</button></div>`+billCards;
       }
       if(btn)btn.disabled=false;
     }catch(err){
@@ -2149,109 +2144,87 @@ function switchScanTab(tab){
 
 // ── LOCAL PDF parser — no API needed ─────────────────────────────
 function parseBillText(text){
-  // Clean up whitespace
-  var lines=text.split('
-').map(function(l){return l.trim();}).filter(Boolean);
+  var lines=text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
   var full=text;
   var data={type:'purchase',items:[]};
 
-  function rx(pattern,flags){return new RegExp(pattern,flags||'i');}
   function find(re){var m=full.match(re);return m?m[1].trim():'';}
-  function clean(v){return v.replace(/,/g,'').trim();}
-  function num(v){return parseFloat(clean(v))||0;}
+  function num(v){return parseFloat((v||'').replace(/,/g,''))||0;}
 
-  // Party (supplier) — first prominent company name
-  data.partyGstin=find(/GSTIN\s*:\s*([A-Z0-9]{15})/);
+  // Party GSTIN, PAN, Udyam
+  var allGstins=full.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g)||[];
+  data.partyGstin=allGstins[0]||'';
+  data.buyerGstin=allGstins[1]||'';
+  data.consigneeGstin=allGstins[2]||'';
   data.partyPan=find(/PAN\s*(?:NO\.?|NO)\s*:\s*([A-Z0-9]{10})/);
-  data.partyUdyam=find(/Udyam.*?No\.\s*:?\s*(UDYAM-[A-Z0-9-]+)/);
+  data.partyUdyam=find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/);
   data.partyPhone=find(/PHONES?\s*:\s*([\d,\s]+)/);
   if(data.partyPhone)data.partyPhone=data.partyPhone.split(',')[0].trim();
-  // Party name: line after "Shree Ganeshaya Namah" or first ALL CAPS line
+
+  // Party name - line after Ganeshaya Namah, or first ALL CAPS line
   var nameIdx=lines.findIndex(function(l){return /Ganeshaya/i.test(l);});
   if(nameIdx>=0&&lines[nameIdx+1])data.partyName=lines[nameIdx+1].trim();
-  else{for(var i=0;i<lines.length;i++){if(/^[A-Z\s]{5,}$/.test(lines[i])&&!/GSTIN|SHOP|TAX|BUYER|INVOICE/.test(lines[i])){data.partyName=lines[i];break;}}}
+  else{for(var i=0;i<Math.min(lines.length,15);i++){if(/^[A-Z][A-Z\s]{4,}$/.test(lines[i])&&!/GSTIN|SHOP|TAX|BUYER|INVOICE|TERMS/.test(lines[i])){data.partyName=lines[i];break;}}}
+
   // Party address
-  data.partyAddress=find(/SHOP\s+(?:NO\.?\s*)?[\d-]+,([^,
-]+(?:,[^,
-]+)*)/)||find(/(?:SHOP|OFFICE|ADD?RESS)\s*:?\s*(.+?)(?:TAX INVOICE|Buyer:|__)/s);
+  data.partyAddress=find(/SHOP[^,]*,([^,\n]+(,[^,\n]+)*)/)||'';
 
-  // Buyer info
+  // Buyer name and GSTIN
   data.buyerName=find(/Buyer\s*:\s*(.+)/);
-  data.buyerGstin=find(/GSTIN\s*:\s*([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3})/g)||'';
-  // Second GSTIN occurrence is buyer
-  var allGstins=full.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g)||[];
-  if(allGstins.length>1){data.buyerGstin=allGstins[1];}
-  if(allGstins.length>0&&!data.partyGstin)data.partyGstin=allGstins[0];
-
-  data.billNo=find(/BILL\s*NO\.?\s*:\s*([^\s
-]+)/);
-  // Date: DD/MM/YY or YYYY-MM-DD
+  // Bill details
+  data.billNo=find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/);
   var dateRaw=find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/);
   if(dateRaw){var dp=dateRaw.split('/');var yr=dp[2].length===2?'20'+dp[2]:dp[2];data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');}
 
   // Consignee
   var cIdx=lines.findIndex(function(l){return /^Consignee\s*:/i.test(l);});
   if(cIdx>=0)data.consignee=lines[cIdx].replace(/^Consignee\s*:\s*/i,'').trim();
-  // Consignee GSTIN (third GSTIN)
-  if(allGstins.length>2)data.consigneeGstin=allGstins[2];
 
-  data.placeOfSupply=find(/Place of Supply\s*:\s*([^
-
-]+)/);
-  data.lrNo=find(/L\.?R\.?\s*NO\.?\s*:\s*([^\s
-]+)/);
-  data.lrDate=find(/LR\s*DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/);
-  if(data.lrDate){var dp=data.lrDate.split('/');var yr=dp[2].length===2?'20'+dp[2]:dp[2];data.lrDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');}
-  data.caseNo=find(/CASE\s*NO\.?\s*:\s*([^\s
-]+)/);
+  // Transport details
+  data.placeOfSupply=find(/Place of Supply\s*:\s*([^\n\r]+)/);
+  data.lrNo=find(/L\.?R\.?\s*NO\.?\s*:\s*([^\s\n]+)/);
+  data.caseNo=find(/CASE\s*NO\.?\s*:\s*([^\s\n]+)/);
   data.weight=num(find(/WEIGHT\s*:\s*([\d.]+)/));
-  data.station=find(/STATION\s*:\s*(.+?)(?:
-|HSN)/i);
+  data.station=find(/STATION\s*:\s*(.+?)(?:HSN|$)/i)||'';
   data.partyCity=(data.partyAddress||'').split(',').slice(-2,-1)[0]||'';
+  data.partyState='';
 
-  // Items — look for the items table
-  // Pattern: number desc PACK PCS CUT KG RATE AMOUNT
-  var itemMatches=full.matchAll(/^\s*(\d+)\s+([A-Z][A-Z0-9 ]+?)\s+([A-Z]+)\s+(\d+)\s+([\d.]+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)/gm);
-  for(var m of itemMatches){
-    data.items.push({desc:m[2].trim(),unit:'KG',pack:m[3],pcs:num(m[4]),cut:num(m[5]),qty:num(m[6]),rate:num(m[7]),amount:num(m[8]),hsn:find(/HSN\s*:\s*(\d+)/)});
+  // Items
+  var itemMatches=[];
+  var itemRe=/^\s*(\d+)\s+([A-Z][A-Z0-9 ]+?)\s+([A-Z]+)\s+(\d+)\s+([\d.]+)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)/gm;
+  var m;
+  while((m=itemRe.exec(full))!==null){
+    itemMatches.push({desc:m[2].trim(),unit:'KG',pack:m[3],pcs:num(m[4]),cut:num(m[5]),qty:num(m[6]),rate:num(m[7]),amount:num(m[8]),hsn:find(/HSN\s*:\s*(\d+)/)});
   }
-  // Fallback: simpler item pattern (desc KG RATE AMOUNT)
-  if(!data.items.length){
-    var altMatches=full.matchAll(/^\s*\d+\s+(.+?)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s+([\d,]+\.\d+)\s*$/gm);
-    for(var m of altMatches){
-      data.items.push({desc:m[1].trim(),unit:'KG',qty:num(m[2]),rate:num(m[3]),amount:num(m[4]),hsn:find(/HSN\s*:\s*(\d+)/)});
+  if(!itemMatches.length){
+    var altRe=/^\s*\d+\s+(.+?)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s*$/gm;
+    while((m=altRe.exec(full))!==null){
+      itemMatches.push({desc:m[1].trim(),unit:'KG',qty:num(m[2]),rate:num(m[3]),amount:num(m[4]),hsn:find(/HSN\s*:\s*(\d+)/)});
     }
   }
+  data.items=itemMatches;
 
   // Totals
-  data.subTotal=num(find(/SUB\s*TOTAL.+?([\d,]+\.\d+)\s*$/m));
-  // Discount: "107343.10 X -3.00 %"
-  var discM=full.match(/DISCOUNT.*?X\s*-?([\d.]+)\s*%/i);
+  data.subTotal=num(find(/SUB\s*TOTAL[^0-9]*([\d,]+\.\d+)/));
+  var discM=full.match(/DISCOUNT[^%]*?-?([\d.]+)\s*%/i);
   if(discM)data.discount=num(discM[1]);
-  var discAmtM=full.match(/DISCOUNT.*?:\s*-?([\d,]+\.\d+)/i);
+  var discAmtM=full.match(/DISCOUNT[^:]*:\s*-?([\d,]+\.\d+)/i);
   if(discAmtM)data.discountAmount=num(discAmtM[1]);
-  // Freight: "921.40 X 2.10 : 1,934.94"
-  var freightM=full.match(/FREIGHT\s*->\s*[\d,.]+\s*X\s*[\d.]+\s*:\s*([\d,]+\.\d+)/i);
+  var freightM=full.match(/FREIGHT\s*->[^:]+:\s*([\d,]+\.\d+)/i);
   if(freightM)data.freight=num(freightM[1]);
-  else data.freight=num(find(/FREIGHT\s*[:\-]\s*([\d,]+\.\d+)/i));
-  // GST
-  var gstM=full.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)%/i);
+  else data.freight=num(find(/FREIGHT[^0-9]*([\d,]+\.\d+)/i));
+  var gstM=full.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)\s*%/i);
   if(gstM){data.gstType=gstM[1].toUpperCase()==='IGST'?'IGST':'CGST_SGST';data.gstPct=num(gstM[2]);}
   else{data.gstType='IGST';data.gstPct=5;}
-  // Grand total
-  var gtM=full.match(/GRAND\s*TOTAL\s*[:\-]?\s*([\d,]+\.?\d*)/i);
+  var gtM=full.match(/GRAND\s*TOTAL[^0-9]*([\d,]+\.?\d*)/i);
   if(gtM)data.grandTotal=num(gtM[1]);
-  // Remarks / bank
-  data.remarks=find(/REMARK\s*:\s*(.+)/i)||'';
-  var bankM=full.match(/BANK.*?A\/C.*?:\s*([\d]+).*?IFSC.*?:\s*([A-Z0-9]+)/i);
-  if(bankM)data.remarks=(data.remarks?data.remarks+' | ':'')+bankM[1]+' | IFSC: '+bankM[2];
-
+  var bankM=full.match(/A\/C[^:]*:\s*(\d+)[^I]*IFSC[^:]*:\s*([A-Z0-9]+)/i);
+  if(bankM)data.remarks='A/C: '+bankM[1]+' | IFSC: '+bankM[2];
+  else data.remarks=find(/REMARK\s*:\s*(.+)/i);
   data.mode='credit';
   data.jobWork=false;
   return data;
 }
-
-// ── PDF file handler — uses pdf.js CDN, no API ───────────────────
 function handlePdfFile(input){
   var file=input.files&&input.files[0];if(!file)return;
   var pdfArea=document.getElementById('pdf-upload-area');
@@ -2291,8 +2264,7 @@ function extractPdfText(arrayBuffer,input){
     for(var i=1;i<=pdf.numPages;i++){textPromises.push(pdf.getPage(i).then(function(pg){return pg.getTextContent();}));}
     return Promise.all(textPromises);
   }).then(function(pages){
-    var fullText=pages.map(function(p){return p.items.map(function(it){return it.str;}).join(' ');}).join('
-');
+    var fullText=pages.map(function(p){return p.items.map(function(it){return it.str;}).join(' ');}).join('\n');
     var parsed=parseBillText(fullText);
     if(!parsed.partyName&&!parsed.billNo){
       if(pdfSt)pdfSt.innerHTML='<div class="ibox red">Could not read bill from this PDF. Try uploading a JSON instead.</div>';
