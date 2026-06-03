@@ -2144,85 +2144,109 @@ function switchScanTab(tab){
 
 // ── LOCAL PDF parser — no API needed ─────────────────────────────
 function parseBillText(text){
-  var lines=text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
-  var full=text;
-  var data={type:'purchase',items:[]};
+  // Deduplicate repeated lines (pdf.js sometimes returns content multiple times)
+  var rawLines = text.split('\n');
+  var seen = {};
+  var lines = [];
+  rawLines.forEach(function(l){
+    var t = l.trim();
+    if(t && !seen[t]){ seen[t]=1; lines.push(t); }
+  });
+  var full = lines.join('\n');
+  var data = {type:'purchase', items:[]};
 
-  function find(re){var m=full.match(re);return m?m[1].trim():'';}
-  function num(v){return parseFloat((v||'').replace(/,/g,''))||0;}
+  function find(re){ var m = full.match(re); return m ? m[1].trim() : ''; }
+  function num(v){ return parseFloat((v||'').replace(/,/g,'')) || 0; }
 
-  // Party GSTIN, PAN, Udyam
-  var allGstins=full.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g)||[];
-  data.partyGstin=allGstins[0]||'';
-  data.buyerGstin=allGstins[1]||'';
-  data.consigneeGstin=allGstins[2]||'';
-  data.partyPan=find(/PAN\s*(?:NO\.?|NO)\s*:\s*([A-Z0-9]{10})/);
-  data.partyUdyam=find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/);
-  data.partyPhone=find(/PHONES?\s*:\s*([\d,\s]+)/);
-  if(data.partyPhone)data.partyPhone=data.partyPhone.split(',')[0].trim();
+  // GSTINs - first=supplier, second=buyer, third=consignee
+  var allGstins = full.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g) || [];
+  var uniqueGstins = allGstins.filter(function(g,i,a){ return a.indexOf(g)===i; });
+  data.partyGstin    = uniqueGstins[0] || '';
+  data.buyerGstin    = uniqueGstins[1] || '';
+  data.consigneeGstin= uniqueGstins[2] || '';
 
-  // Party name - line after Ganeshaya Namah, or first ALL CAPS line
-  var nameIdx=lines.findIndex(function(l){return /Ganeshaya/i.test(l);});
-  if(nameIdx>=0&&lines[nameIdx+1])data.partyName=lines[nameIdx+1].trim();
-  else{for(var i=0;i<Math.min(lines.length,15);i++){if(/^[A-Z][A-Z\s]{4,}$/.test(lines[i])&&!/GSTIN|SHOP|TAX|BUYER|INVOICE|TERMS/.test(lines[i])){data.partyName=lines[i];break;}}}
+  data.partyPan   = find(/PAN\s*(?:NO\.?|NO)\s*:\s*([A-Z0-9]{10})/);
+  data.partyUdyam = find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/);
+  data.partyPhone = find(/PHONES?\s*:\s*([\d]+)/);
 
-  // Party address
-  data.partyAddress=find(/SHOP[^,]*,([^,\n]+(,[^,\n]+)*)/)||'';
-
-  // Buyer name and GSTIN
-  data.buyerName=find(/Buyer\s*:\s*(.+)/);
-  // Bill details
-  data.billNo=find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/);
-  var dateRaw=find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/);
-  if(dateRaw){var dp=dateRaw.split('/');var yr=dp[2].length===2?'20'+dp[2]:dp[2];data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');}
-
-  // Consignee
-  var cIdx=lines.findIndex(function(l){return /^Consignee\s*:/i.test(l);});
-  if(cIdx>=0)data.consignee=lines[cIdx].replace(/^Consignee\s*:\s*/i,'').trim();
-
-  // Transport details
-  data.placeOfSupply=find(/Place of Supply\s*:\s*([^\n\r]+)/);
-  data.lrNo=find(/L\.?R\.?\s*NO\.?\s*:\s*([^\s\n]+)/);
-  data.caseNo=find(/CASE\s*NO\.?\s*:\s*([^\s\n]+)/);
-  data.weight=num(find(/WEIGHT\s*:\s*([\d.]+)/));
-  data.station=find(/STATION\s*:\s*(.+?)(?:HSN|$)/i)||'';
-  data.partyCity=(data.partyAddress||'').split(',').slice(-2,-1)[0]||'';
-  data.partyState='';
-
-  // Items
-  var itemMatches=[];
-  var itemRe=/^\s*(\d+)\s+([A-Z][A-Z0-9 ]+?)\s+([A-Z]+)\s+(\d+)\s+([\d.]+)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)/gm;
-  var m;
-  while((m=itemRe.exec(full))!==null){
-    itemMatches.push({desc:m[2].trim(),unit:'KG',pack:m[3],pcs:num(m[4]),cut:num(m[5]),qty:num(m[6]),rate:num(m[7]),amount:num(m[8]),hsn:find(/HSN\s*:\s*(\d+)/)});
-  }
-  if(!itemMatches.length){
-    var altRe=/^\s*\d+\s+(.+?)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s*$/gm;
-    while((m=altRe.exec(full))!==null){
-      itemMatches.push({desc:m[1].trim(),unit:'KG',qty:num(m[2]),rate:num(m[3]),amount:num(m[4]),hsn:find(/HSN\s*:\s*(\d+)/)});
+  // Party name - line after "Ganeshaya Namah"
+  var nameIdx = lines.findIndex(function(l){ return /Ganeshaya/i.test(l); });
+  if(nameIdx >= 0 && lines[nameIdx+1]) data.partyName = lines[nameIdx+1].trim();
+  if(!data.partyName){
+    for(var i=0;i<Math.min(lines.length,15);i++){
+      if(/^[A-Z][A-Z\s]{4,}$/.test(lines[i]) && !/GSTIN|SHOP|TAX|BUYER|INVOICE|TERMS/.test(lines[i])){
+        data.partyName = lines[i]; break;
+      }
     }
   }
-  data.items=itemMatches;
+  data.partyAddress = find(/SHOP[^,]*,(.*?)(?:TAX INVOICE|Buyer:)/s) || '';
+  data.partyCity    = data.partyAddress.split(',').slice(-2,-1)[0] || '';
 
-  // Totals
-  data.subTotal=num(find(/SUB\s*TOTAL[^0-9]*([\d,]+\.\d+)/));
-  var discM=full.match(/DISCOUNT[^%]*?-?([\d.]+)\s*%/i);
-  if(discM)data.discount=num(discM[1]);
-  var discAmtM=full.match(/DISCOUNT[^:]*:\s*-?([\d,]+\.\d+)/i);
-  if(discAmtM)data.discountAmount=num(discAmtM[1]);
-  var freightM=full.match(/FREIGHT\s*->[^:]+:\s*([\d,]+\.\d+)/i);
-  if(freightM)data.freight=num(freightM[1]);
-  else data.freight=num(find(/FREIGHT[^0-9]*([\d,]+\.\d+)/i));
-  var gstM=full.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)\s*%/i);
-  if(gstM){data.gstType=gstM[1].toUpperCase()==='IGST'?'IGST':'CGST_SGST';data.gstPct=num(gstM[2]);}
-  else{data.gstType='IGST';data.gstPct=5;}
-  var gtM=full.match(/GRAND\s*TOTAL[^0-9]*([\d,]+\.?\d*)/i);
-  if(gtM)data.grandTotal=num(gtM[1]);
-  var bankM=full.match(/A\/C[^:]*:\s*(\d+)[^I]*IFSC[^:]*:\s*([A-Z0-9]+)/i);
-  if(bankM)data.remarks='A/C: '+bankM[1]+' | IFSC: '+bankM[2];
-  else data.remarks=find(/REMARK\s*:\s*(.+)/i);
-  data.mode='credit';
-  data.jobWork=false;
+  // Buyer
+  data.buyerName = find(/Buyer\s*:\s*([A-Z][A-Z\s]+?)(?:\s+BILL|\s+IX|\s+\d)/);
+
+  // Bill details
+  data.billNo = find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/);
+  var dateRaw = find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/);
+  if(dateRaw){
+    var dp=dateRaw.split('/');
+    var yr=dp[2].length===2?'20'+dp[2]:dp[2];
+    data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');
+  }
+
+  // Consignee - take first occurrence only
+  var cMatch = full.match(/Consignee\s*:\s*([^\n]+)/i);
+  if(cMatch) data.consignee = cMatch[1].trim();
+
+  // Transport
+  data.placeOfSupply = find(/Place of Supply\s*:\s*([^\n]+)/);
+  data.lrNo   = find(/L\.?R\.?\s*NO\.?\s*:\s*([^\s\n]+)/);
+  data.caseNo = find(/CASE\s*NO\.?\s*:\s*([^\s\n]+)/);
+  data.weight = num(find(/WEIGHT\s*:\s*([\d.]+)/));
+  var stM = full.match(/STATION\s*:\s*([^\n]+?)(?:\s*HSN|\s*$)/im);
+  data.station = stM ? stM[1].trim() : '';
+
+  // Items - find lines matching: number desc PACK PCS CUT KG RATE AMOUNT
+  var itemRe = /^\s*(\d+)\s+([A-Z][A-Z0-9\s]+?)\s+([A-Z]+)\s+(\d+)\s+([\d.]+)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s*$/;
+  var hsnVal = find(/HSN\s*[:\s]\s*(\d+)/);
+  lines.forEach(function(l){
+    var m = l.match(itemRe);
+    if(m){
+      data.items.push({
+        desc:m[2].trim(), unit:'KG', pack:m[3],
+        pcs:num(m[4]), cut:num(m[5]),
+        qty:num(m[6]), rate:num(m[7]), amount:num(m[8]),
+        hsn:hsnVal
+      });
+    }
+  });
+
+  // Totals - match first occurrence only
+  var subM = full.match(/SUB\s*TOTAL[^\d]*([\d,]+\.\d+)/);
+  data.subTotal = subM ? num(subM[1]) : 0;
+
+  var discPctM = full.match(/DISCOUNT[^%\d]*([\d.]+)\s*%/i);
+  data.discount = discPctM ? num(discPctM[1]) : 0;
+
+  var discAmtM = full.match(/DISCOUNT[^:]*:\s*-?([\d,]+\.\d+)/i);
+  data.discountAmount = discAmtM ? num(discAmtM[1]) : 0;
+
+  var freightM = full.match(/FREIGHT\s*->[^:]+:\s*([\d,]+\.\d+)/i);
+  if(!freightM) freightM = full.match(/FREIGHT\s*[:\-]\s*([\d,]+\.\d+)/i);
+  data.freight = freightM ? num(freightM[1]) : 0;
+
+  var gstM = full.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)\s*%/i);
+  if(gstM){ data.gstType = gstM[1].toUpperCase()==='IGST'?'IGST':'CGST_SGST'; data.gstPct = num(gstM[2]); }
+  else { data.gstType='IGST'; data.gstPct=5; }
+
+  var gtM = full.match(/GRAND\s*TOTAL[^\d]*([\d,]+\.?\d*)/i);
+  data.grandTotal = gtM ? num(gtM[1]) : 0;
+
+  var bankM = full.match(/A\/C[^:]*:\s*(\d+)[^I]*IFSC[^:]*:\s*([A-Z0-9]+)/i);
+  data.remarks = bankM ? 'A/C: '+bankM[1]+' | IFSC: '+bankM[2] : find(/REMARK\s*:\s*([^\n]+)/i);
+
+  data.mode = 'credit';
+  data.jobWork = false;
   return data;
 }
 function handlePdfFile(input){
@@ -2264,7 +2288,16 @@ function extractPdfText(arrayBuffer,input){
     for(var i=1;i<=pdf.numPages;i++){textPromises.push(pdf.getPage(i).then(function(pg){return pg.getTextContent();}));}
     return Promise.all(textPromises);
   }).then(function(pages){
-    var fullText=pages.map(function(p){return p.items.map(function(it){return it.str;}).join(' ');}).join('\n');
+    // Build text page by page, deduplicate within each page
+    var fullText=pages.map(function(p){
+      var pageLines={};
+      var pageText='';
+      p.items.forEach(function(it){
+        var s=it.str.trim();
+        if(s&&!pageLines[s]){pageLines[s]=1;pageText+=s+' ';}
+      });
+      return pageText.trim();
+    }).join('\n');
     var parsed=parseBillText(fullText);
     if(!parsed.partyName&&!parsed.billNo){
       if(pdfSt)pdfSt.innerHTML='<div class="ibox red">Could not read bill from this PDF. Try uploading a JSON instead.</div>';
