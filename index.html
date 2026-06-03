@@ -1900,7 +1900,7 @@ function viewBill(bid){
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #374151;padding-bottom:12px;margin-bottom:12px">
       <div><div style="font-size:22px;font-weight:800;color:#374151">${bill.jw?'Job Work Bill':'Purchase Bill'}</div>
         <div style="font-size:15px;font-weight:700;margin-top:2px">From: ${esc(party&&party.name||'')}</div>
-        <div style="font-size:12px;color:#555">${esc(party&&party.city||'')}</div>
+        <div style="font-size:12px;color:#555">${esc((party&&party.addr)||party&&party.city||'')}</div>
         ${party&&party.gstin?`<div style="font-size:12px;font-weight:700">GSTIN: ${esc(party.gstin)}</div>`:''}
         ${party&&party.pan?`<div style="font-size:11px;color:#555">PAN: ${esc(party.pan)}</div>`:''}
         ${party&&party.udyam?`<div style="font-size:11px;color:#555">Udyam: ${esc(party.udyam)}</div>`:''}
@@ -2209,11 +2209,17 @@ function parseBillText(text){
   for(var i=0;i<lines.length;i++){
     if(/^Buyer\s*:/i.test(lines[i])){inBuyer=true;continue;}
     if(inBuyer){
-      if(/^GSTIN:/i.test(lines[i])||/^Consignee/i.test(lines[i])){break;}
-      if(lines[i].length>4&&!/CHALLAN|DATE|ORDER\.?\s*NO/i.test(lines[i]))buyerAddr.push(lines[i]);
+      // Stop at GSTIN, Consignee, or any separator keyword
+      if(/^GSTIN:/i.test(lines[i])||/^Consignee/i.test(lines[i])||
+         /^Place\s+of\s+Supply/i.test(lines[i])){break;}
+      // Only take lines that look like address parts (not bill metadata)
+      if(lines[i].length>2&&!/CHALLAN|DATE|ORDER\s*NO|BILL\s*NO/i.test(lines[i])){
+        buyerAddr.push(lines[i]);
+      }
     }
   }
-  data.buyerAddress=safe(buyerAddr.join(', '));
+  // Limit to max 3 address lines to avoid overflow
+  data.buyerAddress=safe(buyerAddr.slice(0,3).join(', '));
 
   // ── Bill Details ──
   data.billNo=safe(find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/)||find(/CHALLAN\s*:\s*([^\s\n]+)/));
@@ -2395,14 +2401,17 @@ function doImportFromScan(){
         phone:data.partyPhone||'',city:data.partyCity||'',
         addr:data.partyAddress||'',state:data.partyState||'07',
         ob:0,obType:'DR',rem:''};
+      // Sanitize party before saving to Firestore
+      Object.keys(party).forEach(function(k){if(party[k]===undefined||party[k]===null)party[k]='';});
       d.parties.push(party);d.pC=(d.pC||1)+1;
     } else if(party){
-      if(data.partyGstin&&!party.gstin)party.gstin=data.partyGstin;
-      if(data.partyPhone&&!party.phone)party.phone=data.partyPhone;
-      if(data.partyCity&&!party.city)party.city=data.partyCity;
-      if(data.partyAddress&&!party.addr)party.addr=data.partyAddress;
-      if(data.partyPan&&!party.pan)party.pan=data.partyPan;
-      if(data.partyUdyam&&!party.udyam)party.udyam=data.partyUdyam;
+      // Always update with latest info from JSON/PDF
+      if(data.partyGstin)party.gstin=data.partyGstin;
+      if(data.partyPhone)party.phone=data.partyPhone;
+      if(data.partyCity)party.city=data.partyCity;
+      if(data.partyAddress)party.addr=data.partyAddress;
+      if(data.partyPan)party.pan=data.partyPan;
+      if(data.partyUdyam)party.udyam=data.partyUdyam;
     }
     var pid=party?party.id:'';
     var sub=parseFloat(data.subTotal)||
@@ -2445,6 +2454,12 @@ function doImportFromScan(){
     }
     count++;
   });
+  // Final sweep: sanitize ALL bills, invoices, parties before Firestore save
+  function fsafe(v){return (v===undefined||v===null)?'':v;}
+  function fsafeObj(o){if(!o||typeof o!=='object')return;Object.keys(o).forEach(function(k){var v=o[k];if(v===undefined||v===null){o[k]='';}else if(Array.isArray(v)){v.forEach(function(item){if(item&&typeof item==='object')fsafeObj(item);});}else if(typeof v==='object'){fsafeObj(v);}});}
+  if(d.bills)d.bills.forEach(fsafeObj);
+  if(d.invoices)d.invoices.forEach(fsafeObj);
+  if(d.parties)d.parties.forEach(fsafeObj);
   saveToCloud();closeModal('scan');clearImport('scan');renderAll();
   alert(count+' bill(s) imported successfully!');
 }
