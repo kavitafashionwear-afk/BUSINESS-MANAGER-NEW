@@ -2109,7 +2109,7 @@ function handleImpFile(e){
       if(prev){
         prev.style.display='block';
         var billCards=valid.map(function(b){
-          var isJW=b.jobWork===true||(b.consignee&&b.consignee.trim()&&b.partyName&&b.consignee.trim().toLowerCase().indexOf(b.partyName.toLowerCase())<0);
+          var isJW=b.jobWork===true;
           var typeLabel=b.type==='invoice'?'Sales Invoice':(isJW?'Job Work Bill':'Purchase Bill');
           var borderColor=b.type==='invoice'?'#059669':(isJW?'#EA580C':'#1E40AF');
           var badge=isJW?'<span style="background:#FEF3C7;color:#92400E;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px">JOB WORK</span>':'';
@@ -2361,7 +2361,7 @@ function extractPdfText(arrayBuffer,input){
     if(pdfSt)pdfSt.style.display='none';
     if(pdfPrev){
       pdfPrev.style.display='block';
-      var isJW=parsed.consignee&&parsed.partyName&&parsed.consignee.toLowerCase().indexOf(parsed.partyName.toLowerCase())<0;
+      var isJW=parsed.jobWork===true;
       var badge=isJW?'<span style="background:#FEF3C7;color:#92400E;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;margin-left:6px">JOB WORK</span>':'';
       pdfPrev.innerHTML=
         '<div style="display:flex;gap:8px;margin-bottom:10px">'+
@@ -2428,8 +2428,8 @@ function doImportFromScan(){
     // Sanitize: replace undefined with '' to avoid Firestore errors
     Object.keys(data).forEach(function(k){if(data[k]===undefined)data[k]='';});
     if(data.items)data.items.forEach(function(it){Object.keys(it).forEach(function(k){if(it[k]===undefined)it[k]='';});});
-    var autoJW=data.jobWork===true||(data.consignee&&data.consignee.trim()&&data.partyName&&
-      data.consignee.trim().toLowerCase().indexOf(data.partyName.toLowerCase())<0);
+    // Job Work ONLY if explicitly set in the file - consignee alone does NOT mean job work
+    var autoJW=data.jobWork===true;
     if(type==='invoice'){
       d.invoices.push({id:'I'+String(d.iC||1).padStart(5,'0'),
         num:data.billNo||('INV-'+String(d.iC||1).padStart(3,'0')),
