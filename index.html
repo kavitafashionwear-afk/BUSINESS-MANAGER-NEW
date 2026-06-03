@@ -2341,15 +2341,20 @@ function extractPdfText(arrayBuffer,input){
     for(var i=1;i<=pdf.numPages;i++){textPromises.push(pdf.getPage(i).then(function(pg){return pg.getTextContent();}));}
     return Promise.all(textPromises);
   }).then(function(pages){
-    // Build text page by page, deduplicate within each page
+    // Group by Y-position, ascending = top-to-bottom (pdf.js Y=0 is bottom)
     var fullText=pages.map(function(p){
-      var pageLines={};
-      var pageText='';
+      var yGroups={};
       p.items.forEach(function(it){
-        var s=it.str.trim();
-        if(s&&!pageLines[s]){pageLines[s]=1;pageText+=s+' ';}
+        if(!it.str.trim())return;
+        var y=Math.round(it.transform[5]/3)*3;
+        if(!yGroups[y])yGroups[y]=[];
+        yGroups[y].push({x:it.transform[4],str:it.str});
       });
-      return pageText.trim();
+      var ys=Object.keys(yGroups).map(Number).sort(function(a,b){return a-b;});
+      return ys.map(function(y){
+        return yGroups[y].sort(function(a,b){return a.x-b.x;})
+          .map(function(it){return it.str;}).join(' ');
+      }).join('\n');
     }).join('\n');
     var parsed=parseBillText(fullText);
     if(!parsed.partyName&&!parsed.billNo){
