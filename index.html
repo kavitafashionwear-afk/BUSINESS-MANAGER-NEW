@@ -2190,162 +2190,135 @@ function switchScanTab(tab){
 
 // ── LOCAL PDF parser — no API needed ─────────────────────────────
 function parseBillText(text){
-  // De-quadruplicate bold chars (HHHH->H, aaaa->a)
+  // Step 1: de-quadruplicate bold chars
   var deq = text.replace(/(.)\1{3}/g,'$1');
-  // Clean lines, remove separator lines
-  var lines = deq.split('\n').map(function(l){return l.trim();})
-    .filter(function(l){return l.length>0 && !/^[_\-]{5,}$/.test(l);});
+
+  // Step 2: deduplicate lines (keep first occurrence only)
+  var seen = {};
+  var lines = [];
+  deq.split('\n').forEach(function(l){
+    var t = l.trim();
+    if(!t || /^[_\-]{4,}$/.test(t)) return;
+    if(!seen[t]){ seen[t]=1; lines.push(t); }
+  });
   var full = lines.join('\n');
 
-  function find(re){var m=full.match(re);return m?(m[1]||'').trim():'';}
-  function num(v){return parseFloat((v||'').toString().replace(/,/g,''))||0;}
-  function safe(v){return v===undefined||v===null?'':String(v);}
+  function find(re){ var m=full.match(re); return m?(m[1]||'').trim():''; }
+  function num(v){ return parseFloat((v||'').toString().replace(/,/g,''))||0; }
+  function safe(v){ return (v===undefined||v===null)?'':String(v); }
 
-  var data={type:'purchase',items:[]};
+  var data = {type:'purchase', items:[]};
 
-  // ── GSTINs (in order of appearance) ──
+  // ── GSTINs: collect all unique in order ──
   var gsRe=/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g, gm, gstins=[];
-  while((gm=gsRe.exec(full))!==null){if(gstins.indexOf(gm[0])<0)gstins.push(gm[0]);}
+  while((gm=gsRe.exec(full))!==null){ if(gstins.indexOf(gm[0])<0) gstins.push(gm[0]); }
   data.partyGstin     = safe(gstins[0]);
   data.buyerGstin     = safe(gstins[1]);
   data.consigneeGstin = safe(gstins[2]);
 
-  // ── Party (Supplier) ──
-  // Name: line after "Ganeshaya Namah" OR first clean ALL-CAPS line
-  var ni=lines.findIndex(function(l){return /Ganeshaya/i.test(l);});
-  if(ni>=0&&ni+1<lines.length) data.partyName=lines[ni+1].trim();
-  if(!data.partyName){
-    for(var i=0;i<Math.min(lines.length,20);i++){
-      var l=lines[i];
-      if(l.length>3&&l===l.toUpperCase()&&/^[A-Z]/.test(l)&&
-         !/GSTIN|SHOP|TAX|BUYER|INVOICE|TERMS|BILL|AGENT|REMARK|SUBJECT|GOODS|COMPLAINT/.test(l)){
-        data.partyName=l;break;
-      }
-    }
-  }
-  data.partyName=safe(data.partyName);
+  // ── Party name: line AFTER "Ganeshaya" ──
+  var ni = lines.findIndex(function(l){ return /Ganeshaya/i.test(l); });
+  data.partyName = safe(ni>=0 && lines[ni+1] ? lines[ni+1].trim() : '');
 
-  // PAN, Udyam
+  // ── Party details ──
   data.partyPan   = safe(find(/PAN\s*NO\.?\s*:\s*([A-Z0-9]{10})/));
   data.partyUdyam = safe(find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/));
+  var phM = full.match(/PHONES?:\s*([\d]{10})/);
+  data.partyPhone = safe(phM ? phM[1] : '');
+  var adM = full.match(/SHOP\s+NO\.?\s+([\d\-]+,[^\n]+)/i);
+  data.partyAddress = safe(adM ? 'Shop No. '+adM[1] : '');
+  var adParts = (data.partyAddress||'').split(',');
+  data.partyCity  = safe(adParts.length>=2 ? adParts[adParts.length-2].trim() : adParts[0]||'');
+  data.partyState = '24';
 
-  // Phone: first number from PHONES: line
-  var phoneM=full.match(/PHONES?:\s*([\d]{10})/);
-  data.partyPhone = safe(phoneM?phoneM[1]:'');
+  // ── Buyer: ONLY the line starting with "Buyer:" ──
+  var buyerIdx = lines.findIndex(function(l){ return /^Buyer\s*:/i.test(l); });
+  if(buyerIdx>=0){
+    // Name is everything after "Buyer:" up to "BILL NO."
+    data.buyerName = safe(lines[buyerIdx]
+      .replace(/^Buyer\s*:\s*/i,'')
+      .replace(/\s*BILL\s*NO.*/i,'')
+      .trim());
+  } else data.buyerName = '';
+  data.placeOfSupply = safe(find(/Place\s+of\s+Supply\s*:\s*([^\s\n]+)/));
 
-  // Address: "SHOP NO. 350-353,RAGHUVIR PLATINUM,SAROLI,SURAT,SURAT"
-  var addrM=full.match(/SHOP\s+NO\.?\s+([\d\-]+,[^\n]+)/i);
-  data.partyAddress = safe(addrM?('Shop No. '+addrM[1]).trim():'');
-  // City: second-to-last comma-part of address
-  if(data.partyAddress){
-    var parts=data.partyAddress.split(',');
-    data.partyCity = safe(parts.length>=2?parts[parts.length-2].trim():parts[0].trim());
-  } else {
-    data.partyCity='';
-  }
-  data.partyState='24';
+  // ── Bill details ──
+  data.billNo = safe(find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/)||find(/CHALLAN\s*:\s*([^\s\n]+)/));
+  var dr = find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/);
+  if(dr){ var dp=dr.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];
+    data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0'); }
+  else data.billDate='';
 
-  // ── Buyer ──
-  var buyerLine=lines.find(function(l){return /^Buyer\s*:/i.test(l);})||'';
-  data.buyerName=safe(buyerLine.replace(/^Buyer\s*:\s*/i,'').replace(/\s*BILL\s*NO.*/i,'').trim());
-  data.placeOfSupply=safe(find(/Place\s+of\s+Supply\s*:\s*([^\s\n]+)/));
-  // Buyer address: lines under Buyer until GSTIN line
-  var buyerAddr=[];
-  var inBuyer=false;
-  for(var i=0;i<lines.length;i++){
-    if(/^Buyer\s*:/i.test(lines[i])){inBuyer=true;continue;}
-    if(inBuyer){
-      // Stop at GSTIN, Consignee, or any separator keyword
-      if(/^GSTIN:/i.test(lines[i])||/^Consignee/i.test(lines[i])||
-         /^Place\s+of\s+Supply/i.test(lines[i])){break;}
-      // Only take lines that look like address parts (not bill metadata)
-      if(lines[i].length>2&&!/CHALLAN|DATE|ORDER\s*NO|BILL\s*NO/i.test(lines[i])){
-        buyerAddr.push(lines[i]);
-      }
+  // ── Consignee: ONLY the line starting with "Consignee:" ──
+  var cIdx = lines.findIndex(function(l){ return /^Consignee\s*:/i.test(l); });
+  if(cIdx>=0){
+    data.consignee = safe(lines[cIdx].replace(/^Consignee\s*:\s*/i,'').trim());
+    // Next line may have ADDRESS
+    var cNext = lines[cIdx+1]||'';
+    var caM = cNext.match(/ADDRESS:\s*(.+)/i);
+    if(caM) data.consignee += ', '+caM[1].trim();
+    // Consignee GSTIN from next line if not already found
+    if(!data.consigneeGstin){
+      var cgM = cNext.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);
+      if(cgM) data.consigneeGstin = safe(cgM[0]);
     }
-  }
-  // Limit to max 3 address lines to avoid overflow
-  data.buyerAddress=safe(buyerAddr.slice(0,3).join(', '));
-
-  // ── Bill Details ──
-  data.billNo=safe(find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/)||find(/CHALLAN\s*:\s*([^\s\n]+)/));
-  var dateRaw=find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/);
-  if(dateRaw){
-    var dp=dateRaw.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];
-    data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');
-  } else data.billDate='';
-
-  // ── Consignee ──
-  var cLine=lines.find(function(l){return /^Consignee\s*:/i.test(l);})||'';
-  data.consignee=safe(cLine.replace(/^Consignee\s*:\s*/i,'').trim());
+  } else data.consignee='';
 
   // ── Transport ──
   data.lrNo   = safe(find(/L\.R\.\s*NO\.?\s*:\s*([^\s\n]+)/));
-  var lrDateRaw=find(/LR\s*DATE:\s*(\d{2}\/\d{2}\/\d{2,4})/);
-  if(lrDateRaw){
-    var dp=lrDateRaw.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];
-    data.lrDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');
-  } else data.lrDate='';
+  var lrDR = find(/LR\s*DATE:\s*(\d{2}\/\d{2}\/\d{2,4})/);
+  if(lrDR){ var dp=lrDR.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];
+    data.lrDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0'); }
+  else data.lrDate='';
   data.caseNo = safe(find(/CASE\s*NO:?\s*([^\s\n]+)/));
   data.weight = num(find(/WEIGHT\s*:\s*([\d.]+)/));
-  var stM=full.match(/STATION:\s*([^\n]+?)(?:\s*HSN|$)/im);
-  data.station= safe(stM?stM[1].trim():'');
+  var stM = full.match(/STATION:\s*([^\n]+?)(?:\s*HSN|$)/im);
+  data.station = safe(stM ? stM[1].trim() : '');
 
-  // ── HSN ──
-  var hsnVal=safe(find(/HSN\s*[:\s]\s*(\d{6,8})/));
+  var hsnVal = safe(find(/HSN\s*[:\s]\s*(\d{6,8})/));
 
   // ── Items ──
-  // Flexible: Sr. desc [pack pcs cut] kg rate amount
-  // e.g: "1 FEELGOOD TUBE 44  NAKED  36  0.00  921.40  116.50  107343.10"
+  var itemRe = /^\s*(\d+)\s+([A-Z][A-Z0-9\s]+?)\s+([A-Z]{3,})\s+(\d+)\s+([\d.]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s*$/;
   lines.forEach(function(l){
-    // Try full format with pack/pcs/cut
-    var m=l.match(/^\s*(\d+)\s+([A-Z][A-Z0-9\s]+?)\s+([A-Z]{3,})\s+([\d]+)\s+([\d.]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s*$/);
-    if(m){
-      data.items.push({desc:safe(m[2].trim()),unit:'KG',pack:safe(m[3]),
-        pcs:num(m[4]),cut:num(m[5]),qty:num(m[6]),rate:num(m[7]),amount:num(m[8]),hsn:hsnVal});
-      return;
-    }
-    // Try simpler format: Sr desc qty rate amount
-    var m2=l.match(/^\s*(\d+)\s+([A-Z][A-Z0-9\s]+?)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s*$/);
-    if(m2&&num(m2[3])>0&&num(m2[4])>0){
-      data.items.push({desc:safe(m2[2].trim()),unit:'KG',pack:'',
-        pcs:0,cut:0,qty:num(m2[3]),rate:num(m2[4]),amount:num(m2[5]),hsn:hsnVal});
-    }
+    var m = l.match(itemRe);
+    if(m) data.items.push({
+      desc:safe(m[2].trim()), unit:'KG', pack:safe(m[3]),
+      pcs:num(m[4]), cut:num(m[5]), qty:num(m[6]), rate:num(m[7]), amount:num(m[8]), hsn:hsnVal
+    });
   });
 
   // ── Totals ──
-  var subLine=lines.find(function(l){return /^SUB\s*TOTAL/i.test(l);})||'';
-  var subNs=subLine.match(/[\d,]+\.?\d*/g)||[];
-  // Filter out small numbers (PCS count), take the largest
-  var subVals=subNs.map(num).filter(function(n){return n>1000;});
-  data.subTotal=subVals.length?subVals[subVals.length-1]:0;
+  var subL = lines.find(function(l){ return /^SUB\s*TOTAL/i.test(l); })||'';
+  var subNs = (subL.match(/[\d,]+\.?\d*/g)||[]).map(num).filter(function(n){return n>1000;});
+  data.subTotal = subNs.length ? subNs[subNs.length-1] : 0;
 
-  var discLine=lines.find(function(l){return /DISCOUNT/i.test(l)&&/%/.test(l);})||'';
-  var dpm=discLine.match(/-?([\d.]+)\s*%/),dam=discLine.match(/:\s*-?([\d,]+\.\d+)/);
-  data.discount      =num(dpm?dpm[1]:'0');
-  data.discountAmount=num(dam?dam[1]:'0');
+  var discL = lines.find(function(l){ return /DISCOUNT/i.test(l)&&/%/.test(l); })||'';
+  var dpm=discL.match(/-?([\d.]+)\s*%/), dam=discL.match(/:\s*-?([\d,]+\.\d+)/);
+  data.discount       = num(dpm?dpm[1]:'0');
+  data.discountAmount = num(dam?dam[1]:'0');
 
-  var frLine=lines.find(function(l){return /^FREIGHT\s*->/i.test(l);})||'';
-  var frm=frLine.match(/:\s*([\d,]+\.\d+)/);
-  data.freight=num(frm?frm[1]:'0');
+  var frL = lines.find(function(l){ return /^FREIGHT\s*->/i.test(l); })||'';
+  var frm = frL.match(/:\s*([\d,]+\.\d+)/);
+  data.freight = num(frm?frm[1]:'0');
 
-  var gstLine=lines.find(function(l){return /(IGST|CGST|SGST).*@/i.test(l);})||'';
-  var gstM=gstLine.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)\s*%/i);
-  data.gstType=gstM?(gstM[1].toUpperCase()==='IGST'?'IGST':'CGST_SGST'):'IGST';
-  data.gstPct =gstM?num(gstM[2]):5;
+  var gstL = lines.find(function(l){ return /(IGST|CGST|SGST).*@/i.test(l); })||'';
+  var gstM = gstL.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)\s*%/i);
+  data.gstType = gstM?(gstM[1].toUpperCase()==='IGST'?'IGST':'CGST_SGST'):'IGST';
+  data.gstPct  = gstM?num(gstM[2]):5;
 
-  var gtLine=lines.find(function(l){return /GRAND\s*TOTAL/i.test(l);})||'';
-  var gtM=gtLine.match(/GRAND\s*TOTAL[:\s]*([\d,]+\.?\d*)/i);
-  data.grandTotal=num(gtM?gtM[1].replace(/,/g,''):'0');
+  var gtL = lines.find(function(l){ return /GRAND\s*TOTAL/i.test(l); })||'';
+  var gtM = gtL.match(/GRAND\s*TOTAL[:\s]*([\d,]+\.?\d*)/i);
+  data.grandTotal = num(gtM?gtM[1].replace(/,/g,''):'0');
 
-  var bkLine=lines.find(function(l){return /BANK.*A\/C.*NO/i.test(l)&&/IFSC/i.test(l);})||'';
-  var bkM=bkLine.match(/(\d{9,})\s*[-–]\s*IFSC\s*[Cc]ode:\s*([A-Z0-9]+)/);
-  var rmLine=lines.find(function(l){return /^REMARK\s*:/i.test(l);})||'';
-  var rmVal=rmLine.replace(/^REMARK\s*:\s*/i,'').trim();
-  data.remarks=safe((bkM?'A/C: '+bkM[1]+' | IFSC: '+bkM[2]:'')+(rmVal?(bkM?' | ':'')+rmVal:''));
+  // Bank + Remark — take FIRST match only
+  var bkL = lines.find(function(l){ return /BANK.*A\/C.*NO/i.test(l)&&/IFSC/i.test(l); })||'';
+  var bkM = bkL.match(/(\d{9,})\s*[-–]\s*IFSC\s*[Cc]ode:\s*([A-Z0-9]+)/);
+  var rmL = lines.find(function(l){ return /^REMARK\s*:/i.test(l); })||'';
+  var rmV = rmL.replace(/^REMARK\s*:\s*/i,'').trim();
+  data.remarks = safe((bkM?'A/C: '+bkM[1]+' | IFSC: '+bkM[2]:'')+(rmV?(bkM?' | ':'')+rmV:''));
 
-  data.mode='credit';
-  data.jobWork=false;
+  data.mode = 'credit';
+  data.jobWork = false;
   return data;
 }
 function handlePdfFile(input){
@@ -2387,7 +2360,7 @@ function extractPdfText(arrayBuffer,input){
     for(var i=1;i<=pdf.numPages;i++){textPromises.push(pdf.getPage(i).then(function(pg){return pg.getTextContent();}));}
     return Promise.all(textPromises);
   }).then(function(pages){
-    // Group by Y-position, ascending = top-to-bottom (pdf.js Y=0 is bottom)
+    // Group by Y-position ascending (pdf.js Y=0=bottom, so ascending=top-to-bottom)
     var fullText=pages.map(function(p){
       var yGroups={};
       p.items.forEach(function(it){
@@ -2397,10 +2370,15 @@ function extractPdfText(arrayBuffer,input){
         yGroups[y].push({x:it.transform[4],str:it.str});
       });
       var ys=Object.keys(yGroups).map(Number).sort(function(a,b){return a-b;});
-      return ys.map(function(y){
-        return yGroups[y].sort(function(a,b){return a.x-b.x;})
-          .map(function(it){return it.str;}).join(' ');
-      }).join('\n');
+      // Deduplicate lines within page
+      var seenLines={};
+      var pageLines=[];
+      ys.forEach(function(y){
+        var line=yGroups[y].sort(function(a,b){return a.x-b.x;})
+          .map(function(it){return it.str;}).join(' ').trim();
+        if(line&&!seenLines[line]){seenLines[line]=1;pageLines.push(line);}
+      });
+      return pageLines.join('\n');
     }).join('\n');
     var parsed=parseBillText(fullText);
     if(!parsed.partyName&&!parsed.billNo){
