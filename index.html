@@ -199,6 +199,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="pg-parties" class="main" style="display:none"></div>
   <div id="pg-bills" class="main" style="display:none"></div>
   <div id="pg-invoices" class="main" style="display:none"></div>
+  <div id="pg-trash" class="main" style="display:none"></div>
   <div id="pg-detail" class="main" style="display:none"></div>
 
   <!-- FAB -->
@@ -210,6 +211,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="nb" id="nb-parties" onclick="goTab('parties')"><span class="ic">👥</span>Parties</button>
     <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">📦</span>Purchase</button>
     <button class="nb" id="nb-invoices" onclick="goTab('invoices')"><span class="ic">🧾</span>Sales</button>
+    <button class="nb" id="nb-trash" onclick="goTab('trash')"><span class="ic">🗑️</span>Bin<span id="trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 4px;font-size:10px;margin-left:2px;vertical-align:middle"></span></button>
   </nav>
 </div>
 
@@ -621,9 +623,9 @@ const BIZ={
 };
 
 // ═══ DATA ═══
-let S={parties:[],bills:[],invoices:[],payments:[],pC:1,bC:1,iC:1};
+let S={parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){return S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],pC:1,bC:1,iC:1,cfStock:0}),S[curBiz];}
+function bData(){return S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1,cfStock:0}),S[curBiz];}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -724,8 +726,10 @@ function subscribeData(){
     .onSnapshot(snap=>{
       if(snap.exists){
         const d=snap.data();
-        S.MI=d.MI||{parties:[],bills:[],invoices:[],payments:[],pC:1,bC:1,iC:1};
-        S.KF=d.KF||{parties:[],bills:[],invoices:[],payments:[],pC:1,bC:1,iC:1};
+        S.MI=d.MI||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1};
+        if(!S.MI.trash)S.MI.trash=[];
+        S.KF=d.KF||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1};
+        if(!S.KF.trash)S.KF.trash=[];
       }
       setSyncDot('ok');
       renderAll();
@@ -735,10 +739,11 @@ async function saveToCloud(){
   if(!uid)return;
   setSyncDot('busy');
   try{
+    // Sanitize: JSON round-trip removes undefined/null (Firestore rejects them)
+    const mi=JSON.parse(JSON.stringify(S.MI||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1}));
+    const kf=JSON.parse(JSON.stringify(S.KF||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1}));
     await db.collection('users').doc(uid).collection('bizdata').doc('main').set({
-      MI:S.MI||{parties:[],bills:[],invoices:[],payments:[],pC:1,bC:1,iC:1},
-      KF:S.KF||{parties:[],bills:[],invoices:[],payments:[],pC:1,bC:1,iC:1},
-      updated:new Date().toISOString()
+      MI:mi, KF:kf, updated:new Date().toISOString()
     });
     setSyncDot('ok');
   }catch(e){setSyncDot('err');alert('Sync error: '+e.message);}
@@ -758,11 +763,11 @@ function toggleBiz(){
 // ═══ NAV ═══
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
-  ['home','parties','bills','invoices','detail'].forEach(p=>{
+  ['home','parties','bills','invoices','detail','trash'].forEach(p=>{
     const el=document.getElementById('pg-'+p);
     if(el)el.style.display=p===t?'block':'none';
   });
-  ['home','parties','bills','invoices'].forEach(n=>{
+  ['home','parties','bills','invoices','trash'].forEach(n=>{
     const el=document.getElementById('nb-'+n);
     if(el)el.className='nb'+(n===t?' act':'');
   });
@@ -983,10 +988,14 @@ function openPartyDetail(pid){
       <div class="ds">${party.city?esc(party.city)+' · ':''}${party.phone?'📞 '+esc(party.phone):''}${party.gstin?' · GSTIN: '+esc(party.gstin):''}</div>
     </div>
     <div class="stats">
-      <div class="stat"><div class="sl">Balance</div><div class="sv ${Math.abs(bal)<1?'':'bal>0?grn:red'}" style="color:${Math.abs(bal)<1?'var(--sub)':bal>0?'var(--g)':'var(--r)'}">${Math.abs(bal)<1?'Clear':fmt(Math.abs(bal))}</div><div style="font-size:11px;color:var(--sub)">${bal>0?'Receivable':bal<0?'Payable':''}</div></div>
-      <div class="stat"><div class="sl">Bills</div><div class="sv blu">${pbills.length}</div></div>
-      <div class="stat"><div class="sl">Invoices</div><div class="sv blu">${pinvs.length}</div></div>
-      <div class="stat"><div class="sl">Payments</div><div class="sv">${ppays.length}</div></div>
+      <div class="stat" style="grid-column:1/-1">
+        <div class="sl">Net Balance</div>
+        <div class="sv" style="color:${Math.abs(bal)<1?'var(--g)':bal>0?'var(--g)':'var(--r)'}">${Math.abs(bal)<1?'✅ Clear':fmt(Math.abs(bal))}</div>
+        <div style="font-size:11px;color:var(--sub)">${bal>0?'They owe you (Receivable)':bal<0?'You owe them (Payable)':'All settled'}</div>
+      </div>
+      <div class="stat"><div class="sl">📦 Purchased</div><div class="sv red">${fmt(pbills.reduce((s,b)=>s+b.grand,0))}</div><div style="font-size:10px;color:var(--sub)">${pbills.length} bill(s)</div></div>
+      <div class="stat"><div class="sl">🧾 Sold</div><div class="sv grn">${fmt(pinvs.reduce((s,i)=>s+i.grand,0))}</div><div style="font-size:10px;color:var(--sub)">${pinvs.length} invoice(s)</div></div>
+      <div class="stat"><div class="sl">💰 Payments</div><div class="sv">${fmt(ppays.reduce((s,p)=>s+p.amt,0))}</div><div style="font-size:10px;color:var(--sub)">${ppays.length} entry(s)</div></div>
     </div>
     <div class="btn-row" style="margin-bottom:14px">
       <button class="btn grn" onclick="openPayModal('${pid}')">💰 Payment</button>
@@ -1000,7 +1009,7 @@ function openPartyDetail(pid){
     ${pinvs.length?`<div class="card" style="padding:0 16px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">SALES INVOICES</div>${invRows}</div>`:''}
     ${ppays.length?`<div class="card" style="padding:0 16px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">PAYMENT HISTORY</div>${payRows}</div>`:''}` ;
 
-  ['home','parties','bills','invoices'].forEach(p=>document.getElementById('pg-'+p).style.display='none');
+  ['home','parties','bills','invoices','trash'].forEach(p=>document.getElementById('pg-'+p).style.display='none');
   document.getElementById('pg-detail').style.display='block';
 }
 
@@ -1051,9 +1060,20 @@ function saveParty(){
   if(curParty===editPartyId)openPartyDetail(editPartyId);
 }
 function confirmDelParty(pid){
-  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this party and all related data? This cannot be undone.</div>';
+  document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this party and all their data to Recycle Bin? You can restore everything anytime.</div>';
   document.getElementById('cf-ok').onclick=()=>{
     const d=D();
+    const party=d.parties.find(p=>p.id===pid);if(!party)return;
+    const partyBills=d.bills.filter(b=>b.pid===pid);
+    const partyInvs=d.invoices.filter(i=>i.pid===pid);
+    const partyPays=d.payments.filter(p=>p.pid===pid);
+    if(!d.trash)d.trash=[];
+    d.trash.push({type:'party',deletedAt:new Date().toISOString(),
+      party:JSON.parse(JSON.stringify(party)),
+      bills:JSON.parse(JSON.stringify(partyBills)),
+      invoices:JSON.parse(JSON.stringify(partyInvs)),
+      payments:JSON.parse(JSON.stringify(partyPays))
+    });
     d.parties=d.parties.filter(p=>p.id!==pid);
     d.bills=d.bills.filter(b=>b.pid!==pid);
     d.invoices=d.invoices.filter(i=>i.pid!==pid);
@@ -1163,6 +1183,14 @@ function renderInvoices(){
     </div>`;
 }
 function setInvFilter(f){renderInvoices();}
+
+// ═══ TRASH BADGE ═══
+function updateTrashBadge(){
+  const d=D();
+  const cnt=(d.trash||[]).length;
+  const badge=document.getElementById('trash-badge');
+  if(badge){badge.style.display=cnt>0?'inline':'none';badge.textContent=cnt;}
+}
 
 // ═══ BILL MODAL ═══
 let billType='purchase';
@@ -1397,8 +1425,17 @@ function editBill(bid){
   calcBillTotal();openModal('bill');
 }
 function confirmDelBill(bid){
-  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this purchase bill? Cannot be undone.</div>';
-  document.getElementById('cf-ok').onclick=function(){const d=D();d.bills=d.bills.filter(b=>b.id!==bid);d.payments=d.payments.filter(p=>p.bid!==bid);saveToCloud();closeModal('cf');renderAll();};openModal('cf');
+  document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this purchase bill to Recycle Bin? You can restore it anytime.</div>';
+  document.getElementById('cf-ok').onclick=function(){
+    const d=D();
+    const bill=d.bills.find(b=>b.id===bid);if(!bill)return;
+    const billPayments=d.payments.filter(p=>p.bid===bid);
+    if(!d.trash)d.trash=[];
+    d.trash.push({type:'bill',deletedAt:new Date().toISOString(),bill:JSON.parse(JSON.stringify(bill)),payments:JSON.parse(JSON.stringify(billPayments))});
+    d.bills=d.bills.filter(b=>b.id!==bid);
+    d.payments=d.payments.filter(p=>p.bid!==bid);
+    saveToCloud();closeModal('cf');renderAll();
+  };openModal('cf');
 }
 // ═══ EDIT / DELETE INVOICE ═══
 function editInvoice(iid){
@@ -1426,8 +1463,17 @@ function editInvoice(iid){
   calcInvTotal();openModal('inv');
 }
 function confirmDelInv(iid){
-  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this sales invoice? Cannot be undone.</div>';
-  document.getElementById('cf-ok').onclick=function(){const d=D();d.invoices=d.invoices.filter(i=>i.id!==iid);d.payments=d.payments.filter(p=>p.iid!==iid);saveToCloud();closeModal('cf');renderAll();};openModal('cf');
+  document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this sales invoice to Recycle Bin? You can restore it anytime.</div>';
+  document.getElementById('cf-ok').onclick=function(){
+    const d=D();
+    const inv=d.invoices.find(i=>i.id===iid);if(!inv)return;
+    const invPayments=d.payments.filter(p=>p.iid===iid);
+    if(!d.trash)d.trash=[];
+    d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
+    d.invoices=d.invoices.filter(i=>i.id!==iid);
+    d.payments=d.payments.filter(p=>p.iid!==iid);
+    saveToCloud();closeModal('cf');renderAll();
+  };openModal('cf');
 }
 
 // ═══ INVOICE MODAL ═══
@@ -2493,6 +2539,129 @@ function clearImport(ctx){
   if(pdfSt){pdfSt.style.display='none';pdfSt.innerHTML='';}
   if(pdfPrev){pdfPrev.style.display='none';pdfPrev.innerHTML='';}
   if(pdfFi)pdfFi.value='';
+}
+
+// ═══ RECYCLE BIN ═══
+function renderTrash(){
+  const d=D();
+  if(!d.trash)d.trash=[];
+  updateTrashBadge();
+  const items=d.trash;
+  let html=`<div style="padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:center">
+    <h2 style="font-size:17px;font-weight:700;margin:0">🗑️ Recycle Bin</h2>
+    ${items.length?`<button class="btn sm red" onclick="emptyTrash()" style="font-size:12px">🗑 Empty All</button>`:''}
+  </div>`;
+  if(!items.length){
+    html+=`<div class="empty"><div class="ei">🗑️</div><p>Recycle Bin is empty.<br><span style="font-size:12px;color:#999">Deleted bills, invoices & parties appear here.</span></p></div>`;
+  } else {
+    html+=items.map((t,i)=>{
+      const age=Math.floor((Date.now()-new Date(t.deletedAt).getTime())/86400000);
+      const daysLeft=Math.max(0,30-age);
+      const urgColor=daysLeft<=5?'#DC2626':'#999';
+      const base='background:#fff;border:1.5px solid #E8E8E8;border-radius:12px;padding:14px 16px;margin:0 14px 10px';
+      if(t.type==='bill'){
+        const b=t.bill;
+        const party=d.parties.find(p=>p.id===b.pid);
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="background:#EFF6FF;color:#1E40AF;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">📦 ${esc(b.num)}</span>
+              <span style="font-size:11px;color:#666">${fmtD(b.date)}</span>
+            </div>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:13px;margin-bottom:4px"><strong>${esc(party?party.name:b.pid)}</strong> · ${fmt(b.grand)}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:10px">${b.items.length} item(s) · Deleted ${age===0?'today':age+'d ago'}</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm pri" onclick="restoreTrashItem(${i})" style="flex:1;justify-content:center">↩ Restore</button>
+            <button class="btn sm red" onclick="permDeleteItem(${i})" style="flex:1;justify-content:center;background:#FFF1F2">🗑 Delete Forever</button>
+          </div>
+        </div>`;
+      }
+      if(t.type==='invoice'){
+        const inv=t.invoice;
+        const party=d.parties.find(p=>p.id===inv.pid);
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="background:#ECFDF5;color:#065F46;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🧾 ${esc(inv.num)}</span>
+              <span style="font-size:11px;color:#666">${fmtD(inv.date)}</span>
+            </div>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:13px;margin-bottom:4px"><strong>${esc(party?party.name:inv.pid)}</strong> · ${fmt(inv.grand)}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:10px">${inv.items.length} item(s) · Deleted ${age===0?'today':age+'d ago'}</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm pri" onclick="restoreTrashItem(${i})" style="flex:1;justify-content:center">↩ Restore</button>
+            <button class="btn sm red" onclick="permDeleteItem(${i})" style="flex:1;justify-content:center;background:#FFF1F2">🗑 Delete Forever</button>
+          </div>
+        </div>`;
+      }
+      if(t.type==='party'){
+        const p=t.party;
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <div style="width:34px;height:34px;border-radius:50%;background:#374151;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">${esc((p.name||'?')[0].toUpperCase())}</div>
+              <div><div style="font-size:14px;font-weight:700">${esc(p.name)}</div><div style="font-size:11px;color:#888">${p.phone||''}</div></div>
+            </div>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+            <div style="background:#F5F5F5;border-radius:8px;padding:7px;text-align:center"><div style="font-weight:700">${(t.bills||[]).length}</div><div style="font-size:10px;color:#888">Bills</div></div>
+            <div style="background:#F5F5F5;border-radius:8px;padding:7px;text-align:center"><div style="font-weight:700">${(t.invoices||[]).length}</div><div style="font-size:10px;color:#888">Invoices</div></div>
+            <div style="background:#F5F5F5;border-radius:8px;padding:7px;text-align:center"><div style="font-weight:700">${(t.payments||[]).length}</div><div style="font-size:10px;color:#888">Payments</div></div>
+          </div>
+          <div style="font-size:11px;color:#888;margin-bottom:10px">Deleted ${age===0?'today':age+'d ago'}</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm pri" onclick="restoreTrashItem(${i})" style="flex:1;justify-content:center">↩ Restore Party & All Data</button>
+            <button class="btn sm red" onclick="permDeleteItem(${i})" style="flex:1;justify-content:center;background:#FFF1F2">🗑 Delete Forever</button>
+          </div>
+        </div>`;
+      }
+      return'';
+    }).join('');
+  }
+  document.getElementById('pg-trash').innerHTML=html;
+}
+
+function restoreTrashItem(idx){
+  const d=D();if(!d.trash||!d.trash[idx])return;
+  const t=d.trash[idx];
+  if(t.type==='bill'){
+    d.bills.push(t.bill);
+    (t.payments||[]).forEach(p=>d.payments.push(p));
+    alert('✅ Bill '+t.bill.num+' restored!');
+  } else if(t.type==='invoice'){
+    d.invoices.push(t.invoice);
+    (t.payments||[]).forEach(p=>d.payments.push(p));
+    alert('✅ Invoice '+t.invoice.num+' restored!');
+  } else if(t.type==='party'){
+    d.parties.push(t.party);
+    (t.bills||[]).forEach(b=>d.bills.push(b));
+    (t.invoices||[]).forEach(i=>d.invoices.push(i));
+    (t.payments||[]).forEach(p=>d.payments.push(p));
+    alert('✅ Party "'+t.party.name+'" and all data restored!');
+  }
+  d.trash.splice(idx,1);
+  saveToCloud();renderAll();
+}
+
+function permDeleteItem(idx){
+  const d=D();if(!d.trash||!d.trash[idx])return;
+  const t=d.trash[idx];
+  const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:'party "'+t.party?.name+'"';
+  if(!confirm('Permanently delete '+label+'? This CANNOT be undone.'))return;
+  d.trash.splice(idx,1);
+  saveToCloud();renderTrash();
+}
+
+function emptyTrash(){
+  const d=D();
+  if(!d.trash||!d.trash.length)return;
+  if(!confirm('Permanently delete ALL '+d.trash.length+' item(s)? This CANNOT be undone.'))return;
+  d.trash=[];
+  saveToCloud();renderTrash();
 }
 </script>
 
