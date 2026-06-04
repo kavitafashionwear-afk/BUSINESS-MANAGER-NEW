@@ -1742,6 +1742,7 @@ function printInvoice(iid){
         <div style="font-size:12px;color:#555">${esc(party&&party.addr||party&&party.city||'')}</div>
         <div style="font-size:12px">📞 ${esc(party&&party.phone||'-')}</div>
         ${(inv.custGstin||(party&&party.gstin))?`<div style="font-size:12px;font-weight:700">GSTIN: ${esc(inv.custGstin||(party&&party.gstin)||'')}</div>`:''}
+        ${inv.custAadhaar?`<div style="font-size:12px">Aadhaar: ${esc(inv.custAadhaar)}</div>`:''}
         <div style="font-size:12px">State: ${esc(party&&party.state||'')} ${isIntrastate?'(Intra-state)':'(Inter-state)'}</div>
       </div>
       ${inv.ship?`<div style="border:1px solid #E0E0E0;border-radius:8px;padding:10px">
