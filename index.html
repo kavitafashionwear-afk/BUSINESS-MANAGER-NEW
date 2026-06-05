@@ -199,6 +199,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="pg-parties" class="main" style="display:none"></div>
   <div id="pg-bills" class="main" style="display:none"></div>
   <div id="pg-invoices" class="main" style="display:none"></div>
+  <div id="pg-notes" class="main" style="display:none"></div>
   <div id="pg-trash" class="main" style="display:none"></div>
   <div id="pg-detail" class="main" style="display:none"></div>
 
@@ -211,6 +212,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="nb" id="nb-parties" onclick="goTab('parties')"><span class="ic">👥</span>Parties</button>
     <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">📦</span>Purchase</button>
     <button class="nb" id="nb-invoices" onclick="goTab('invoices')"><span class="ic">🧾</span>Sales</button>
+    <button class="nb" id="nb-notes" onclick="goTab('notes')"><span class="ic">📋</span>Notes</button>
     <button class="nb" id="nb-trash" onclick="goTab('trash')"><span class="ic">🗑️</span>Bin<span id="trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 4px;font-size:10px;margin-left:2px;vertical-align:middle"></span></button>
   </nav>
 </div>
@@ -623,9 +625,9 @@ const BIZ={
 };
 
 // ═══ DATA ═══
-let S={parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1};
+let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){return S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1,cfStock:0}),S[curBiz];}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -728,10 +730,12 @@ function subscribeData(){
       if(_saving)return; // Don't overwrite local state while saving
       if(snap.exists){
         const d=snap.data();
-        S.MI=d.MI||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1};
+        S.MI=d.MI||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
         if(!S.MI.trash)S.MI.trash=[];
-        S.KF=d.KF||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1};
+        if(!S.MI.notes)S.MI.notes=[];
+        S.KF=d.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
         if(!S.KF.trash)S.KF.trash=[];
+        if(!S.KF.notes)S.KF.notes=[];
       }
       setSyncDot('ok');
       renderAll();
@@ -743,8 +747,8 @@ async function saveToCloud(){
   _saving=true;
   try{
     // Sanitize: JSON round-trip removes undefined/null (Firestore rejects them)
-    const mi=JSON.parse(JSON.stringify(S.MI||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1}));
-    const kf=JSON.parse(JSON.stringify(S.KF||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1}));
+    const mi=JSON.parse(JSON.stringify(S.MI||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
+    const kf=JSON.parse(JSON.stringify(S.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
     await db.collection('users').doc(uid).collection('bizdata').doc('main').set({
       MI:mi, KF:kf, updated:new Date().toISOString()
     });
@@ -767,11 +771,11 @@ function toggleBiz(){
 // ═══ NAV ═══
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
-  ['home','parties','bills','invoices','detail','trash'].forEach(p=>{
+  ['home','parties','bills','invoices','detail','notes','trash'].forEach(p=>{
     const el=document.getElementById('pg-'+p);
     if(el)el.style.display=p===t?'block':'none';
   });
-  ['home','parties','bills','invoices','trash'].forEach(n=>{
+  ['home','parties','bills','invoices','notes','trash'].forEach(n=>{
     const el=document.getElementById('nb-'+n);
     if(el)el.className='nb'+(n===t?' act':'');
   });
@@ -783,6 +787,7 @@ function renderTab(t){
   else if(t==='parties')renderParties();
   else if(t==='bills')renderBills();
   else if(t==='invoices')renderInvoices();
+  else if(t==='notes')renderNotes();
   else if(t==='trash')renderTrash();
 }
 function fabAction(){
@@ -809,8 +814,12 @@ function partyBalance(pid){
   // Payments to them (our payments)
   const paid=d.payments.filter(p=>p.pid===pid&&p.dir==='out').reduce((s,p)=>s+p.amt,0);
 
+  // Credit notes reduce what customer owes us; Debit notes reduce what we owe supplier
+  const notes=d.notes||[];
+  const creditNotes=notes.filter(x=>x.pid===pid&&x.type==='credit').reduce((s,x)=>s+x.amount,0);
+  const debitNotes=notes.filter(x=>x.pid===pid&&x.type==='debit').reduce((s,x)=>s+x.amount,0);
   const obVal=(obType==='CR'?ob:-ob);
-  return obVal + salesTotal - purchTotal - received + paid;
+  return obVal + salesTotal - purchTotal - received + paid - creditNotes + debitNotes;
 }
 function billBalance(bid){
   const d=D();
@@ -1001,11 +1010,13 @@ function openPartyDetail(pid){
       <div class="stat"><div class="sl">📦 Purchased</div><div class="sv red">${fmt(pbills.reduce((s,b)=>s+b.grand,0))}</div><div style="font-size:10px;color:var(--sub)">${pbills.length} bill(s)</div></div>
       <div class="stat"><div class="sl">🧾 Sold</div><div class="sv grn">${fmt(pinvs.reduce((s,i)=>s+i.grand,0))}</div><div style="font-size:10px;color:var(--sub)">${pinvs.length} invoice(s)</div></div>
       <div class="stat"><div class="sl">💰 Payments</div><div class="sv">${fmt(ppays.reduce((s,p)=>s+p.amt,0))}</div><div style="font-size:10px;color:var(--sub)">${ppays.length} entry(s)</div></div>
+      ${(()=>{const pnotes=(D().notes||[]).filter(x=>x.pid===pid);const cn=pnotes.filter(x=>x.type==='credit').reduce((s,x)=>s+x.amount,0);const dn=pnotes.filter(x=>x.type==='debit').reduce((s,x)=>s+x.amount,0);return pnotes.length?`<div class="stat"><div class="sl">📋 Notes</div><div class="sv" style="font-size:13px">${cn>0?'CR: '+fmt(cn):''}${cn>0&&dn>0?' · ':''}${dn>0?'DR: '+fmt(dn):''}</div><div style="font-size:10px;color:var(--sub)">${pnotes.length} note(s)</div></div>`:'';})()}
     </div>
     <div class="btn-row" style="margin-bottom:14px">
       <button class="btn grn" onclick="openPayModal('${pid}')">💰 Payment</button>
       <button class="btn pri" onclick="openBillModal('${pid}')">+ Purchase Bill</button>
       <button class="btn" onclick="openInvModal('${pid}')">+ Invoice</button>
+      <button class="btn" onclick="openNoteModal('${pid}')">📋 Note</button>
       <button class="btn" onclick="printStatement('${pid}')">🖨 Statement</button>
       <button class="btn sm" onclick="editParty('${pid}')">✏️ Edit</button>
       <button class="btn sm red" onclick="confirmDelParty('${pid}')">🗑</button>
@@ -2665,8 +2676,231 @@ function emptyTrash(){
   d.trash=[];
   saveToCloud().then(function(){renderTrash();});
 }
+
+// ═══════════════════════════════════════
+//   DEBIT / CREDIT NOTES
+// ═══════════════════════════════════════
+let curNoteType = 'credit';
+
+function setNoteType(type){
+  curNoteType = type;
+  document.getElementById('note-mo-title').textContent =
+    type==='credit' ? 'New Credit Note (Sales Return)' : 'New Debit Note (Purchase Return)';
+  document.getElementById('nt-credit').className = type==='credit' ? 'act' : '';
+  document.getElementById('nt-debit').className  = type==='debit'  ? 'act' : '';
+  // Populate party list based on type
+  const d = D();
+  const parties = type==='credit'
+    ? d.parties.filter(p=>p.type==='C'||p.type==='B')
+    : d.parties.filter(p=>p.type==='S'||p.type==='B');
+  document.getElementById('note-party-list').innerHTML =
+    parties.map(p=>`<option value="${esc(p.name)}">`).join('');
+}
+
+function openNoteModal(pid){
+  const d = D(); const biz = BIZ[curBiz];
+  const pfx = biz.invPfx||'KF';
+  const y = new Date().getFullYear().toString().slice(2);
+  const ny = (parseInt(y)+1).toString();
+  const nC = d.nC||1;
+  document.getElementById('n-num').value = pfx+'-CN-'+y+ny+'/'+String(nC).padStart(3,'0');
+  document.getElementById('n-date').value = td();
+  document.getElementById('n-reason').value = '';
+  document.getElementById('n-amount').value = '';
+  document.getElementById('n-ref').value = '';
+  document.getElementById('n-rem').value = '';
+  document.getElementById('n-party').value = '';
+  setNoteType('credit');
+  if(pid){
+    const party = d.parties.find(p=>p.id===pid);
+    if(party){
+      document.getElementById('n-party').value = party.name;
+      // Auto-set type based on party type
+      setNoteType(party.type==='S'?'debit':'credit');
+    }
+  }
+  openModal('note');
+}
+
+function saveNote(){
+  const d = D();
+  const partyName = document.getElementById('n-party').value.trim();
+  if(!partyName){alert('Select a party');return;}
+  const party = d.parties.find(p=>p.name.toLowerCase()===partyName.toLowerCase());
+  if(!party){alert('Party not found. Please select from the list.');return;}
+  const amount = parseFloat(document.getElementById('n-amount').value)||0;
+  if(!amount){alert('Enter note amount');return;}
+  const reason = document.getElementById('n-reason').value.trim();
+  if(!reason){alert('Enter reason/description');return;}
+  if(!d.notes)d.notes=[];
+  const note = {
+    id: 'N'+String(d.nC||1).padStart(5,'0'),
+    num: document.getElementById('n-num').value,
+    date: document.getElementById('n-date').value,
+    type: curNoteType,         // 'credit' or 'debit'
+    pid: party.id,
+    partyName: party.name,
+    reason: reason,
+    amount: amount,
+    ref: document.getElementById('n-ref').value.trim(),
+    rem: document.getElementById('n-rem').value.trim(),
+    biz: curBiz
+  };
+  d.notes.push(note);
+  d.nC = (d.nC||1)+1;
+  saveToCloud().then(function(){
+    closeModal('note');
+    renderAll();
+    // Auto-print
+    printNote(note.id);
+  });
+}
+
+function deleteNote(nid){
+  if(!confirm('Delete this note permanently?'))return;
+  const d = D();
+  d.notes = (d.notes||[]).filter(n=>n.id!==nid);
+  saveToCloud().then(function(){renderNotes();});
+}
+
+function renderNotes(){
+  const d = D();
+  const notes = (d.notes||[]).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const totalCredit = notes.filter(n=>n.type==='credit').reduce((s,n)=>s+n.amount,0);
+  const totalDebit  = notes.filter(n=>n.type==='debit').reduce((s,n)=>s+n.amount,0);
+
+  let html = `
+    <div class="sh">
+      <h2>Debit / Credit Notes (${notes.length})</h2>
+      <button class="btn sm pri" onclick="openNoteModal()">+ New Note</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 0 12px">
+      <div class="card" style="padding:14px;text-align:center">
+        <div style="font-size:11px;color:var(--sub);margin-bottom:4px">📉 Credit Notes (Sales Returns)</div>
+        <div style="font-size:20px;font-weight:700;color:#DC2626">${fmt(totalCredit)}</div>
+      </div>
+      <div class="card" style="padding:14px;text-align:center">
+        <div style="font-size:11px;color:var(--sub);margin-bottom:4px">📈 Debit Notes (Purchase Returns)</div>
+        <div style="font-size:20px;font-weight:700;color:#059669">${fmt(totalDebit)}</div>
+      </div>
+    </div>`;
+
+  if(!notes.length){
+    html += `<div class="empty"><div class="ei">📋</div><p>No notes yet.<br><span style="font-size:12px;color:#999">Use notes for goods returns, rate corrections, or adjustments.</span></p></div>`;
+  } else {
+    html += `<div class="card" style="padding:0 16px">` +
+      notes.map(note=>{
+        const isCredit = note.type==='credit';
+        return `<div class="brow">
+          <div class="bh" style="cursor:default">
+            <div>
+              <span class="bdg" style="background:${isCredit?'#FEF2F2':'#ECFDF5'};color:${isCredit?'#DC2626':'#059669'}">${isCredit?'📉 CR':'📈 DR'}</span>
+              <span style="font-weight:700;margin-left:8px">${esc(note.num)}</span>
+              <span style="font-size:12px;color:var(--sub);margin-left:6px">${fmtD(note.date)}</span>
+            </div>
+            <div style="font-size:16px;font-weight:700;color:${isCredit?'#DC2626':'#059669'}">${fmt(note.amount)}</div>
+          </div>
+          <div style="font-size:13px;color:#555;margin:4px 0 2px"><strong>${esc(note.partyName)}</strong></div>
+          <div style="font-size:12px;color:var(--sub)">${esc(note.reason)}${note.ref?' · Ref: '+esc(note.ref):''}</div>
+          <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">
+            <button class="btn sm" onclick="printNote('${note.id}')" title="Print">🖨️</button>
+            <button class="btn sm red" onclick="deleteNote('${note.id}')" title="Delete">🗑</button>
+          </div>
+        </div>`;
+      }).join('') + `</div>`;
+  }
+  document.getElementById('pg-notes').innerHTML = html;
+}
+
+function printNote(nid){
+  const d = D(); const biz = BIZ[curBiz];
+  const note = (d.notes||[]).find(n=>n.id===nid); if(!note)return;
+  const isCredit = note.type==='credit';
+  const w = window.open('','_blank','width=800,height=600');
+  w.document.write(`<!DOCTYPE html><html><head><title>${note.num}</title>
+  <style>body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:24px;max-width:700px;margin:0 auto}
+  .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${biz.color};padding-bottom:14px;margin-bottom:16px}
+  .nb{display:flex;gap:8px;margin-bottom:6px}
+  table{width:100%;border-collapse:collapse;margin:16px 0}
+  td,th{padding:9px 12px;border:1px solid #E0E0E0;font-size:13px}
+  th{background:#F5F5F5;font-weight:600;text-align:left}
+  .tot{background:${biz.color};color:#fff;font-weight:700;font-size:15px}
+  .pb{position:fixed;top:0;left:0;right:0;background:#fff;padding:10px 20px;display:flex;gap:10px;border-bottom:1px solid #eee;z-index:99}
+  @media print{.pb{display:none}}
+  </style></head><body>
+  <div class="pb">
+    <button onclick="window.print()" style="background:${biz.color};color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-weight:700">🖨 Print / Save PDF</button>
+    <button onclick="window.close()" style="background:#fff;border:1px solid #CCC;padding:8px 18px;border-radius:8px;cursor:pointer">✕ Close</button>
+  </div>
+  <div style="margin-top:50px">
+  <div class="hdr">
+    <div>
+      <div style="font-size:22px;font-weight:800;color:${biz.color}">${esc(biz.name)}</div>
+      <div style="font-size:12px;color:#555">${esc(biz.addr||'')}</div>
+      <div style="font-size:12px;font-weight:700">GSTIN: ${esc(biz.gstin||'')}</div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:13px;font-weight:700;color:${biz.color}">${isCredit?'CREDIT NOTE':'DEBIT NOTE'}</div>
+      <div style="font-size:20px;font-weight:800;color:#1E40AF">${esc(note.num)}</div>
+      <div>Date: ${fmtD(note.date)}</div>
+    </div>
+  </div>
+  <table>
+    <tr><th>Party</th><td><strong>${esc(note.partyName)}</strong></td></tr>
+    <tr><th>Type</th><td><span style="background:${isCredit?'#FEF2F2':'#ECFDF5'};color:${isCredit?'#DC2626':'#059669'};padding:3px 10px;border-radius:20px;font-weight:700">${isCredit?'📉 Credit Note — Sales Return':'📈 Debit Note — Purchase Return'}</span></td></tr>
+    <tr><th>Reason / Description</th><td>${esc(note.reason)}</td></tr>
+    ${note.ref?`<tr><th>Reference</th><td>${esc(note.ref)}</td></tr>`:''}
+    ${note.rem?`<tr><th>Remarks</th><td>${esc(note.rem)}</td></tr>`:''}
+    <tr class="tot"><td style="color:#fff;font-weight:700">NOTE AMOUNT</td><td style="color:#fff;font-size:16px;font-weight:700;text-align:right">${fmt(note.amount)}</td></tr>
+  </table>
+  <div style="margin-top:8px;font-size:12px;color:#888">
+    ${isCredit?'This Credit Note reduces the outstanding balance of the customer by '+fmt(note.amount)+'.':
+               'This Debit Note reduces the outstanding balance payable to the supplier by '+fmt(note.amount)+'.'}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:50px;border-top:1px dashed #CCC;padding-top:16px">
+    <div style="text-align:center"><div style="height:36px"></div><div style="border-top:1.5px solid #333;padding-top:4px;font-size:11px;font-weight:700">Receiver's Signature<br>${esc(note.partyName)}</div></div>
+    <div style="text-align:center"><div style="height:36px"></div><div style="border-top:1.5px solid #333;padding-top:4px;font-size:11px;font-weight:700">Authorised Signatory<br>${esc(biz.name)}</div></div>
+  </div>
+  </div></body></html>`);
+  w.document.close();
+}
 </script>
 
 <!-- PRINT OVERLAY -->
+
+<!-- DEBIT / CREDIT NOTE MODAL -->
+<div class="ov" id="mo-note" style="display:none">
+<div class="mb">
+  <div class="mhd"><div><h3 id="note-mo-title">New Credit Note</h3></div><button class="xb" onclick="closeModal('note')">✕</button></div>
+  <div class="mbd">
+    <div class="fr">
+      <div class="fl"><label>Note No.</label><input id="n-num" readonly style="background:#F9FAFB"></div>
+      <div class="fl"><label>Date *</label><input id="n-date" type="date"></div>
+    </div>
+    <div class="fl">
+      <label>Type</label>
+      <div class="seg" style="margin-bottom:0">
+        <button id="nt-credit" class="act" onclick="setNoteType('credit')">📉 Credit Note (Sales Return)</button>
+        <button id="nt-debit" onclick="setNoteType('debit')">📈 Debit Note (Purchase Return)</button>
+      </div>
+    </div>
+    <div class="fl"><label>Party *</label>
+      <input id="n-party" list="note-party-list" placeholder="Type or select party" autocomplete="off" style="width:100%;padding:11px 14px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px">
+      <datalist id="note-party-list"></datalist>
+    </div>
+    <div class="fl"><label>Reason / Description *</label>
+      <input id="n-reason" placeholder="e.g. Goods returned - damaged items, Quality issue"></div>
+    <div class="fr">
+      <div class="fl"><label>Amount (₹) *</label><input id="n-amount" type="number" placeholder="0" min="0" step="0.01" oninput="this.value=Math.abs(this.value)"></div>
+      <div class="fl"><label>Reference (Bill/Invoice No.)</label><input id="n-ref" placeholder="e.g. 34/G or INV-001"></div>
+    </div>
+    <div class="fl"><label>Remarks</label><input id="n-rem" placeholder="Optional remarks"></div>
+    <div class="mft">
+      <button class="btn" onclick="closeModal('note')">Cancel</button>
+      <button class="btn pri" onclick="saveNote()">Save Note</button>
+    </div>
+  </div>
+</div>
+</div>
 </body>
 </html>
