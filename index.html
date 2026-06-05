@@ -777,12 +777,13 @@ function goTab(t){
   });
   renderTab(t);
 }
-function renderAll(){renderTab(curTab);}
+function renderAll(){renderTab(curTab);updateTrashBadge();}
 function renderTab(t){
   if(t==='home')renderHome();
   else if(t==='parties')renderParties();
   else if(t==='bills')renderBills();
   else if(t==='invoices')renderInvoices();
+  else if(t==='trash')renderTrash();
 }
 function fabAction(){
   if(curTab==='parties')openPartyModal();
@@ -1168,7 +1169,7 @@ function renderInvoices(){
         const party=d.parties.find(p=>p.id===inv.pid);
         const ibal=invBalance(inv.id);
         return`<div class="brow">
-          <div class="bh" onclick="openDoc('inv','${inv.id}')" style="cursor:pointer">
+          <div class="bh" style="cursor:default">
             <div><span class="bdg cus">${inv.num}</span> <span style="font-size:12px;color:var(--sub);margin-left:6px">${fmtD(inv.date)}</span></div>
             <div style="text-align:right">
               <div class="ba">${fmt(inv.grand)}</div>
@@ -1466,7 +1467,10 @@ function editInvoice(iid){
       <div class="fl"><label>Rate *</label><input id="ii-rate-${idx}" type="number" value="${it.rate||0}" oninput="calcInvTotal()"></div></div>
       <div class="fl"><label>Amount</label><input id="ii-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700" value="${fmt(it.amt||it.amount||(it.qty*it.rate)||0)}"></div>`;
     document.getElementById('i-items-list').appendChild(div);});
-  calcInvTotal();openModal('inv');
+  calcInvTotal();
+  // Reset invoice modal title and open
+  document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';
+  openModal('inv');
 }
 function confirmDelInv(iid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this sales invoice to Recycle Bin? You can restore it anytime.</div>';
