@@ -719,11 +719,13 @@ auth.onAuthStateChanged(function(user){_resolveAuth(user||null);});
 
 // ═══ FIRESTORE ═══
 let unsubscribe=null;
+let _saving=false;
 function subscribeData(){
   if(unsubscribe)unsubscribe();
   setSyncDot('busy');
   unsubscribe=db.collection('users').doc(uid).collection('bizdata').doc('main')
     .onSnapshot(snap=>{
+      if(_saving)return; // Don't overwrite local state while saving
       if(snap.exists){
         const d=snap.data();
         S.MI=d.MI||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1};
@@ -738,6 +740,7 @@ function subscribeData(){
 async function saveToCloud(){
   if(!uid)return;
   setSyncDot('busy');
+  _saving=true;
   try{
     // Sanitize: JSON round-trip removes undefined/null (Firestore rejects them)
     const mi=JSON.parse(JSON.stringify(S.MI||{parties:[],bills:[],invoices:[],payments:[],trash:[],pC:1,bC:1,iC:1}));
@@ -747,6 +750,7 @@ async function saveToCloud(){
     });
     setSyncDot('ok');
   }catch(e){setSyncDot('err');alert('Sync error: '+e.message);}
+  finally{_saving=false;}
 }
 
 // ═══ BUSINESS TOGGLE ═══
@@ -1078,7 +1082,8 @@ function confirmDelParty(pid){
     d.bills=d.bills.filter(b=>b.pid!==pid);
     d.invoices=d.invoices.filter(i=>i.pid!==pid);
     d.payments=d.payments.filter(p=>p.pid!==pid);
-    saveToCloud();closeModal('cf');goTab('parties');
+    closeModal('cf');
+    saveToCloud().then(function(){goTab('parties');renderAll();});
   };
   openModal('cf');
 }
@@ -1434,7 +1439,8 @@ function confirmDelBill(bid){
     d.trash.push({type:'bill',deletedAt:new Date().toISOString(),bill:JSON.parse(JSON.stringify(bill)),payments:JSON.parse(JSON.stringify(billPayments))});
     d.bills=d.bills.filter(b=>b.id!==bid);
     d.payments=d.payments.filter(p=>p.bid!==bid);
-    saveToCloud();closeModal('cf');renderAll();
+    closeModal('cf');
+    saveToCloud().then(function(){renderAll();});
   };openModal('cf');
 }
 // ═══ EDIT / DELETE INVOICE ═══
@@ -1472,7 +1478,8 @@ function confirmDelInv(iid){
     d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
     d.invoices=d.invoices.filter(i=>i.id!==iid);
     d.payments=d.payments.filter(p=>p.iid!==iid);
-    saveToCloud();closeModal('cf');renderAll();
+    closeModal('cf');
+    saveToCloud().then(function(){renderAll();});
   };openModal('cf');
 }
 
