@@ -1310,7 +1310,7 @@ function calcBillTotal(){
   const grand=taxable+gstAmt;
   const gstLabel=gstStr.includes('s')?(gstPct/2)+'% CGST + '+(gstPct/2)+'% SGST':gstPct+'% IGST';
   const prev=document.getElementById('b-preview');
-  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Freight: +${fmt(freight)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
+  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
 }
 
 function checkNewParty(inputId, noteId, type) {
@@ -1587,13 +1587,25 @@ function calcInvTotal(){
   const isSplit=gstStr.endsWith('s');
   const gstLabel=isSplit?(gstPct/2)+'% CGST + '+(gstPct/2)+'% SGST':gstPct+'% IGST';
   const prev=document.getElementById('i-preview');
-  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Freight: +${fmt(freight)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
+  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
 }
 function saveInvoice(){
   const d=D();
   const custName=document.getElementById('i-cust').value.trim();
   if(!custName){alert('Enter customer name');return;}
-  const customer=getOrCreateParty(custName,'C');
+  // In edit mode, preserve original pid; only create new party if new name
+  let customer;
+  if(editInvId){
+    const existingInv=d.invoices.find(x=>x.id===editInvId);
+    const existingParty=existingInv?d.parties.find(p=>p.id===existingInv.pid):null;
+    if(existingParty&&existingParty.name.trim().toLowerCase()===custName.toLowerCase()){
+      customer=existingParty; // same party, no change
+    } else {
+      customer=getOrCreateParty(custName,'C'); // different name typed
+    }
+  } else {
+    customer=getOrCreateParty(custName,'C');
+  }
   if(!customer){alert('Could not create party');return;}
   const items=getInvItems();
   if(!items.length){alert('Add at least one item');return;}
