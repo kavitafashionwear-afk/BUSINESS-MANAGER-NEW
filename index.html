@@ -2634,7 +2634,7 @@ function restoreTrashItem(idx){
     alert('✅ Party "'+t.party.name+'" and all data restored!');
   }
   d.trash.splice(idx,1);
-  saveToCloud();renderAll();
+  saveToCloud().then(function(){renderAll();});
 }
 
 function permDeleteItem(idx){
@@ -2643,7 +2643,7 @@ function permDeleteItem(idx){
   const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:'party "'+t.party?.name+'"';
   if(!confirm('Permanently delete '+label+'? This CANNOT be undone.'))return;
   d.trash.splice(idx,1);
-  saveToCloud();renderTrash();
+  saveToCloud().then(function(){renderTrash();});
 }
 
 function emptyTrash(){
@@ -2651,7 +2651,7 @@ function emptyTrash(){
   if(!d.trash||!d.trash.length)return;
   if(!confirm('Permanently delete ALL '+d.trash.length+' item(s)? This CANNOT be undone.'))return;
   d.trash=[];
-  saveToCloud();renderTrash();
+  saveToCloud().then(function(){renderTrash();});
 }
 </script>
 
