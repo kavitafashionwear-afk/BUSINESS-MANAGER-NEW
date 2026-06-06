@@ -199,6 +199,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="pg-parties" class="main" style="display:none"></div>
   <div id="pg-bills" class="main" style="display:none"></div>
   <div id="pg-invoices" class="main" style="display:none"></div>
+  <div id="pg-bank" class="main" style="display:none"></div>
   <div id="pg-notes" class="main" style="display:none"></div>
   <div id="pg-trash" class="main" style="display:none"></div>
   <div id="pg-detail" class="main" style="display:none"></div>
@@ -212,6 +213,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="nb" id="nb-parties" onclick="goTab('parties')"><span class="ic">👥</span>Parties</button>
     <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">📦</span>Purchase</button>
     <button class="nb" id="nb-invoices" onclick="goTab('invoices')"><span class="ic">🧾</span>Sales</button>
+    <button class="nb" id="nb-bank" onclick="goTab('bank')"><span class="ic">🏦</span>Bank</button>
     <button class="nb" id="nb-notes" onclick="goTab('notes')"><span class="ic">📋</span>Notes</button>
     <button class="nb" id="nb-trash" onclick="goTab('trash')"><span class="ic">🗑️</span>Bin<span id="trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 4px;font-size:10px;margin-left:2px;vertical-align:middle"></span></button>
   </nav>
@@ -771,11 +773,11 @@ function toggleBiz(){
 // ═══ NAV ═══
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
-  ['home','parties','bills','invoices','detail','notes','trash'].forEach(p=>{
+  ['home','parties','bills','invoices','detail','notes','bank','trash'].forEach(p=>{
     const el=document.getElementById('pg-'+p);
     if(el)el.style.display=p===t?'block':'none';
   });
-  ['home','parties','bills','invoices','notes','trash'].forEach(n=>{
+  ['home','parties','bills','invoices','notes','bank','trash'].forEach(n=>{
     const el=document.getElementById('nb-'+n);
     if(el)el.className='nb'+(n===t?' act':'');
   });
@@ -788,6 +790,7 @@ function renderTab(t){
   else if(t==='bills')renderBills();
   else if(t==='invoices')renderInvoices();
   else if(t==='notes')renderNotes();
+  else if(t==='bank')renderBank();
   else if(t==='trash')renderTrash();
 }
 function fabAction(){
@@ -2863,6 +2866,230 @@ function printNote(nid){
   </div>
   </div></body></html>`);
   w.document.close();
+}
+
+// ═══════════════════════════════════════════
+//   BANK STATEMENT RECONCILIATION
+// ═══════════════════════════════════════════
+let bankTxns=[];
+let _matchIdx=-1;
+
+function renderBank(){
+  const pg=document.getElementById('pg-bank');if(!pg)return;
+  const d=D();
+  const matched=bankTxns.filter(t=>t.matchId);
+  const unmatched=bankTxns.filter(t=>!t.matchId);
+  const totalCr=bankTxns.filter(t=>t.type==='CR').reduce((s,t)=>s+t.amount,0);
+  const totalDr=bankTxns.filter(t=>t.type==='DR').reduce((s,t)=>s+t.amount,0);
+
+  let html=`<div style="padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:center">
+    <h2 style="font-size:17px;font-weight:700">🏦 DCB Bank Statement</h2>
+    <button class="btn sm pri" onclick="document.getElementById('bnk-file').click()">📂 Import</button>
+  </div>
+  <input type="file" id="bnk-file" accept=".csv,.xlsx,.xls,.txt" style="display:none" onchange="parseBankFile(this)">`;
+
+  if(!bankTxns.length){
+    html+=`
+    <div style="margin:12px 16px;background:#EFF6FF;border:1.5px dashed #3B82F6;border-radius:12px;padding:20px;text-align:center">
+      <div style="font-size:32px;margin-bottom:8px">🏦</div>
+      <div style="font-weight:700;color:#1E40AF;font-size:14px;margin-bottom:6px">Import DCB Bank Statement</div>
+      <div style="font-size:12px;color:#555;line-height:1.7;margin-bottom:14px">
+        <b>From DCB app:</b> Accounts → Statement → Download CSV / Excel<br>
+        Transactions are matched automatically to your recorded payments.
+      </div>
+      <button class="btn pri" onclick="document.getElementById('bnk-file').click()">📂 Upload Statement File</button>
+    </div>
+    <div style="margin:0 16px">
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">Or paste CSV data:</div>
+      <textarea id="bnk-paste" placeholder="Paste CSV rows here...&#10;Format: Date, Description, Debit, Credit, Balance" style="width:100%;height:110px;border:1.5px solid #D1D5DB;border-radius:8px;padding:10px;font-size:12px;font-family:monospace;resize:vertical;box-sizing:border-box"></textarea>
+      <button class="btn sm pri" onclick="parseBankPaste()" style="margin-top:8px">Parse & Import</button>
+    </div>`;
+  } else {
+    // Stats
+    html+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px 12px">
+      <div class="card" style="padding:12px;text-align:center">
+        <div style="font-size:11px;color:var(--sub)">Total Txns</div>
+        <div style="font-size:20px;font-weight:700">${bankTxns.length}</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center">
+        <div style="font-size:11px;color:var(--sub)">✅ Matched</div>
+        <div style="font-size:20px;font-weight:700;color:#059669">${matched.length}</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center">
+        <div style="font-size:11px;color:var(--sub)">❓ Unmatched</div>
+        <div style="font-size:20px;font-weight:700;color:#DC2626">${unmatched.length}</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center;grid-column:1/2">
+        <div style="font-size:11px;color:var(--sub)">💰 Credits IN</div>
+        <div style="font-size:16px;font-weight:700;color:#059669">${fmt(totalCr)}</div>
+      </div>
+      <div class="card" style="padding:12px;text-align:center;grid-column:2/4">
+        <div style="font-size:11px;color:var(--sub)">💸 Debits OUT</div>
+        <div style="font-size:16px;font-weight:700;color:#DC2626">${fmt(totalDr)}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
+      <button class="btn sm" onclick="autoMatchBank()" style="background:#EFF6FF;color:#1E40AF">⚡ Auto-Match</button>
+      <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
+      <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){bankTxns=[];renderBank();}">🗑 Clear</button>
+    </div>`;
+
+    // Transaction rows
+    html+=`<div style="margin:0 16px">`;
+    bankTxns.forEach((t,i)=>{
+      const pay=t.matchId?d.payments.find(p=>p.id===t.matchId):null;
+      const party=pay?d.parties.find(p=>p.id===pay.pid):null;
+      html+=`<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.matchId?'#059669':'#E5E7EB'}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;color:var(--sub);margin-bottom:2px">${esc(t.date)}</div>
+            <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.desc)}</div>
+            ${t.matchId
+              ?`<div style="font-size:11px;color:#059669;margin-top:3px">✅ ${esc(party?party.name:'Unknown')} — ${fmt(pay?pay.amt:0)} · ${esc(pay?pay.mode:'')}</div>`
+              :`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— not matched to any payment —</div>`}
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:15px;font-weight:700;color:${t.type==='CR'?'#059669':'#DC2626'}">${t.type==='CR'?'+':'−'}${fmt(t.amount)}</div>
+            <span style="background:${t.type==='CR'?'#D1FAE5':'#FEE2E2'};color:${t.type==='CR'?'#065F46':'#991B1B'};padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700">${t.type==='CR'?'IN':'OUT'}</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match'}</button>
+          ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
+        </div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+  pg.innerHTML=html;
+}
+
+function parseBankFile(input){
+  const file=input.files[0];if(!file)return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  const reader=new FileReader();
+  if(ext==='csv'||ext==='txt'){
+    reader.onload=e=>{parseBankCSV(e.target.result);};
+    reader.readAsText(file);
+  } else if(ext==='xlsx'||ext==='xls'){
+    reader.onload=e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:'binary'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        parseBankCSV(XLSX.utils.sheet_to_csv(ws));
+      }catch(err){alert('Could not read file: '+err.message);}
+    };
+    reader.readAsBinaryString(file);
+  }
+  input.value='';
+}
+
+function parseBankPaste(){
+  const txt=(document.getElementById('bnk-paste').value||'').trim();
+  if(!txt){alert('Paste some data first');return;}
+  parseBankCSV(txt);
+}
+
+function parseBankCSV(csv){
+  const lines=csv.split('\n').map(l=>l.trim()).filter(l=>l);
+  const txns=[];
+  // Detect header
+  let skip=0;
+  for(let i=0;i<Math.min(lines.length,15);i++){
+    const low=lines[i].toLowerCase();
+    if(low.includes('date')&&(low.includes('debit')||low.includes('credit')||low.includes('amount'))){skip=i+1;break;}
+  }
+  for(let i=skip;i<lines.length;i++){
+    // Split respecting quoted commas
+    const cols=lines[i].split(',').map(c=>c.replace(/"/g,'').trim());
+    if(cols.length<4)continue;
+    // Parse date from col 0
+    const dateM=cols[0].match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/);
+    if(!dateM)continue;
+    const yr=dateM[3].length===2?'20'+dateM[3]:dateM[3];
+    const date=yr+'-'+dateM[2].padStart(2,'0')+'-'+dateM[1].padStart(2,'0');
+    // Description
+    const desc=cols[1]||cols[2]||'';
+    // Find debit/credit — last 3 cols before end are usually debit,credit,balance
+    const parseAmt=s=>parseFloat(s.replace(/,/g,''))||0;
+    let debit=0,credit=0;
+    // Try cols.length-3=debit, cols.length-2=credit, cols.length-1=balance
+    if(cols.length>=4){
+      credit=parseAmt(cols[cols.length-2]);
+      debit=parseAmt(cols[cols.length-3]);
+    }
+    // If that fails try finding any positive numbers from right
+    if(!credit&&!debit){
+      for(let j=cols.length-1;j>=1;j--){
+        const v=parseAmt(cols[j]);
+        if(v>0){if(!credit)credit=v;else if(!debit){debit=credit;credit=0;break;}}
+      }
+    }
+    const amount=credit||debit;
+    if(!amount||!date||!desc)continue;
+    txns.push({date,desc,amount,type:credit>0?'CR':'DR',matchId:null});
+  }
+  if(!txns.length){
+    alert('No transactions found.\n\nExpected format:\nDate, Description, Debit, Credit, Balance\n\nTry exporting as CSV from DCB app.');
+    return;
+  }
+  bankTxns=txns;
+  autoMatchBank();
+}
+
+function autoMatchBank(){
+  const d=D();
+  bankTxns.forEach(t=>{
+    if(t.matchId)return;
+    // Match by exact amount + date within 5 days
+    const candidates=d.payments.filter(p=>{
+      if(p.amt!==t.amount)return false;
+      const diff=Math.abs(new Date(p.date)-new Date(t.date))/(864e5);
+      return diff<=5;
+    });
+    if(candidates.length===1)t.matchId=candidates[0].id;
+  });
+  renderBank();
+}
+
+function openBankMatch(idx){
+  _matchIdx=idx;
+  const d=D();const t=bankTxns[idx];
+  const pays=d.payments.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const rows=pays.map(p=>{
+    const party=d.parties.find(x=>x.id===p.pid);
+    const diff=Math.abs(new Date(p.date)-new Date(t.date))/(864e5);
+    const amtMatch=p.amt===t.amount;
+    return `<div onclick="doBankMatch('${p.id}')" style="padding:10px 12px;border:1.5px solid ${amtMatch?'#6EE7B7':'#E5E7EB'};border-radius:8px;cursor:pointer;margin-bottom:6px;background:${amtMatch?'#F0FFF4':'#fff'}" onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:13px">${esc(party?party.name:'Unknown')}</div>
+          <div style="font-size:11px;color:#888">${fmtD(p.date)} · ${esc(p.mode||'')} ${p.ref?'· '+esc(p.ref):''}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-weight:700;color:${amtMatch?'#059669':'#D97706'}">${fmt(p.amt)}</div>
+          <div style="font-size:10px;color:#888">${amtMatch?'✅ Exact':'⚠ '+diff.toFixed(0)+'d apart'}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('')||'<div style="text-align:center;color:#888;padding:16px">No payments recorded</div>';
+
+  document.getElementById('cf-msg').innerHTML=`
+    <div style="background:#F0F7FF;border-radius:8px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:11px;color:#888">Bank Transaction</div>
+      <div style="font-weight:700">${esc(t.desc)}</div>
+      <div style="font-size:13px;font-weight:700;color:${t.type==='CR'?'#059669':'#DC2626'}">${t.type==='CR'?'💰 Credit IN':'💸 Debit OUT'} ${fmt(t.amount)} on ${esc(t.date)}</div>
+    </div>
+    <div style="font-size:12px;font-weight:600;margin-bottom:8px">Select matching payment:</div>
+    <div style="max-height:280px;overflow-y:auto">${rows}</div>`;
+  document.getElementById('cf-ok').style.display='none';
+  openModal('cf');
+}
+
+function doBankMatch(payId){
+  if(_matchIdx>=0)bankTxns[_matchIdx].matchId=payId;
+  closeModal('cf');
+  renderBank();
 }
 </script>
 
