@@ -201,6 +201,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="pg-invoices" class="main" style="display:none"></div>
   <div id="pg-bank" class="main" style="display:none"></div>
   <div id="pg-notes" class="main" style="display:none"></div>
+  <div id="pg-reports" class="main" style="display:none"></div>
   <div id="pg-trash" class="main" style="display:none"></div>
   <div id="pg-detail" class="main" style="display:none"></div>
 
@@ -215,6 +216,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="nb" id="nb-invoices" onclick="goTab('invoices')"><span class="ic">🧾</span>Sales</button>
     <button class="nb" id="nb-bank" onclick="goTab('bank')"><span class="ic">🏦</span>Bank</button>
     <button class="nb" id="nb-notes" onclick="goTab('notes')"><span class="ic">📋</span>Notes</button>
+    <button class="nb" id="nb-reports" onclick="goTab('reports')"><span class="ic">📊</span>Reports</button>
     <button class="nb" id="nb-trash" onclick="goTab('trash')"><span class="ic">🗑️</span>Bin<span id="trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 4px;font-size:10px;margin-left:2px;vertical-align:middle"></span></button>
   </nav>
 </div>
@@ -629,7 +631,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -791,6 +793,7 @@ function renderTab(t){
   else if(t==='invoices')renderInvoices();
   else if(t==='notes')renderNotes();
   else if(t==='bank')renderBank();
+  else if(t==='reports')renderReports();
   else if(t==='trash')renderTrash();
 }
 function fabAction(){
@@ -2877,6 +2880,7 @@ let _matchIdx=-1;
 function renderBank(){
   const pg=document.getElementById('pg-bank');if(!pg)return;
   const d=D();
+  bankTxns=d.bankTxns;  // persisted per business
   const matched=bankTxns.filter(t=>t.matchId);
   const unmatched=bankTxns.filter(t=>!t.matchId);
   const totalCr=bankTxns.filter(t=>t.type==='CR').reduce((s,t)=>s+t.amount,0);
@@ -2886,7 +2890,7 @@ function renderBank(){
     <h2 style="font-size:17px;font-weight:700">🏦 DCB Bank Statement</h2>
     <button class="btn sm pri" onclick="document.getElementById('bnk-file').click()">📂 Import</button>
   </div>
-  <input type="file" id="bnk-file" accept=".csv,.xlsx,.xls,.txt" style="display:none" onchange="parseBankFile(this)">`;
+  <input type="file" id="bnk-file" accept=".csv,.xlsx,.xls,.txt,.pdf" style="display:none" onchange="parseBankFile(this)">`;
 
   if(!bankTxns.length){
     html+=`
@@ -2894,7 +2898,7 @@ function renderBank(){
       <div style="font-size:32px;margin-bottom:8px">🏦</div>
       <div style="font-weight:700;color:#1E40AF;font-size:14px;margin-bottom:6px">Import DCB Bank Statement</div>
       <div style="font-size:12px;color:#555;line-height:1.7;margin-bottom:14px">
-        <b>From DCB app:</b> Accounts → Statement → Download CSV / Excel<br>
+        <b>From DCB app:</b> Accounts → Statement → Download PDF / CSV / Excel<br>Password-protected PDFs supported — you'll be asked for the password.<br>
         Transactions are matched automatically to your recorded payments.
       </div>
       <button class="btn pri" onclick="document.getElementById('bnk-file').click()">📂 Upload Statement File</button>
@@ -2931,35 +2935,62 @@ function renderBank(){
     <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
       <button class="btn sm" onclick="autoMatchBank()" style="background:#EFF6FF;color:#1E40AF">⚡ Auto-Match</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
-      <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){bankTxns=[];renderBank();}">🗑 Clear</button>
+      <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
     </div>`;
 
-    // Transaction rows
-    html+=`<div style="margin:0 16px">`;
-    bankTxns.forEach((t,i)=>{
+    // Transaction rows — grouped: Miscellaneous first, then matched/assigned
+    function txnCard(t,i,misc){
       const pay=t.matchId?d.payments.find(p=>p.id===t.matchId):null;
       const party=pay?d.parties.find(p=>p.id===pay.pid):null;
-      html+=`<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.matchId?'#059669':'#E5E7EB'}">
+      let statusLine='';
+      if(t.assigned==='expense')statusLine=`<div style="font-size:11px;color:#92400E;margin-top:3px">🏷 Recorded as expense</div>`;
+      else if(t.matchId)statusLine=`<div style="font-size:11px;color:#059669;margin-top:3px">✅ ${esc(party?party.name:'Unknown')} — ${fmt(pay?pay.amt:0)} · ${esc(pay?pay.mode:'')}${t.autoCreated?' · auto-settled':''}</div>`;
+      else statusLine=`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— unidentified entry —</div>`;
+      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.matchId?'#059669':'#DC2626'}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:12px;color:var(--sub);margin-bottom:2px">${esc(t.date)}</div>
+            <div style="font-size:12px;color:var(--sub);margin-bottom:2px">${fmtD(t.date)}</div>
             <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.desc)}</div>
-            ${t.matchId
-              ?`<div style="font-size:11px;color:#059669;margin-top:3px">✅ ${esc(party?party.name:'Unknown')} — ${fmt(pay?pay.amt:0)} · ${esc(pay?pay.mode:'')}</div>`
-              :`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— not matched to any payment —</div>`}
+            ${statusLine}
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-size:15px;font-weight:700;color:${t.type==='CR'?'#059669':'#DC2626'}">${t.type==='CR'?'+':'−'}${fmt(t.amount)}</div>
             <span style="background:${t.type==='CR'?'#D1FAE5':'#FEE2E2'};color:${t.type==='CR'?'#065F46':'#991B1B'};padding:1px 7px;border-radius:8px;font-size:10px;font-weight:700">${t.type==='CR'?'IN':'OUT'}</span>
           </div>
         </div>
-        <div style="display:flex;gap:6px;margin-top:8px">
-          <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match'}</button>
-          ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${misc?`<button class="btn sm pri" onclick="openAssign(${i})" style="font-size:11px">➕ Assign (Party / Expense)</button>`:''}
+          <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match Payment'}</button>
+          ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;bankTxns[${i}].assigned=null;saveToCloud();renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
         </div>
       </div>`;
-    });
-    html+=`</div>`;
+    }
+
+    const miscTxns=[],doneTxns=[];
+    bankTxns.forEach((t,i)=>{(t.matchId||t.assigned)?doneTxns.push(i):miscTxns.push(i);});
+
+    if(miscTxns.length){
+      html+=`<div style="margin:0 16px 4px"><div style="font-size:14px;font-weight:700;color:#DC2626;margin-bottom:8px">❓ Miscellaneous — needs your action (${miscTxns.length})</div></div><div style="margin:0 16px">`;
+      miscTxns.forEach(i=>{html+=txnCard(bankTxns[i],i,true);});
+      html+=`</div>`;
+    }
+    if(doneTxns.length){
+      html+=`<div style="margin:8px 16px 4px"><div style="font-size:14px;font-weight:700;color:#059669;margin-bottom:8px">✅ Settled / Assigned (${doneTxns.length})</div></div><div style="margin:0 16px">`;
+      doneTxns.forEach(i=>{html+=txnCard(bankTxns[i],i,false);});
+      html+=`</div>`;
+    }
+
+    // Expenses summary
+    const exps=(d.expenses||[]);
+    if(exps.length){
+      const totE=exps.filter(e=>e.dir!=='in').reduce((s,e)=>s+e.amount,0);
+      const byCat={};exps.forEach(e=>{byCat[e.cat]=(byCat[e.cat]||0)+e.amount;});
+      html+=`<div style="margin:14px 16px 4px"><div style="font-size:14px;font-weight:700;color:#92400E;margin-bottom:8px">🏷 Expenses (${fmt(totE)})</div></div><div style="margin:0 16px 16px">`;
+      Object.keys(byCat).forEach(c=>{
+        html+=`<div style="display:flex;justify-content:space-between;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin-bottom:6px;font-size:13px"><span style="font-weight:600;color:#92400E">${esc(c)}</span><span style="font-weight:700;color:#92400E">${fmt(byCat[c])}</span></div>`;
+      });
+      html+=`</div>`;
+    }
   }
   pg.innerHTML=html;
 }
@@ -2980,8 +3011,98 @@ function parseBankFile(input){
       }catch(err){alert('Could not read file: '+err.message);}
     };
     reader.readAsBinaryString(file);
+  } else if(ext==='pdf'){
+    reader.onload=e=>{loadPdfBankStatement(e.target.result);};
+    reader.readAsArrayBuffer(file);
   }
   input.value='';
+}
+
+/* ── PASSWORD-PROTECTED PDF BANK STATEMENT ── */
+function loadPdfBankStatement(arrayBuffer){
+  function withPdfjs(cb){
+    var lib=window['pdfjs-dist/build/pdf'];
+    if(lib)return cb(lib);
+    var s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload=function(){
+      var l=window['pdfjs-dist/build/pdf'];
+      l.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      cb(l);
+    };
+    document.head.appendChild(s);
+  }
+  withPdfjs(function(pdfjsLib){
+    var task=pdfjsLib.getDocument({data:arrayBuffer});
+    // Handle password-protected PDFs
+    task.onPassword=function(updatePassword,reason){
+      var msg=reason===2?'Wrong password. Try again:':'This PDF is password-protected.\nEnter the statement password (usually your customer ID / DOB / mobile as per DCB):';
+      var pw=prompt(msg);
+      if(pw===null){alert('Import cancelled.');return;}
+      updatePassword(pw);
+    };
+    task.promise.then(function(pdf){
+      var pagePromises=[];
+      for(var i=1;i<=pdf.numPages;i++){
+        pagePromises.push(pdf.getPage(i).then(function(page){
+          return page.getTextContent().then(function(tc){
+            // Group text items into lines by Y position
+            var rows={};
+            tc.items.forEach(function(it){
+              var y=Math.round(it.transform[5]);
+              if(!rows[y])rows[y]=[];
+              rows[y].push({x:it.transform[4],str:it.str});
+            });
+            return Object.keys(rows).sort(function(a,b){return b-a;}).map(function(y){
+              return rows[y].sort(function(a,b){return a.x-b.x;}).map(function(c){return c.str;}).join(' ');
+            }).join('\n');
+          });
+        }));
+      }
+      Promise.all(pagePromises).then(function(pages){
+        parseDCBPdfText(pages.join('\n'));
+      });
+    }).catch(function(err){
+      if(err&&err.name==='PasswordException')return; // cancelled
+      alert('Could not read PDF: '+(err&&err.message||err));
+    });
+  });
+}
+
+function parseDCBPdfText(text){
+  // DCB statement rows: date (DD/MM/YYYY or DD-MM-YY) ... description ... amounts
+  var lines=text.split('\n');
+  var txns=[];
+  var dateRe=/^(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})\b/;
+  var amtRe=/([\d,]+\.\d{2})/g;
+  lines.forEach(function(line){
+    line=line.trim();
+    var dm=line.match(dateRe);
+    if(!dm)return;
+    var amounts=line.match(amtRe);
+    if(!amounts||!amounts.length)return;
+    var yyyy=dm[3].length===2?'20'+dm[3]:dm[3];
+    var date=yyyy+'-'+dm[2]+'-'+dm[1];
+    // Description = text between date and first amount
+    var firstAmtIdx=line.indexOf(amounts[0]);
+    var desc=line.substring(dm[0].length,firstAmtIdx).trim().replace(/\s{2,}/g,' ');
+    // Last amount is usually the running balance; the one before it is the txn amount
+    var nums=amounts.map(function(a){return parseFloat(a.replace(/,/g,''));});
+    var amount,balance=null;
+    if(nums.length>=2){amount=nums[nums.length-2];balance=nums[nums.length-1];}
+    else amount=nums[0];
+    if(!amount||amount<=0)return;
+    // CR/DR detection from keywords
+    var up=line.toUpperCase();
+    var type=/\bCR\b|CREDIT|NEFT.*CR|IMPS.*CR/.test(up)&&!/\bDR\b/.test(up)?'CR':
+             /\bDR\b|DEBIT/.test(up)?'DR':
+             /UPI|NEFT|IMPS|RTGS|TRANSFER|CHQ|ATM|POS/.test(up)?'DR':'DR';
+    txns.push({date:date,desc:desc||'Bank transaction',amount:amount,balance:balance,type:type,matchId:null,assigned:null});
+  });
+  if(!txns.length){alert('No transactions found in the PDF. If the statement layout is unusual, download CSV from the DCB app instead and import that.');return;}
+  D().bankTxns=txns;bankTxns=D().bankTxns;
+  autoMatchBank();
+  alert('✅ Imported '+txns.length+' transaction(s) from PDF. Auto-matching done — review the ❓ Miscellaneous section for unmatched entries.');
 }
 
 function parseBankPaste(){
@@ -3033,23 +3154,106 @@ function parseBankCSV(csv){
     alert('No transactions found.\n\nExpected format:\nDate, Description, Debit, Credit, Balance\n\nTry exporting as CSV from DCB app.');
     return;
   }
-  bankTxns=txns;
+  D().bankTxns=txns;bankTxns=D().bankTxns;
   autoMatchBank();
 }
 
 function autoMatchBank(){
   const d=D();
   bankTxns.forEach(t=>{
-    if(t.matchId)return;
-    // Match by exact amount + date within 5 days
+    if(t.matchId||t.assigned)return;
+    // 1) Match against recorded payments: exact amount + date within 5 days
     const candidates=d.payments.filter(p=>{
       if(p.amt!==t.amount)return false;
       const diff=Math.abs(new Date(p.date)-new Date(t.date))/(864e5);
       return diff<=5;
     });
-    if(candidates.length===1)t.matchId=candidates[0].id;
+    if(candidates.length===1){t.matchId=candidates[0].id;return;}
+    // 1.5) Party-name match: if a party's name appears in the narration, settle against that party
+    const descU=(t.desc||'').toUpperCase();
+    const nameMatches=d.parties.filter(p=>{
+      const words=p.name.toUpperCase().split(/\s+/).filter(w=>w.length>=4);
+      return words.length&&words.every(w=>descU.includes(w));
+    });
+    if(nameMatches.length===1){
+      const p=nameMatches[0];
+      const pay={id:'PAY'+uid4(),pid:p.id,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60)+' (name match)'};
+      d.payments.push(pay);
+      t.matchId=pay.id;t.autoCreated=true;
+      return;
+    }
+    // 2) DR txns: match against unpaid purchase bills by exact amount → auto-create payment
+    if(t.type==='DR'){
+      const billCands=d.bills.filter(b=>!b.jw&&Math.abs(billBalance(b.id)-t.amount)<0.5);
+      if(billCands.length===1){
+        const b=billCands[0];
+        const pay={id:'PAY'+uid4(),pid:b.pid,bid:b.id,amt:t.amount,date:t.date,mode:'NEFT',dir:'out',ref:b.num,rem:'Auto-created from bank statement'};
+        d.payments.push(pay);
+        t.matchId=pay.id;
+        t.autoCreated=true;
+      }
+    }
+    // 3) CR txns: match against unpaid sales invoices by exact amount → auto-create receipt
+    if(!t.matchId&&t.type==='CR'){
+      const invCands=d.invoices.filter(i=>Math.abs(invBalance(i.id)-t.amount)<0.5);
+      if(invCands.length===1){
+        const i2=invCands[0];
+        const pay={id:'PAY'+uid4(),pid:i2.pid,iid:i2.id,amt:t.amount,date:t.date,mode:'NEFT',dir:'in',ref:i2.num,rem:'Auto-created from bank statement'};
+        d.payments.push(pay);
+        t.matchId=pay.id;
+        t.autoCreated=true;
+      }
+    }
   });
+  saveToCloud();
   renderBank();
+}
+
+/* ── MISC ASSIGNMENT: party or expense ── */
+var _assignIdx=null;
+function openAssign(idx){
+  _assignIdx=idx;
+  const d=D();const t=bankTxns[idx];
+  const parties=[...d.parties].sort((a,b)=>a.name.localeCompare(b.name));
+  const html=`
+  <div style="margin-bottom:12px">
+    <div style="font-size:13px;font-weight:700">${esc(t.desc)}</div>
+    <div style="font-size:12px;color:var(--sub)">${fmtD(t.date)} · <span style="font-weight:700;color:${t.type==='CR'?'var(--g)':'var(--r)'}">${t.type==='CR'?'+':'-'} ${fmt(t.amount)}</span></div>
+  </div>
+  <div style="font-size:12px;font-weight:700;margin-bottom:6px">👥 Assign to a party (records a ${t.type==='CR'?'receipt':'payment'}):</div>
+  <select id="asg-party" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+    <option value="">Select party...</option>
+    ${parties.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+  </select>
+  <button class="btn pri" style="width:100%;justify-content:center;margin-bottom:16px" onclick="assignToParty()">✓ Record as Party ${t.type==='CR'?'Receipt':'Payment'}</button>
+  <div style="border-top:1.5px dashed var(--bdr);padding-top:14px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">🏷 Or mark as business expense:</div>
+    <select id="asg-cat" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+      <option>Freight / Transport</option><option>Rent</option><option>Electricity</option><option>Salary / Wages</option><option>Bank Charges</option><option>Job Work</option><option>Raw Material</option><option>Food / Travel</option><option>Personal Drawing</option><option>Other</option>
+    </select>
+    <input id="asg-note" placeholder="Note (optional)" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;margin-bottom:8px;box-sizing:border-box">
+    <button class="btn" style="width:100%;justify-content:center;background:#FFF7ED;color:#92400E;border-color:#FDE68A" onclick="assignToExpense()">🏷 Save as Expense</button>
+  </div>`;
+  document.getElementById('cf-msg').innerHTML=html;
+  document.getElementById('cf-ok').style.display='none';
+  openModal('cf');
+}
+function assignToParty(){
+  const d=D();const t=bankTxns[_assignIdx];
+  const pid=document.getElementById('asg-party').value;
+  if(!pid){alert('Select a party');return;}
+  const pay={id:'PAY'+uid4(),pid:pid,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60)};
+  d.payments.push(pay);
+  t.matchId=pay.id;t.assigned='party';
+  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+}
+function assignToExpense(){
+  const d=D();const t=bankTxns[_assignIdx];
+  const cat=document.getElementById('asg-cat').value;
+  const note=document.getElementById('asg-note').value.trim();
+  d.expenses.push({id:'EXP'+uid4(),date:t.date,desc:note||t.desc.substring(0,80),amount:t.amount,cat:cat,dir:t.type==='CR'?'in':'out'});
+  t.assigned='expense';
+  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
 
 function openBankMatch(idx){
@@ -3090,6 +3294,152 @@ function doBankMatch(payId){
   if(_matchIdx>=0)bankTxns[_matchIdx].matchId=payId;
   closeModal('cf');
   renderBank();
+}
+
+/* ══════════════════════════════
+   TALLY-STYLE REPORTS
+══════════════════════════════ */
+var repView='menu',repParty=null,repDate=null,repMonth=null;
+
+function renderReports(){
+  const pg=document.getElementById('pg-reports');if(!pg)return;
+  if(repView==='ledger')return renderLedger(pg);
+  if(repView==='daybook')return renderRepDaybook(pg);
+  if(repView==='outstanding')return renderOutstanding(pg);
+  if(repView==='gst')return renderGSTSummary(pg);
+  // MENU
+  pg.innerHTML=`
+  <div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">📊 Reports</h3><div style="font-size:12px;color:var(--sub)">Tally-style books of accounts for ${curBiz==='MI'?'Modrobe Impex':'Kavita Fashion Wear'}</div></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='ledger';repParty=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📒</div><div style="font-weight:700;font-size:14px">Party Ledger</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Dr/Cr vouchers with running balance</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='daybook';repDate=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📋</div><div style="font-weight:700;font-size:14px">Daybook</div><div style="font-size:11px;color:var(--sub);margin-top:3px">All vouchers of a day</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='outstanding';renderReports()"><div style="font-size:28px;margin-bottom:6px">⏰</div><div style="font-weight:700;font-size:14px">Outstanding</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Receivables & payables with aging</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gst';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🧾</div><div style="font-weight:700;font-size:14px">GST Summary</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Output vs input tax by month</div></div>
+  </div>`;
+}
+
+function repBack(){return '<button class="btn sm" onclick="repView=\'menu\';renderReports()" style="margin-bottom:10px">&larr; All Reports</button>';}
+
+/* ── PARTY LEDGER ── */
+function renderLedger(pg){
+  const d=D();
+  let sel='<select onchange="repParty=this.value;renderReports()" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;background:#fff;margin-bottom:12px"><option value="">Select party...</option>'+
+    [...d.parties].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}" ${repParty===p.id?'selected':''}>${esc(p.name)}</option>`).join('')+'</select>';
+  if(!repParty){pg.innerHTML=repBack()+'<div class="card"><h3 style="margin-bottom:10px">📒 Party Ledger</h3>'+sel+'<div style="text-align:center;color:var(--sub);font-size:13px;padding:16px">Select a party to view ledger</div></div>';return;}
+  const party=d.parties.find(p=>p.id===repParty);if(!party){repParty=null;return renderReports();}
+
+  // Build voucher list: Sales=Dr, Purchase=Cr, Receipt=Cr, Payment=Dr, CrNote=Cr, DrNote=Dr
+  let vouchers=[];
+  d.invoices.filter(i=>i.pid===repParty).forEach(i=>vouchers.push({date:i.date,type:'Sales',num:i.num,dr:i.grand,cr:0}));
+  d.bills.filter(b=>b.pid===repParty).forEach(b=>vouchers.push({date:b.date,type:b.jw?'Job Work':'Purchase',num:b.num,dr:0,cr:b.grand}));
+  d.payments.filter(p=>p.pid===repParty).forEach(p=>{
+    if(p.dir==='in')vouchers.push({date:p.date,type:'Receipt',num:p.ref||p.mode,dr:0,cr:p.amt});
+    else vouchers.push({date:p.date,type:'Payment',num:p.ref||p.mode,dr:p.amt,cr:0});
+  });
+  (d.notes||[]).filter(n=>n.pid===repParty).forEach(n=>{
+    if(n.type==='credit')vouchers.push({date:n.date,type:'Credit Note',num:n.num,dr:0,cr:n.amount});
+    else vouchers.push({date:n.date,type:'Debit Note',num:n.num,dr:n.amount,cr:0});
+  });
+  vouchers.sort((a,b)=>a.date.localeCompare(b.date));
+
+  const ob=party.ob||0;const obType=party.obType||'DR';
+  let run=obType==='DR'?ob:-ob;
+  const obRow=ob>0?`<tr style="background:#FFF7ED"><td colspan="3" style="padding:8px;font-weight:700;color:#92400E">Opening Balance</td><td style="padding:8px;text-align:right;font-weight:700">${obType==='DR'?fmt(ob):''}</td><td style="padding:8px;text-align:right;font-weight:700">${obType==='CR'?fmt(ob):''}</td><td style="padding:8px;text-align:right;font-weight:700;color:#92400E">${fmt(Math.abs(run))} ${run>=0?'Dr':'Cr'}</td></tr>`:'';
+
+  let totDr=0,totCr=0;
+  const rows=vouchers.map((v,i)=>{
+    run+=v.dr-v.cr;totDr+=v.dr;totCr+=v.cr;
+    return `<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:8px;font-size:12px">${fmtD(v.date)}</td><td style="padding:8px"><span class="bdg ${v.type==='Sales'?'grn':v.type==='Receipt'?'blu':v.type==='Payment'?'ora':v.type==='Credit Note'?'red':'sup'}" style="font-size:10px">${v.type}</span></td><td style="padding:8px;font-size:12px;color:var(--sub)">${esc(v.num||'')}</td><td style="padding:8px;text-align:right;font-size:12px">${v.dr?fmt(v.dr):''}</td><td style="padding:8px;text-align:right;font-size:12px">${v.cr?fmt(v.cr):''}</td><td style="padding:8px;text-align:right;font-size:12px;font-weight:700;color:${run>=0?'var(--g)':'var(--r)'}">${fmt(Math.abs(run))} ${run>=0?'Dr':'Cr'}</td></tr>`;
+  }).join('');
+
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:10px">📒 Party Ledger</h3>${sel}
+  <div style="font-size:15px;font-weight:700;margin-bottom:2px">${esc(party.name)}</div>
+  <div style="font-size:11px;color:var(--sub);margin-bottom:10px">${vouchers.length} voucher(s) · As on ${fmtD(td())}</div>
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
+  <thead><tr style="background:var(--n);color:#fff"><th style="padding:8px;text-align:left">Date</th><th style="padding:8px;text-align:left">Voucher</th><th style="padding:8px;text-align:left">No.</th><th style="padding:8px;text-align:right">Debit</th><th style="padding:8px;text-align:right">Credit</th><th style="padding:8px;text-align:right">Balance</th></tr></thead>
+  <tbody>${obRow}${rows||'<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--sub)">No vouchers</td></tr>'}
+  <tr style="background:#EFF6FF;font-weight:700"><td colspan="3" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totDr)}</td><td style="padding:8px;text-align:right">${fmt(totCr)}</td><td style="padding:8px;text-align:right;color:${run>=0?'var(--g)':'var(--r)'}">${fmt(Math.abs(run))} ${run>=0?'Dr':'Cr'}</td></tr></tbody></table></div>
+  <div style="font-size:11px;color:var(--sub);margin-top:8px">${run>=0?'Dr balance = party owes you (receivable)':'Cr balance = you owe party (payable)'}</div></div>`;
+}
+
+/* ── DAYBOOK ── */
+function renderRepDaybook(pg){
+  const d=D();
+  if(!repDate)repDate=td();
+  let vouchers=[];
+  d.invoices.filter(i=>i.date===repDate).forEach(i=>{const p=d.parties.find(x=>x.id===i.pid);vouchers.push({type:'Sales',num:i.num,party:p?p.name:'?',amt:i.grand,cls:'grn'});});
+  d.bills.filter(b=>b.date===repDate).forEach(b=>{const p=d.parties.find(x=>x.id===b.pid);vouchers.push({type:b.jw?'Job Work':'Purchase',num:b.num,party:p?p.name:'?',amt:b.grand,cls:'sup'});});
+  d.payments.filter(p=>p.date===repDate).forEach(pm=>{const p=d.parties.find(x=>x.id===pm.pid);vouchers.push({type:pm.dir==='in'?'Receipt':'Payment',num:pm.ref||pm.mode,party:p?p.name:'?',amt:pm.amt,cls:pm.dir==='in'?'blu':'ora'});});
+  (d.notes||[]).filter(n=>n.date===repDate).forEach(n=>{const p=d.parties.find(x=>x.id===n.pid);vouchers.push({type:n.type==='credit'?'Credit Note':'Debit Note',num:n.num,party:p?p.name:'?',amt:n.amount,cls:'red'});});
+
+  const rows=vouchers.map((v,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:9px 8px"><span class="bdg ${v.cls}" style="font-size:10px">${v.type}</span></td><td style="padding:9px 8px;font-size:12px;color:var(--sub)">${esc(v.num||'')}</td><td style="padding:9px 8px;font-size:12px;font-weight:600">${esc(v.party)}</td><td style="padding:9px 8px;text-align:right;font-weight:700;font-size:13px">${fmt(v.amt)}</td></tr>`).join('');
+
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:10px">📋 Daybook</h3>
+  <input type="date" value="${repDate}" onchange="repDate=this.value;renderReports()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit">
+  <div style="font-size:12px;color:var(--sub);margin-bottom:10px">${vouchers.length} voucher(s) on ${fmtD(repDate)}</div>
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:420px"><thead><tr style="background:var(--n);color:#fff"><th style="padding:8px;text-align:left;font-size:11px">Voucher</th><th style="padding:8px;text-align:left;font-size:11px">No.</th><th style="padding:8px;text-align:left;font-size:11px">Party</th><th style="padding:8px;text-align:right;font-size:11px">Amount</th></tr></thead><tbody>${rows||'<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--sub)">No vouchers on this date</td></tr>'}</tbody></table></div></div>`;
+}
+
+/* ── OUTSTANDING with AGING ── */
+function renderOutstanding(pg){
+  const d=D();const now=new Date(td()+'T00:00:00');
+  function ageBucket(dt){const days=Math.round((now-new Date(dt+'T00:00:00'))/864e5);return days<=30?0:days<=60?1:days<=90?2:3;}
+  const bNames=['0-30 days','31-60 days','61-90 days','90+ days'];
+
+  // Receivables: invoices with balance
+  let recv=[],recvB=[0,0,0,0];
+  d.invoices.forEach(i=>{const b=invBalance(i.id);if(b>0.5){const p=d.parties.find(x=>x.id===i.pid);const bk=ageBucket(i.date);recvB[bk]+=b;recv.push({num:i.num,party:p?p.name:'?',date:i.date,amt:i.grand,bal:b,bk});}});
+  // Payables: bills with balance (excl. jw)
+  let pay=[],payB=[0,0,0,0];
+  d.bills.filter(b=>!b.jw).forEach(b=>{const bb=billBalance(b.id);if(bb>0.5){const p=d.parties.find(x=>x.id===b.pid);const bk=ageBucket(b.date);payB[bk]+=bb;pay.push({num:b.num,party:p?p.name:'?',date:b.date,amt:b.grand,bal:bb,bk});}});
+
+  recv.sort((a,b)=>a.date.localeCompare(b.date));pay.sort((a,b)=>a.date.localeCompare(b.date));
+  const totR=recv.reduce((s,x)=>s+x.bal,0),totP=pay.reduce((s,x)=>s+x.bal,0);
+
+  function bucketBar(buckets,color){return '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0 14px">'+buckets.map((v,i)=>`<div style="background:${v>0?(i>=2?'#FEF2F2':'#F8FAFC'):'#F8FAFC'};border:1px solid ${v>0&&i>=2?'#FECACA':'var(--bdr)'};border-radius:8px;padding:7px;text-align:center"><div style="font-size:10px;color:var(--sub)">${bNames[i]}</div><div style="font-size:12px;font-weight:700;color:${v>0&&i>=2?'var(--r)':color}">${fmt(v)}</div></div>`).join('')+'</div>';}
+
+  function tbl(list,cls){return list.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:460px"><thead><tr style="background:var(--n);color:#fff"><th style="padding:7px;text-align:left;font-size:11px">No.</th><th style="padding:7px;text-align:left;font-size:11px">Party</th><th style="padding:7px;text-align:left;font-size:11px">Date</th><th style="padding:7px;text-align:right;font-size:11px">Total</th><th style="padding:7px;text-align:right;font-size:11px">Balance</th><th style="padding:7px;text-align:center;font-size:11px">Age</th></tr></thead><tbody>'+
+    list.map((x,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px;font-weight:600">${esc(x.num)}</td><td style="padding:7px">${esc(x.party)}</td><td style="padding:7px;color:var(--sub)">${fmtD(x.date)}</td><td style="padding:7px;text-align:right">${fmt(x.amt)}</td><td style="padding:7px;text-align:right;font-weight:700;color:var(--${cls})">${fmt(x.bal)}</td><td style="padding:7px;text-align:center"><span style="font-size:10px;padding:2px 7px;border-radius:8px;background:${x.bk>=2?'#FEE2E2':'#F1F5F9'};color:${x.bk>=2?'#991B1B':'#475569'}">${bNames[x.bk]}</span></td></tr>`).join('')+'</tbody></table></div>':'<div style="padding:12px;text-align:center;color:var(--sub);font-size:13px">None — all clear ✓</div>';}
+
+  pg.innerHTML=repBack()+`<div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">⏰ Outstanding</h3><div style="font-size:11px;color:var(--sub)">As on ${fmtD(td())}</div></div>
+  <div class="card" style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><h3 style="font-size:15px">💰 Receivables (to collect)</h3><div style="font-size:16px;font-weight:700;color:var(--g)">${fmt(totR)}</div></div>${bucketBar(recvB,'var(--g)')}${tbl(recv,'g')}</div>
+  <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><h3 style="font-size:15px">📦 Payables (to pay)</h3><div style="font-size:16px;font-weight:700;color:var(--r)">${fmt(totP)}</div></div>${bucketBar(payB,'var(--r)')}${tbl(pay,'r')}</div>`;
+}
+
+/* ── GST SUMMARY ── */
+function renderGSTSummary(pg){
+  const d=D();
+  if(!repMonth)repMonth=td().slice(0,7);
+  function gstOf(doc){
+    if(!doc.gstPct||doc.gstPct<=0)return{taxable:doc.grand,tax:0,igst:0,cgst:0,sgst:0};
+    const taxable=doc.grand/(1+doc.gstPct/100);
+    const tax=doc.grand-taxable;
+    const split=(doc.gstStr||'').includes('s');
+    return{taxable,tax,igst:split?0:tax,cgst:split?tax/2:0,sgst:split?tax/2:0};
+  }
+  const outInvs=d.invoices.filter(i=>i.date.slice(0,7)===repMonth);
+  const inBills=d.bills.filter(b=>b.date.slice(0,7)===repMonth&&!b.jw);
+  let out={taxable:0,igst:0,cgst:0,sgst:0,tax:0},inp={taxable:0,igst:0,cgst:0,sgst:0,tax:0};
+  outInvs.forEach(i=>{const g=gstOf(i);out.taxable+=g.taxable;out.igst+=g.igst;out.cgst+=g.cgst;out.sgst+=g.sgst;out.tax+=g.tax;});
+  inBills.forEach(b=>{const g=gstOf(b);inp.taxable+=g.taxable;inp.igst+=g.igst;inp.cgst+=g.cgst;inp.sgst+=g.sgst;inp.tax+=g.tax;});
+  const net=out.tax-inp.tax;
+
+  function gstRow(label,o){return `<tr><td style="padding:8px;font-weight:600">${label}</td><td style="padding:8px;text-align:right">${fmt(o.taxable)}</td><td style="padding:8px;text-align:right">${fmt(o.igst)}</td><td style="padding:8px;text-align:right">${fmt(o.cgst)}</td><td style="padding:8px;text-align:right">${fmt(o.sgst)}</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(o.tax)}</td></tr>`;}
+
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:10px">🧾 GST Summary</h3>
+  <input type="month" value="${repMonth}" onchange="repMonth=this.value;renderReports()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit">
+  <div style="font-size:11px;color:var(--sub);margin-bottom:10px">${outInvs.length} sales invoice(s) · ${inBills.length} purchase bill(s) — tax back-calculated from grand totals</div>
+  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
+  <thead><tr style="background:var(--n);color:#fff"><th style="padding:8px;text-align:left;font-size:11px"></th><th style="padding:8px;text-align:right;font-size:11px">Taxable</th><th style="padding:8px;text-align:right;font-size:11px">IGST</th><th style="padding:8px;text-align:right;font-size:11px">CGST</th><th style="padding:8px;text-align:right;font-size:11px">SGST</th><th style="padding:8px;text-align:right;font-size:11px">Total Tax</th></tr></thead>
+  <tbody>
+  ${gstRow('Output (Sales)',out)}
+  ${gstRow('Input (Purchases)',inp)}
+  </tbody></table></div>
+  <div style="border:2px solid ${net>=0?'#B91C1C':'#065F46'};border-radius:10px;padding:12px 16px;margin-top:14px;background:${net>=0?'#FEF2F2':'#ECFDF5'};display:flex;justify-content:space-between;align-items:center">
+    <div style="font-weight:700;color:${net>=0?'#991B1B':'#065F46'}">${net>=0?'NET GST PAYABLE':'NET GST CREDIT'}</div>
+    <div style="font-size:20px;font-weight:700;color:${net>=0?'#B91C1C':'#059669'}">${fmt(Math.abs(net))}</div>
+  </div>
+  <div style="font-size:11px;color:var(--sub);margin-top:8px">Payable = Output tax − Input tax credit. Cash-mode bills included. Job-work bills excluded.</div></div>`;
 }
 </script>
 
