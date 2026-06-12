@@ -631,7 +631,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],bankTxns:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -1716,10 +1716,14 @@ function savePayment(){
   if(curParty===payTargetId)openPartyDetail(payTargetId);
 }
 function delPayment(pid){
-  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this payment entry?</div>';
+  const d0=D();const pay=d0.payments.find(p=>p.id===pid);
+  const pname=pay?(d0.parties.find(x=>x.id===pay.pid)||{}).name||'?':'?';
+  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this payment entry?<br><strong>'+(pay?fmt(pay.amt)+' · '+esc(pname)+' · '+fmtD(pay.date):'')+'</strong><br><span style="font-size:11px;color:#888">It will move to the Recycle Bin.</span></div>';
   document.getElementById('cf-ok').onclick=()=>{
-    const d=D();d.payments=d.payments.filter(p=>p.id!==pid);
-    saveToCloud();closeModal('cf');renderAll();
+    const d=D();const p=d.payments.find(x=>x.id===pid);
+    if(p)d.trash.push({type:'payment',deletedAt:new Date().toISOString(),payment:JSON.parse(JSON.stringify(p))});
+    d.payments=d.payments.filter(x=>x.id!==pid);
+    saveToCloud();closeModal('cf');renderAll();updateTrashBadge();
     if(curParty)openPartyDetail(curParty);
   };
   openModal('cf');
@@ -2040,7 +2044,7 @@ function viewBill(bid){
 
 // ═══ MODAL UTILS ═══
 function openModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='flex';el.classList.add('show');}}
-function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}}
+function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}if(id==='cf'){const ok=document.getElementById('cf-ok');if(ok)ok.style.display='';}}
 function closePrint(){document.getElementById('print-overlay').style.display='none';document.body.style.overflow='';}
 function shareWA(){
   const body=document.getElementById('print-body');
@@ -2571,7 +2575,7 @@ function renderTrash(){
     ${items.length?`<button class="btn sm red" onclick="emptyTrash()" style="font-size:12px">🗑 Empty All</button>`:''}
   </div>`;
   if(!items.length){
-    html+=`<div class="empty"><div class="ei">🗑️</div><p>Recycle Bin is empty.<br><span style="font-size:12px;color:#999">Deleted bills, invoices & parties appear here.</span></p></div>`;
+    html+=`<div class="empty"><div class="ei">🗑️</div><p>Recycle Bin is empty.<br><span style="font-size:12px;color:#999">Deleted bills, invoices, parties, bank entries & expenses appear here.</span></p></div>`;
   } else {
     html+=items.map((t,i)=>{
       const age=Math.floor((Date.now()-new Date(t.deletedAt).getTime())/86400000);
@@ -2638,6 +2642,66 @@ function renderTrash(){
           </div>
         </div>`;
       }
+      if(t.type==='bankTxn'){
+        const x=t.txn;
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="background:#ECFEFF;color:#155E75;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🏦 Bank Entry</span>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${fmtD(x.date)} · ${x.type==='CR'?'+':'−'}${fmt(x.amount)}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.desc||'')}</div>
+          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
+        </div>`;
+      }
+      if(t.type==='bankBatch'){
+        const n=(t.txns||[]).length;
+        const tot=(t.txns||[]).reduce((s,x)=>s+x.amount,0);
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="background:#ECFEFF;color:#155E75;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🏦 Bank Statement (${n} entries)</span>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:12px;color:#888;margin-bottom:10px">Total value: ${fmt(tot)} · cleared in one batch</div>
+          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore All</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
+        </div>`;
+      }
+      if(t.type==='payment'){
+        const p=t.payment;
+        const pn=(d.parties.find(x=>x.id===p.pid)||{}).name||'?';
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="background:#ECFDF5;color:#065F46;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">💵 Payment</span>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${fmt(p.amt)} · ${esc(pn)} · ${fmtD(p.date)}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:10px">${esc(p.mode||'')}${p.ref?' · '+esc(p.ref):''}</div>
+          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
+        </div>`;
+      }
+      if(t.type==='note'){
+        const n=t.note;
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="background:#F5F3FF;color:#5B21B6;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">📋 ${n.type==='credit'?'Credit':'Debit'} Note ${esc(n.num||'')}</span>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px">${fmt(n.amount)} · ${fmtD(n.date)}</div>
+          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
+        </div>`;
+      }
+      if(t.type==='expense'){
+        const e=t.expense;
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="background:#FFFBEB;color:#92400E;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🏷 Expense · ${esc(e.cat)}</span>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${fmt(e.amount)} · ${fmtD(e.date)}</div>
+          ${e.desc?`<div style="font-size:11px;color:#888;margin-bottom:10px">${esc(e.desc)}</div>`:'<div style="margin-bottom:10px"></div>'}
+          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
+        </div>`;
+      }
       return'';
     }).join('');
   }
@@ -2661,6 +2725,25 @@ function restoreTrashItem(idx){
     (t.invoices||[]).forEach(i=>d.invoices.push(i));
     (t.payments||[]).forEach(p=>d.payments.push(p));
     alert('✅ Party "'+t.party.name+'" and all data restored!');
+  } else if(t.type==='bankTxn'){
+    if(!d.bankTxns)d.bankTxns=[];
+    d.bankTxns.push(t.txn);
+    alert('✅ Bank entry restored!');
+  } else if(t.type==='bankBatch'){
+    if(!d.bankTxns)d.bankTxns=[];
+    (t.txns||[]).forEach(x=>d.bankTxns.push(x));
+    alert('✅ '+(t.txns||[]).length+' bank entries restored!');
+  } else if(t.type==='expense'){
+    if(!d.expenses)d.expenses=[];
+    d.expenses.push(t.expense);
+    alert('✅ Expense restored!');
+  } else if(t.type==='payment'){
+    d.payments.push(t.payment);
+    alert('✅ Payment restored!');
+  } else if(t.type==='note'){
+    if(!d.notes)d.notes=[];
+    d.notes.push(t.note);
+    alert('✅ Note restored!');
   }
   d.trash.splice(idx,1);
   saveToCloud().then(function(){renderAll();});
@@ -2669,7 +2752,7 @@ function restoreTrashItem(idx){
 function permDeleteItem(idx){
   const d=D();if(!d.trash||!d.trash[idx])return;
   const t=d.trash[idx];
-  const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:'party "'+t.party?.name+'"';
+  const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:t.type==='party'?'party "'+t.party?.name+'"':t.type==='bankTxn'?'bank entry of '+fmt(t.txn?.amount||0):t.type==='bankBatch'?'bank statement ('+(t.txns||[]).length+' entries)':t.type==='expense'?'expense '+fmt(t.expense?.amount||0):t.type==='payment'?'payment '+fmt(t.payment?.amt||0):t.type==='note'?'note '+(t.note?.num||''):'item';
   if(!confirm('Permanently delete '+label+'? This CANNOT be undone.'))return;
   d.trash.splice(idx,1);
   saveToCloud().then(function(){renderTrash();});
@@ -2763,10 +2846,15 @@ function saveNote(){
 }
 
 function deleteNote(nid){
-  if(!confirm('Delete this note permanently?'))return;
-  const d = D();
-  d.notes = (d.notes||[]).filter(n=>n.id!==nid);
-  saveToCloud().then(function(){renderNotes();});
+  const d0=D();const note=(d0.notes||[]).find(n=>n.id===nid);if(!note)return;
+  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete note <strong>'+esc(note.num||'')+'</strong> ('+fmt(note.amount)+')?<br><span style="font-size:11px;color:#888">It will move to the Recycle Bin.</span></div>';
+  document.getElementById('cf-ok').onclick=()=>{
+    const d=D();
+    d.trash.push({type:'note',deletedAt:new Date().toISOString(),note:JSON.parse(JSON.stringify(note))});
+    d.notes=(d.notes||[]).filter(n=>n.id!==nid);
+    saveToCloud();closeModal('cf');renderNotes();updateTrashBadge();
+  };
+  openModal('cf');
 }
 
 function renderNotes(){
@@ -2935,7 +3023,7 @@ function renderBank(){
     <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
       <button class="btn sm" onclick="autoMatchBank()" style="background:#EFF6FF;color:#1E40AF">⚡ Auto-Match</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
-      <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
+      <button class="btn sm red" onclick="clearAllBankTxns()">🗑 Clear All</button>
     </div>`;
 
     // Transaction rows — grouped: Miscellaneous first, then matched/assigned
@@ -2962,6 +3050,7 @@ function renderBank(){
           ${misc?`<button class="btn sm pri" onclick="openAssign(${i})" style="font-size:11px">➕ Assign (Party / Expense)</button>`:''}
           <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match Payment'}</button>
           ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;bankTxns[${i}].assigned=null;saveToCloud();renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
+          <button class="btn sm" onclick="delBankTxn(${i})" style="font-size:11px;background:#FEF2F2;color:#DC2626;margin-left:auto">🗑</button>
         </div>
       </div>`;
     }
@@ -2989,12 +3078,53 @@ function renderBank(){
       Object.keys(byCat).forEach(c=>{
         html+=`<div style="display:flex;justify-content:space-between;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin-bottom:6px;font-size:13px"><span style="font-weight:600;color:#92400E">${esc(c)}</span><span style="font-weight:700;color:#92400E">${fmt(byCat[c])}</span></div>`;
       });
+      // Itemized expense rows with delete
+      const sortedExps=[...exps].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+      html+=`<div style="font-size:12px;font-weight:700;color:#92400E;margin:10px 0 6px">All entries (${exps.length})</div>`;
+      sortedExps.forEach(e=>{
+        html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border:1px solid #FDE68A;border-radius:8px;margin-bottom:6px;font-size:12px">
+          <div style="flex:1;min-width:0"><div style="font-weight:600;color:#92400E">${esc(e.cat)} · ${fmt(e.amount)}</div><div style="color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtD(e.date)}${e.desc?' · '+esc(e.desc):''}</div></div>
+          <button class="btn sm" onclick="delExpense('${e.id}')" style="font-size:11px;background:#FEF2F2;color:#DC2626;flex-shrink:0">🗑</button>
+        </div>`;
+      });
       html+=`</div>`;
     }
   }
   pg.innerHTML=html;
 }
 
+
+function delBankTxn(i){
+  const d=D();const t=d.bankTxns[i];if(!t)return;
+  document.getElementById('cf-msg').innerHTML=`<div class="ibox" style="background:#FEF2F2;border-color:#FECACA">Delete this bank entry?<br><strong>${fmtD(t.date)} · ${esc((t.desc||'').substring(0,50))} · ${fmt(t.amount)}</strong><br><span style="font-size:11px;color:#888">It will move to the Recycle Bin. ${t.matchId?'The payment created from it stays — unmatch first if you want it gone too.':''}</span></div>`;
+  document.getElementById('cf-ok').onclick=()=>{
+    d.trash.push({type:'bankTxn',deletedAt:new Date().toISOString(),txn:JSON.parse(JSON.stringify(t))});
+    d.bankTxns.splice(i,1);
+    saveToCloud();closeModal('cf');renderBank();updateTrashBadge();
+  };
+  openModal('cf');
+}
+function clearAllBankTxns(){
+  const d=D();if(!d.bankTxns||!d.bankTxns.length)return;
+  document.getElementById('cf-msg').innerHTML=`<div class="ibox" style="background:#FEF2F2;border-color:#FECACA">Clear <strong>all ${d.bankTxns.length} imported bank entr${d.bankTxns.length>1?'ies':'y'}</strong>?<br><span style="font-size:11px;color:#888">They move to the Recycle Bin as one batch and can be restored. Payments already created stay.</span></div>`;
+  document.getElementById('cf-ok').onclick=()=>{
+    d.trash.push({type:'bankBatch',deletedAt:new Date().toISOString(),txns:JSON.parse(JSON.stringify(d.bankTxns))});
+    d.bankTxns=[];
+    saveToCloud();closeModal('cf');renderBank();updateTrashBadge();
+  };
+  openModal('cf');
+}
+function delExpense(eid){
+  const d=D();const ix=(d.expenses||[]).findIndex(e=>e.id===eid);if(ix<0)return;
+  const e=d.expenses[ix];
+  document.getElementById('cf-msg').innerHTML=`<div class="ibox" style="background:#FEF2F2;border-color:#FECACA">Delete this expense?<br><strong>${esc(e.cat)} · ${fmt(e.amount)} · ${fmtD(e.date)}</strong><br><span style="font-size:11px;color:#888">${esc((e.desc||'').substring(0,60))}<br>It will move to the Recycle Bin.</span></div>`;
+  document.getElementById('cf-ok').onclick=()=>{
+    d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
+    d.expenses.splice(ix,1);
+    saveToCloud();closeModal('cf');renderBank();updateTrashBadge();
+  };
+  openModal('cf');
+}
 function parseBankFile(input){
   const file=input.files[0];if(!file)return;
   const ext=file.name.split('.').pop().toLowerCase();
