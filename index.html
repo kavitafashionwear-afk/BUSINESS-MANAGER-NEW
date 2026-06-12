@@ -558,7 +558,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="mft">
     <button class="btn" onclick="closeModal('imp')">Cancel</button>
-    <button class="btn pri" id="imp-btn" onclick="doImport()" disabled>&#10003; Import Bills</button>
+    <button class="btn pri" id="imp-btn" onclick="doImportFromScan()" disabled>&#10003; Import Bills</button>
   </div>
 </div></div>
 
@@ -1120,7 +1120,7 @@ function renderBills(){
   const totalPending=bills.filter(b=>billBalance(b.id)>0).reduce((s,b)=>s+billBalance(b.id),0);
 
   document.getElementById('pg-bills').innerHTML=`
-    <div class="sh"><h2>Purchase Bills (${bills.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openModal('scan')">📸 Scan Bill</button><button class="btn sm pri" onclick="openBillModal()">+ Manual</button></div></div>
+    <div class="sh"><h2>Purchase Bills (${bills.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openScanModal()">📸 Scan Bill</button><button class="btn sm pri" onclick="openBillModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox red">Total Pending: <strong>${fmt(totalPending)}</strong></div>`:''}
     <div class="srch-wrap"><input class="srch" id="bill-srch" placeholder="Search bills..." oninput="renderBills()" value="${esc(search)}"></div>
     <div class="seg">
@@ -1173,7 +1173,7 @@ function renderInvoices(){
   const totalPending=invs.filter(i=>invBalance(i.id)>0).reduce((s,i)=>s+invBalance(i.id),0);
 
   document.getElementById('pg-invoices').innerHTML=`
-    <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openModal('scan')">📸 Scan Invoice</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
+    <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openScanModal()">📸 Scan Invoice</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox grn">Total Receivable: <strong>${fmt(totalPending)}</strong></div>`:''}
     <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search invoices..." oninput="renderInvoices()" value="${esc(search)}"></div>
     <div class="seg">
@@ -2174,10 +2174,13 @@ function doImport(){
 function handleImpFile(e){
   var file=e.target.files[0];
   if(!file)return;
-  var status=document.getElementById('scan-status');
+  // Context: which modal did this come from?
+  var ctx=(e.target.id==='imp-file')?'imp':'scan';
+  var status=document.getElementById(ctx==='imp'?'imp-status':'scan-status');
   var ext=file.name.split('.').pop().toLowerCase();
   if(ext!=='json'&&file.type!=='application/json'){
     if(status){status.style.display='block';status.innerHTML='<div class="ibox red">Please upload a .json file from Claude chat.</div>';}
+    e.target.value='';
     return;
   }
   var reader=new FileReader();
@@ -2192,9 +2195,9 @@ function handleImpFile(e){
         return;
       }
       _importData=valid;
-      var prev=document.getElementById('imp-preview2');
-      var btn=document.getElementById('imp-btn2');
-      var ua=document.getElementById('scan-upload-area');
+      var prev=document.getElementById(ctx==='imp'?'imp-preview':'imp-preview2');
+      var btn=document.getElementById(ctx==='imp'?'imp-btn':'imp-btn2');
+      var ua=(ctx==='scan')?document.getElementById('scan-upload-area'):null;
       if(ua)ua.style.display='none';
       if(status)status.style.display='none';
       if(prev){
@@ -2211,7 +2214,7 @@ function handleImpFile(e){
             (b.consignee&&isJW?'<div style="font-size:12px;color:#EA580C">Consignee: '+esc(b.consignee)+'</div>':'')+
           '</div>';
         }).join('');
-        prev.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">&#10003;</span><span style="font-weight:700;color:#065F46">${valid.length} bill(s) ready to import</span></div><button onclick="doRemoveScan()" style="padding:0 16px;border-radius:10px;border:2px solid #FCA5A5;background:#FEF2F2;color:#DC2626;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">&#10005; Remove</button></div>`+billCards;
+        prev.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">&#10003;</span><span style="font-weight:700;color:#065F46">${valid.length} bill(s) ready to import</span></div><button onclick="clearImport('${ctx}')" style="padding:0 16px;border-radius:10px;border:2px solid #FCA5A5;background:#FEF2F2;color:#DC2626;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">&#10005; Remove</button></div>`+billCards;
       }
       if(btn)btn.disabled=false;
     }catch(err){
@@ -2223,6 +2226,8 @@ function handleImpFile(e){
 
 var _importData=null;
 
+
+function openScanModal(){clearImport('scan');switchScanTab('json');openModal('scan');}
 // ── Tab switcher ─────────────────────────────────────────────────
 function switchScanTab(tab){
   var isJ=(tab==='json');
@@ -2386,6 +2391,12 @@ function handlePdfFile(input){
         window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         extractPdfText(e.target.result,input);
       };
+      s.onerror=function(){
+        var st=document.getElementById('pdf-status');
+        if(st){st.style.display='block';st.innerHTML='<div class="ibox red">Could not load the PDF reader (check internet) — try again or use JSON import.</div>';}
+        var ua=document.getElementById('pdf-upload-area');if(ua)ua.style.display='block';
+        input.value='';
+      };
       document.head.appendChild(s);
     } else {
       extractPdfText(e.target.result,input);
@@ -2534,7 +2545,7 @@ function doImportFromScan(){
   if(d.bills)d.bills.forEach(fsafeObj);
   if(d.invoices)d.invoices.forEach(fsafeObj);
   if(d.parties)d.parties.forEach(fsafeObj);
-  saveToCloud();closeModal('scan');clearImport('scan');renderAll();
+  saveToCloud();closeModal('scan');closeModal('imp');clearImport('scan');clearImport('imp');renderAll();
   alert(count+' bill(s) imported successfully!');
 }
 
