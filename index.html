@@ -558,7 +558,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="mft">
     <button class="btn" onclick="closeModal('imp')">Cancel</button>
-    <button class="btn pri" id="imp-btn" onclick="doImportFromScan()" disabled>&#10003; Import Bills</button>
+    <button class="btn pri" id="imp-btn" onclick="doImport()" disabled>&#10003; Import Bills</button>
   </div>
 </div></div>
 
@@ -631,7 +631,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],bankTxns:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -1120,7 +1120,7 @@ function renderBills(){
   const totalPending=bills.filter(b=>billBalance(b.id)>0).reduce((s,b)=>s+billBalance(b.id),0);
 
   document.getElementById('pg-bills').innerHTML=`
-    <div class="sh"><h2>Purchase Bills (${bills.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openScanModal()">📸 Scan Bill</button><button class="btn sm pri" onclick="openBillModal()">+ Manual</button></div></div>
+    <div class="sh"><h2>Purchase Bills (${bills.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openModal('scan')">📸 Scan Bill</button><button class="btn sm pri" onclick="openBillModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox red">Total Pending: <strong>${fmt(totalPending)}</strong></div>`:''}
     <div class="srch-wrap"><input class="srch" id="bill-srch" placeholder="Search bills..." oninput="renderBills()" value="${esc(search)}"></div>
     <div class="seg">
@@ -1173,7 +1173,7 @@ function renderInvoices(){
   const totalPending=invs.filter(i=>invBalance(i.id)>0).reduce((s,i)=>s+invBalance(i.id),0);
 
   document.getElementById('pg-invoices').innerHTML=`
-    <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openScanModal()">📸 Scan Invoice</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
+    <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:8px"><button class="btn sm" onclick="openModal('scan')">📸 Scan Invoice</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox grn">Total Receivable: <strong>${fmt(totalPending)}</strong></div>`:''}
     <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search invoices..." oninput="renderInvoices()" value="${esc(search)}"></div>
     <div class="seg">
@@ -1716,14 +1716,10 @@ function savePayment(){
   if(curParty===payTargetId)openPartyDetail(payTargetId);
 }
 function delPayment(pid){
-  const d0=D();const pay=d0.payments.find(p=>p.id===pid);
-  const pname=pay?(d0.parties.find(x=>x.id===pay.pid)||{}).name||'?':'?';
-  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this payment entry?<br><strong>'+(pay?fmt(pay.amt)+' · '+esc(pname)+' · '+fmtD(pay.date):'')+'</strong><br><span style="font-size:11px;color:#888">It will move to the Recycle Bin.</span></div>';
+  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this payment entry?</div>';
   document.getElementById('cf-ok').onclick=()=>{
-    const d=D();const p=d.payments.find(x=>x.id===pid);
-    if(p)d.trash.push({type:'payment',deletedAt:new Date().toISOString(),payment:JSON.parse(JSON.stringify(p))});
-    d.payments=d.payments.filter(x=>x.id!==pid);
-    saveToCloud();closeModal('cf');renderAll();updateTrashBadge();
+    const d=D();d.payments=d.payments.filter(p=>p.id!==pid);
+    saveToCloud();closeModal('cf');renderAll();
     if(curParty)openPartyDetail(curParty);
   };
   openModal('cf');
@@ -2044,7 +2040,7 @@ function viewBill(bid){
 
 // ═══ MODAL UTILS ═══
 function openModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='flex';el.classList.add('show');}}
-function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}if(id==='cf'){const ok=document.getElementById('cf-ok');if(ok)ok.style.display='';}}
+function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}}
 function closePrint(){document.getElementById('print-overlay').style.display='none';document.body.style.overflow='';}
 function shareWA(){
   const body=document.getElementById('print-body');
@@ -2174,13 +2170,10 @@ function doImport(){
 function handleImpFile(e){
   var file=e.target.files[0];
   if(!file)return;
-  // Context: which modal did this come from?
-  var ctx=(e.target.id==='imp-file')?'imp':'scan';
-  var status=document.getElementById(ctx==='imp'?'imp-status':'scan-status');
+  var status=document.getElementById('scan-status');
   var ext=file.name.split('.').pop().toLowerCase();
   if(ext!=='json'&&file.type!=='application/json'){
     if(status){status.style.display='block';status.innerHTML='<div class="ibox red">Please upload a .json file from Claude chat.</div>';}
-    e.target.value='';
     return;
   }
   var reader=new FileReader();
@@ -2195,9 +2188,9 @@ function handleImpFile(e){
         return;
       }
       _importData=valid;
-      var prev=document.getElementById(ctx==='imp'?'imp-preview':'imp-preview2');
-      var btn=document.getElementById(ctx==='imp'?'imp-btn':'imp-btn2');
-      var ua=(ctx==='scan')?document.getElementById('scan-upload-area'):null;
+      var prev=document.getElementById('imp-preview2');
+      var btn=document.getElementById('imp-btn2');
+      var ua=document.getElementById('scan-upload-area');
       if(ua)ua.style.display='none';
       if(status)status.style.display='none';
       if(prev){
@@ -2214,7 +2207,7 @@ function handleImpFile(e){
             (b.consignee&&isJW?'<div style="font-size:12px;color:#EA580C">Consignee: '+esc(b.consignee)+'</div>':'')+
           '</div>';
         }).join('');
-        prev.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">&#10003;</span><span style="font-weight:700;color:#065F46">${valid.length} bill(s) ready to import</span></div><button onclick="clearImport('${ctx}')" style="padding:0 16px;border-radius:10px;border:2px solid #FCA5A5;background:#FEF2F2;color:#DC2626;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">&#10005; Remove</button></div>`+billCards;
+        prev.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">&#10003;</span><span style="font-weight:700;color:#065F46">${valid.length} bill(s) ready to import</span></div><button onclick="doRemoveScan()" style="padding:0 16px;border-radius:10px;border:2px solid #FCA5A5;background:#FEF2F2;color:#DC2626;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">&#10005; Remove</button></div>`+billCards;
       }
       if(btn)btn.disabled=false;
     }catch(err){
@@ -2226,8 +2219,6 @@ function handleImpFile(e){
 
 var _importData=null;
 
-
-function openScanModal(){clearImport('scan');switchScanTab('json');openModal('scan');}
 // ── Tab switcher ─────────────────────────────────────────────────
 function switchScanTab(tab){
   var isJ=(tab==='json');
@@ -2240,137 +2231,203 @@ function switchScanTab(tab){
 
 // ── LOCAL PDF parser — no API needed ─────────────────────────────
 function parseBillText(text){
-  // Step 1: de-quadruplicate bold chars
-  var deq = text.replace(/(.)\1{3}/g,'$1');
-
-  // Step 2: deduplicate lines (keep first occurrence only)
-  var seen = {};
-  var lines = [];
-  deq.split('\n').forEach(function(l){
-    var t = l.trim();
-    if(!t || /^[_\-]{4,}$/.test(t)) return;
-    if(!seen[t]){ seen[t]=1; lines.push(t); }
+  // ── Normalise: collapse runs of repeated chars (bold-doubling), strip rules ──
+  // Collapse bold-doubling per LINE: only un-double a line if it is *mostly* paired
+  // characters (a true bold artifact). This protects real words like FEELGOOD.
+  function undouble(line){
+    var letters=line.replace(/[^A-Za-z]/g,'');
+    if(letters.length<4)return line;
+    // count adjacent equal-letter pairs
+    var pairs=0,singles=0;
+    for(var i=0;i<line.length;){
+      if(/[A-Za-z]/.test(line[i])&&line[i]===line[i+1]){pairs++;i+=2;}
+      else{if(/[A-Za-z]/.test(line[i]))singles++;i++;}
+    }
+    // bold-doubled when overwhelmingly paired
+    if(pairs>=3 && pairs>=singles*2){
+      return line.replace(/([A-Za-z])\1/g,'$1');
+    }
+    return line;
+  }
+  var deq = text.split(/\r?\n/).map(undouble).join('\n');
+  // squeeze 4+ repeats of any char (rule lines etc.)
+  deq = deq.replace(/(.)\1{3,}/g,'$1');
+  var rawLines = deq.split(/\r?\n/);
+  // dedupe consecutive-ish lines but PRESERVE order
+  var seen={}, lines=[];
+  rawLines.forEach(function(l){
+    var t=l.replace(/\s+/g,' ').trim();
+    if(!t||/^[_\-=]{4,}$/.test(t))return;
+    if(!seen[t]){seen[t]=1;lines.push(t);}
   });
-  var full = lines.join('\n');
+  var full=lines.join('\n');
+  function find(re){var m=full.match(re);return m?(m[1]||'').trim():'';}
+  function num(v){return parseFloat((v||'').toString().replace(/,/g,''))||0;}
+  function safe(v){return (v===undefined||v===null)?'':String(v);}
+  function dedupeName(s){
+    // collapse "X X X" repeated whole-string duplication
+    s=safe(s).replace(/\s+/g,' ').trim();
+    // remove trailing "Buyer:" / "Consignee:" echoes
+    s=s.replace(/\b(Buyer|Consignee)\s*:.*$/i,'').trim();
+    // if the same token-run repeats, keep first run
+    var half=Math.floor(s.length/2);
+    for(var L=half;L>=4;L--){
+      var a=s.slice(0,L).trim();
+      if(a&&s.indexOf(a, L)>=0 && s.replace(new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'),'').replace(/[\s,]/g,'').length===0){
+        return a;
+      }
+    }
+    return s;
+  }
 
-  function find(re){ var m=full.match(re); return m?(m[1]||'').trim():''; }
-  function num(v){ return parseFloat((v||'').toString().replace(/,/g,''))||0; }
-  function safe(v){ return (v===undefined||v===null)?'':String(v); }
+  var data={type:'purchase', items:[]};
 
-  var data = {type:'purchase', items:[]};
+  // ── GSTINs in document order ──
+  var gsRe=/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g, gm, gstAll=[];
+  while((gm=gsRe.exec(full))!==null) gstAll.push(gm[0]);
 
-  // ── GSTINs: collect all unique in order ──
-  var gsRe=/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g, gm, gstins=[];
-  while((gm=gsRe.exec(full))!==null){ if(gstins.indexOf(gm[0])<0) gstins.push(gm[0]); }
-  data.partyGstin     = safe(gstins[0]);
-  data.buyerGstin     = safe(gstins[1]);
-  data.consigneeGstin = safe(gstins[2]);
+  // ── SELLER (party) name: the printed firm name. On HARSH PRINTS layout it's
+  //    the big line near the top, before "GSTIN". Try several anchors. ──
+  // Strategy: first line that is ALL-CAPS words (>=2 chars), not a keyword, appearing before first "GSTIN".
+  var sellerName='';
+  var gstLineIdx=lines.findIndex(function(l){return /GSTIN\s*:/i.test(l);});
+  var scanEnd=gstLineIdx>=0?gstLineIdx:Math.min(lines.length,8);
+  var skipRe=/GANESHAYA|PHONES?|TAX\s*INVOICE|BILL|CHALLAN|^DEX$|GSTIN|UDYAM|PAN|SHOP|\bNAMAH\b/i;
+  for(var i=0;i<scanEnd;i++){
+    var ln=lines[i];
+    if(skipRe.test(ln))continue;
+    // mostly letters & spaces, looks like a firm name
+    if(/^[A-Z][A-Z&.\s]{3,}$/.test(ln) && ln.replace(/[^A-Z]/g,'').length>=4){ sellerName=ln.trim(); break; }
+  }
+  // fallback: line directly after Ganeshaya that isn't phones
+  if(!sellerName){
+    var gi=lines.findIndex(function(l){return /Ganeshaya/i.test(l);});
+    for(var k=gi+1;k>0&&k<lines.length&&k<gi+4;k++){
+      if(!skipRe.test(lines[k])&&/[A-Za-z]{3}/.test(lines[k])){sellerName=lines[k].trim();break;}
+    }
+  }
+  data.partyName=dedupeName(sellerName);
 
-  // ── Party name: line AFTER "Ganeshaya" ──
-  var ni = lines.findIndex(function(l){ return /Ganeshaya/i.test(l); });
-  data.partyName = safe(ni>=0 && lines[ni+1] ? lines[ni+1].trim() : '');
+  // ── Seller GSTIN: the one on the SELLER line (first GSTIN before buyer block),
+  //    NOT the buyer/consignee. On this layout seller GSTIN sits on a line with
+  //    "GSTIN:" near PAN/Udyam. Buyer GSTIN line contains "Place of Supply".
+  //    Consignee GSTIN line follows "Consignee:". ──
+  var sellerGstin='', buyerGstin='', consGstin='';
+  lines.forEach(function(l){
+    var g=l.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);
+    if(!g)return;
+    if(/Place\s*of\s*Supply/i.test(l)||/Buyer/i.test(l)){ if(!buyerGstin)buyerGstin=g[0]; }
+  });
+  // walk for consignee gstin: first gstin appearing on/after a Consignee line
+  var cLineIdx=lines.findIndex(function(l){return /^Consignee\s*:/i.test(l);});
+  if(cLineIdx>=0){
+    for(var c=cLineIdx;c<Math.min(lines.length,cLineIdx+3);c++){
+      var cg=lines[c].match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);
+      if(cg){consGstin=cg[0];break;}
+    }
+  }
+  // seller gstin = first GSTIN in doc that is neither buyer nor consignee
+  for(var gi2=0;gi2<gstAll.length;gi2++){
+    if(gstAll[gi2]!==buyerGstin&&gstAll[gi2]!==consGstin){sellerGstin=gstAll[gi2];break;}
+  }
+  // if seller still empty, take the one near PAN/Udyam line
+  if(!sellerGstin){
+    var sl=lines.find(function(l){return /GSTIN/i.test(l)&&/(UDYAM|PAN)/i.test(l);});
+    if(sl){var sg=sl.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);if(sg)sellerGstin=sg[0];}
+  }
+  data.partyGstin     = safe(sellerGstin||gstAll[0]||'');
+  data.buyerGstin     = safe(buyerGstin||'');
+  data.consigneeGstin = safe(consGstin||'');
 
-  // ── Party details ──
-  data.partyPan   = safe(find(/PAN\s*NO\.?\s*:\s*([A-Z0-9]{10})/));
-  data.partyUdyam = safe(find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/));
-  var phM = full.match(/PHONES?:\s*([\d]{10})/);
-  data.partyPhone = safe(phM ? phM[1] : '');
+  // ── Seller details ──
+  data.partyPan   = safe(find(/PAN\s*NO\.?\s*:\s*([A-Z0-9]{10})/i));
+  data.partyUdyam = safe(find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/i));
+  var phM = full.match(/PHONES?:\s*([\d]{10})/i);
+  data.partyPhone = safe(phM?phM[1]:'');
   var adM = full.match(/SHOP\s+NO\.?\s+([\d\-]+,[^\n]+)/i);
-  data.partyAddress = safe(adM ? 'Shop No. '+adM[1] : '');
-  var adParts = (data.partyAddress||'').split(',');
-  data.partyCity  = safe(adParts.length>=2 ? adParts[adParts.length-2].trim() : adParts[0]||'');
-  data.partyState = '24';
+  data.partyAddress = safe(adM?'Shop No. '+adM[1].trim():'');
+  // City: pick a known-ish token (last comma-part that's alphabetic)
+  var adParts=(data.partyAddress||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  data.partyCity  = safe(adParts.length?adParts[adParts.length-1]:'');
+  data.partyState = safe((data.partyGstin||'').slice(0,2)||'24');
 
-  // ── Buyer: ONLY the line starting with "Buyer:" ──
-  var buyerIdx = lines.findIndex(function(l){ return /^Buyer\s*:/i.test(l); });
-  if(buyerIdx>=0){
-    // Name is everything after "Buyer:" up to "BILL NO."
-    data.buyerName = safe(lines[buyerIdx]
-      .replace(/^Buyer\s*:\s*/i,'')
-      .replace(/\s*BILL\s*NO.*/i,'')
-      .trim());
-  } else data.buyerName = '';
-  data.placeOfSupply = safe(find(/Place\s+of\s+Supply\s*:\s*([^\s\n]+)/));
+  // ── Buyer name (everything after Buyer: up to BILL NO.) deduped ──
+  var buyerLine=lines.find(function(l){return /^Buyer\s*:/i.test(l);})||'';
+  data.buyerName=dedupeName(buyerLine.replace(/^Buyer\s*:\s*/i,'').replace(/\s*BILL\s*NO.*/i,''));
+  data.placeOfSupply=safe(find(/Place\s+of\s+Supply\s*:\s*([0-9A-Za-z\-]+)/i));
 
-  // ── Bill details ──
-  data.billNo = safe(find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/)||find(/CHALLAN\s*:\s*([^\s\n]+)/));
-  var dr = find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/);
-  if(dr){ var dp=dr.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];
-    data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0'); }
+  // ── Bill no + date ──
+  data.billNo=safe(find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/i)||find(/CHALLAN\s*:\s*([^\s\n]+)/i));
+  var dr=find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/i);
+  if(dr){var dp=dr.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');}
   else data.billDate='';
 
-  // ── Consignee: ONLY the line starting with "Consignee:" ──
-  var cIdx = lines.findIndex(function(l){ return /^Consignee\s*:/i.test(l); });
-  if(cIdx>=0){
-    data.consignee = safe(lines[cIdx].replace(/^Consignee\s*:\s*/i,'').trim());
-    // Next line may have ADDRESS
-    var cNext = lines[cIdx+1]||'';
-    var caM = cNext.match(/ADDRESS:\s*(.+)/i);
-    if(caM) data.consignee += ', '+caM[1].trim();
-    // Consignee GSTIN from next line if not already found
-    if(!data.consigneeGstin){
-      var cgM = cNext.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);
-      if(cgM) data.consigneeGstin = safe(cgM[0]);
-    }
+  // ── Consignee name (deduped) ──
+  if(cLineIdx>=0){
+    var cn=lines[cLineIdx].replace(/^Consignee\s*:\s*/i,'').replace(/\s*GSTIN.*$/i,'').trim();
+    data.consignee=dedupeName(cn);
   } else data.consignee='';
 
   // ── Transport ──
-  data.lrNo   = safe(find(/L\.R\.\s*NO\.?\s*:\s*([^\s\n]+)/));
-  var lrDR = find(/LR\s*DATE:\s*(\d{2}\/\d{2}\/\d{2,4})/);
-  if(lrDR){ var dp=lrDR.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];
-    data.lrDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0'); }
+  data.lrNo=safe(find(/L\.?R\.?\s*NO\.?\s*:\s*([^\s\n]+)/i));
+  var lrDR=find(/LR\s*DATE:?\s*(\d{2}\/\d{2}\/\d{2,4})/i);
+  if(lrDR){var dq=lrDR.split('/'),y2=dq[2].length===2?'20'+dq[2]:dq[2];data.lrDate=y2+'-'+dq[1].padStart(2,'0')+'-'+dq[0].padStart(2,'0');}
   else data.lrDate='';
-  data.caseNo = safe(find(/CASE\s*NO:?\s*([^\s\n]+)/));
-  data.weight = num(find(/WEIGHT\s*:\s*([\d.]+)/));
-  var stM = full.match(/STATION:\s*([^\n]+?)(?:\s*HSN|$)/im);
-  data.station = safe(stM ? stM[1].trim() : '');
+  data.caseNo=safe(find(/CASE\s*NO:?\s*([^\s\n]+)/i));
+  data.weight=num(find(/WEIGHT\s*:\s*([\d.]+)/i));
+  var stM=full.match(/STATION:\s*([^\n]+?)(?:\s*HSN|\s*FREIGHT|$)/im);
+  data.station=safe(stM?stM[1].trim():'');
+  var hsnVal=safe(find(/HSN\s*[:\s]\s*(\d{6,8})/i));
 
-  var hsnVal = safe(find(/HSN\s*[:\s]\s*(\d{6,8})/));
-
-  // ── Items ──
-  var itemRe = /^\s*(\d+)\s+([A-Z][A-Z0-9\s]+?)\s+([A-Z]{3,})\s+(\d+)\s+([\d.]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s*$/;
+  // ── Items: tolerant — desc + PACK + PCS + CUT + qty + rate + amount ──
+  var itemRe=/^\s*(\d+)\s+(.+?)\s+([A-Z]{3,})\s+(\d+)\s+([\d.]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s*$/;
   lines.forEach(function(l){
-    var m = l.match(itemRe);
-    if(m) data.items.push({
-      desc:safe(m[2].trim()), unit:'KG', pack:safe(m[3]),
-      pcs:num(m[4]), cut:num(m[5]), qty:num(m[6]), rate:num(m[7]), amount:num(m[8]), hsn:hsnVal
-    });
+    var m=l.match(itemRe);
+    if(m && num(m[8])>0){
+      data.items.push({desc:safe(m[2].trim()),unit:'KG',pack:safe(m[3]),
+        pcs:num(m[4]),cut:num(m[5]),qty:num(m[6]),rate:num(m[7]),amount:num(m[8]),hsn:hsnVal});
+    }
   });
 
   // ── Totals ──
-  var subL = lines.find(function(l){ return /^SUB\s*TOTAL/i.test(l); })||'';
-  var subNs = (subL.match(/[\d,]+\.?\d*/g)||[]).map(num).filter(function(n){return n>1000;});
-  data.subTotal = subNs.length ? subNs[subNs.length-1] : 0;
+  var subL=lines.find(function(l){return /^SUB\s*TOTAL/i.test(l);})||'';
+  var subNs=(subL.match(/[\d,]+\.?\d*/g)||[]).map(num).filter(function(n){return n>500;});
+  data.subTotal=subNs.length?subNs[subNs.length-1]:(data.items.reduce(function(s,it){return s+it.amount;},0));
 
-  var discL = lines.find(function(l){ return /DISCOUNT/i.test(l)&&/%/.test(l); })||'';
+  var discL=lines.find(function(l){return /DISCOUNT/i.test(l)&&/%/.test(l);})||'';
   var dpm=discL.match(/-?([\d.]+)\s*%/), dam=discL.match(/:\s*-?([\d,]+\.\d+)/);
-  data.discount       = num(dpm?dpm[1]:'0');
-  data.discountAmount = num(dam?dam[1]:'0');
+  data.discount=num(dpm?dpm[1]:'0');
+  data.discountAmount=num(dam?dam[1]:'0');
 
-  var frL = lines.find(function(l){ return /^FREIGHT\s*->/i.test(l); })||'';
-  var frm = frL.match(/:\s*([\d,]+\.\d+)/);
-  data.freight = num(frm?frm[1]:'0');
+  var frL=lines.find(function(l){return /^FREIGHT\s*-?>/i.test(l)||/FREIGHT\s*->/i.test(l);})||'';
+  var frm=frL.match(/:\s*([\d,]+\.\d+)/);
+  data.freight=num(frm?frm[1]:'0');
 
-  var gstL = lines.find(function(l){ return /(IGST|CGST|SGST).*@/i.test(l); })||'';
-  var gstM = gstL.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)\s*%/i);
-  data.gstType = gstM?(gstM[1].toUpperCase()==='IGST'?'IGST':'CGST_SGST'):'IGST';
-  data.gstPct  = gstM?num(gstM[2]):5;
+  var gstL=lines.find(function(l){return /(IGST|CGST|SGST).*@/i.test(l);})||'';
+  var gstM=gstL.match(/(IGST|CGST|SGST)\s*@\s*([\d.]+)\s*%/i);
+  data.gstType=gstM?(gstM[1].toUpperCase()==='IGST'?'IGST':'CGST_SGST'):'IGST';
+  data.gstPct=gstM?num(gstM[2]):5;
+  var gstAmtM=gstL.match(/=\s*([\d,]+\.\d+)/);
+  data.gstAmount=num(gstAmtM?gstAmtM[1]:'0');
 
-  var gtL = lines.find(function(l){ return /GRAND\s*TOTAL/i.test(l); })||'';
-  var gtM = gtL.match(/GRAND\s*TOTAL[:\s]*([\d,]+\.?\d*)/i);
-  data.grandTotal = num(gtM?gtM[1].replace(/,/g,''):'0');
+  var gtL=lines.find(function(l){return /GRAND\s*TOTAL/i.test(l);})||'';
+  var gtM=gtL.match(/GRAND\s*TOTAL[:\s]*([\d,]+\.?\d*)/i);
+  data.grandTotal=num(gtM?gtM[1]:'0');
 
-  // Bank + Remark — take FIRST match only
-  var bkL = lines.find(function(l){ return /BANK.*A\/C.*NO/i.test(l)&&/IFSC/i.test(l); })||'';
-  var bkM = bkL.match(/(\d{9,})\s*[-–]\s*IFSC\s*[Cc]ode:\s*([A-Z0-9]+)/);
-  var rmL = lines.find(function(l){ return /^REMARK\s*:/i.test(l); })||'';
-  var rmV = rmL.replace(/^REMARK\s*:\s*/i,'').trim();
-  data.remarks = safe((bkM?'A/C: '+bkM[1]+' | IFSC: '+bkM[2]:'')+(rmV?(bkM?' | ':'')+rmV:''));
+  // ── Bank + Remark — FIRST match only, no echo ──
+  var bkL=lines.find(function(l){return /BANK.*A\/C.*NO/i.test(l)&&/IFSC/i.test(l);})||'';
+  var bkM=bkL.match(/(\d{9,})\s*[-–]\s*IFSC\s*[Cc]ode:\s*([A-Z0-9]+)/);
+  var rmL=lines.find(function(l){return /^REMARK\s*:/i.test(l);})||'';
+  var rmV=rmL.replace(/^REMARK\s*:\s*/i,'').trim();
+  // collapse "M-16 REMARK : M-16 ..." style echoes -> first token group
+  rmV=dedupeName(rmV.replace(/\bREMARK\b\s*:?/ig,' ')).trim();
+  data.remarks=safe((bkM?'A/C: '+bkM[1]+' | IFSC: '+bkM[2]:'')+(rmV?(bkM?' | ':'')+rmV:''));
 
-  data.mode = 'credit';
-  data.jobWork = false;
+  data.mode='credit';
+  data.jobWork=false;
   return data;
 }
+
 function handlePdfFile(input){
   var file=input.files&&input.files[0];if(!file)return;
   var pdfArea=document.getElementById('pdf-upload-area');
@@ -2390,12 +2447,6 @@ function handlePdfFile(input){
       s.onload=function(){
         window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         extractPdfText(e.target.result,input);
-      };
-      s.onerror=function(){
-        var st=document.getElementById('pdf-status');
-        if(st){st.style.display='block';st.innerHTML='<div class="ibox red">Could not load the PDF reader (check internet) — try again or use JSON import.</div>';}
-        var ua=document.getElementById('pdf-upload-area');if(ua)ua.style.display='block';
-        input.value='';
       };
       document.head.appendChild(s);
     } else {
@@ -2545,7 +2596,7 @@ function doImportFromScan(){
   if(d.bills)d.bills.forEach(fsafeObj);
   if(d.invoices)d.invoices.forEach(fsafeObj);
   if(d.parties)d.parties.forEach(fsafeObj);
-  saveToCloud();closeModal('scan');closeModal('imp');clearImport('scan');clearImport('imp');renderAll();
+  saveToCloud();closeModal('scan');clearImport('scan');renderAll();
   alert(count+' bill(s) imported successfully!');
 }
 
@@ -2586,7 +2637,7 @@ function renderTrash(){
     ${items.length?`<button class="btn sm red" onclick="emptyTrash()" style="font-size:12px">🗑 Empty All</button>`:''}
   </div>`;
   if(!items.length){
-    html+=`<div class="empty"><div class="ei">🗑️</div><p>Recycle Bin is empty.<br><span style="font-size:12px;color:#999">Deleted bills, invoices, parties, bank entries & expenses appear here.</span></p></div>`;
+    html+=`<div class="empty"><div class="ei">🗑️</div><p>Recycle Bin is empty.<br><span style="font-size:12px;color:#999">Deleted bills, invoices & parties appear here.</span></p></div>`;
   } else {
     html+=items.map((t,i)=>{
       const age=Math.floor((Date.now()-new Date(t.deletedAt).getTime())/86400000);
@@ -2653,66 +2704,6 @@ function renderTrash(){
           </div>
         </div>`;
       }
-      if(t.type==='bankTxn'){
-        const x=t.txn;
-        return`<div style="${base}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="background:#ECFEFF;color:#155E75;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🏦 Bank Entry</span>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
-          </div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${fmtD(x.date)} · ${x.type==='CR'?'+':'−'}${fmt(x.amount)}</div>
-          <div style="font-size:11px;color:#888;margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.desc||'')}</div>
-          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
-        </div>`;
-      }
-      if(t.type==='bankBatch'){
-        const n=(t.txns||[]).length;
-        const tot=(t.txns||[]).reduce((s,x)=>s+x.amount,0);
-        return`<div style="${base}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="background:#ECFEFF;color:#155E75;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🏦 Bank Statement (${n} entries)</span>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
-          </div>
-          <div style="font-size:12px;color:#888;margin-bottom:10px">Total value: ${fmt(tot)} · cleared in one batch</div>
-          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore All</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
-        </div>`;
-      }
-      if(t.type==='payment'){
-        const p=t.payment;
-        const pn=(d.parties.find(x=>x.id===p.pid)||{}).name||'?';
-        return`<div style="${base}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="background:#ECFDF5;color:#065F46;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">💵 Payment</span>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
-          </div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${fmt(p.amt)} · ${esc(pn)} · ${fmtD(p.date)}</div>
-          <div style="font-size:11px;color:#888;margin-bottom:10px">${esc(p.mode||'')}${p.ref?' · '+esc(p.ref):''}</div>
-          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
-        </div>`;
-      }
-      if(t.type==='note'){
-        const n=t.note;
-        return`<div style="${base}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="background:#F5F3FF;color:#5B21B6;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">📋 ${n.type==='credit'?'Credit':'Debit'} Note ${esc(n.num||'')}</span>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
-          </div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px">${fmt(n.amount)} · ${fmtD(n.date)}</div>
-          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
-        </div>`;
-      }
-      if(t.type==='expense'){
-        const e=t.expense;
-        return`<div style="${base}">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="background:#FFFBEB;color:#92400E;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🏷 Expense · ${esc(e.cat)}</span>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
-          </div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:2px">${fmt(e.amount)} · ${fmtD(e.date)}</div>
-          ${e.desc?`<div style="font-size:11px;color:#888;margin-bottom:10px">${esc(e.desc)}</div>`:'<div style="margin-bottom:10px"></div>'}
-          <div style="display:flex;gap:8px"><button class="btn sm pri" style="flex:1;justify-content:center" onclick="restoreTrashItem(${i})">↩ Restore</button><button class="btn sm red" style="flex:1;justify-content:center;background:#FFF1F2" onclick="permDeleteItem(${i})">🗑 Delete Forever</button></div>
-        </div>`;
-      }
       return'';
     }).join('');
   }
@@ -2736,25 +2727,6 @@ function restoreTrashItem(idx){
     (t.invoices||[]).forEach(i=>d.invoices.push(i));
     (t.payments||[]).forEach(p=>d.payments.push(p));
     alert('✅ Party "'+t.party.name+'" and all data restored!');
-  } else if(t.type==='bankTxn'){
-    if(!d.bankTxns)d.bankTxns=[];
-    d.bankTxns.push(t.txn);
-    alert('✅ Bank entry restored!');
-  } else if(t.type==='bankBatch'){
-    if(!d.bankTxns)d.bankTxns=[];
-    (t.txns||[]).forEach(x=>d.bankTxns.push(x));
-    alert('✅ '+(t.txns||[]).length+' bank entries restored!');
-  } else if(t.type==='expense'){
-    if(!d.expenses)d.expenses=[];
-    d.expenses.push(t.expense);
-    alert('✅ Expense restored!');
-  } else if(t.type==='payment'){
-    d.payments.push(t.payment);
-    alert('✅ Payment restored!');
-  } else if(t.type==='note'){
-    if(!d.notes)d.notes=[];
-    d.notes.push(t.note);
-    alert('✅ Note restored!');
   }
   d.trash.splice(idx,1);
   saveToCloud().then(function(){renderAll();});
@@ -2763,7 +2735,7 @@ function restoreTrashItem(idx){
 function permDeleteItem(idx){
   const d=D();if(!d.trash||!d.trash[idx])return;
   const t=d.trash[idx];
-  const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:t.type==='party'?'party "'+t.party?.name+'"':t.type==='bankTxn'?'bank entry of '+fmt(t.txn?.amount||0):t.type==='bankBatch'?'bank statement ('+(t.txns||[]).length+' entries)':t.type==='expense'?'expense '+fmt(t.expense?.amount||0):t.type==='payment'?'payment '+fmt(t.payment?.amt||0):t.type==='note'?'note '+(t.note?.num||''):'item';
+  const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:'party "'+t.party?.name+'"';
   if(!confirm('Permanently delete '+label+'? This CANNOT be undone.'))return;
   d.trash.splice(idx,1);
   saveToCloud().then(function(){renderTrash();});
@@ -2857,15 +2829,10 @@ function saveNote(){
 }
 
 function deleteNote(nid){
-  const d0=D();const note=(d0.notes||[]).find(n=>n.id===nid);if(!note)return;
-  document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete note <strong>'+esc(note.num||'')+'</strong> ('+fmt(note.amount)+')?<br><span style="font-size:11px;color:#888">It will move to the Recycle Bin.</span></div>';
-  document.getElementById('cf-ok').onclick=()=>{
-    const d=D();
-    d.trash.push({type:'note',deletedAt:new Date().toISOString(),note:JSON.parse(JSON.stringify(note))});
-    d.notes=(d.notes||[]).filter(n=>n.id!==nid);
-    saveToCloud();closeModal('cf');renderNotes();updateTrashBadge();
-  };
-  openModal('cf');
+  if(!confirm('Delete this note permanently?'))return;
+  const d = D();
+  d.notes = (d.notes||[]).filter(n=>n.id!==nid);
+  saveToCloud().then(function(){renderNotes();});
 }
 
 function renderNotes(){
@@ -3034,7 +3001,7 @@ function renderBank(){
     <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
       <button class="btn sm" onclick="autoMatchBank()" style="background:#EFF6FF;color:#1E40AF">⚡ Auto-Match</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
-      <button class="btn sm red" onclick="clearAllBankTxns()">🗑 Clear All</button>
+      <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
     </div>`;
 
     // Transaction rows — grouped: Miscellaneous first, then matched/assigned
@@ -3061,7 +3028,6 @@ function renderBank(){
           ${misc?`<button class="btn sm pri" onclick="openAssign(${i})" style="font-size:11px">➕ Assign (Party / Expense)</button>`:''}
           <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match Payment'}</button>
           ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;bankTxns[${i}].assigned=null;saveToCloud();renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
-          <button class="btn sm" onclick="delBankTxn(${i})" style="font-size:11px;background:#FEF2F2;color:#DC2626;margin-left:auto">🗑</button>
         </div>
       </div>`;
     }
@@ -3089,53 +3055,12 @@ function renderBank(){
       Object.keys(byCat).forEach(c=>{
         html+=`<div style="display:flex;justify-content:space-between;padding:8px 12px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;margin-bottom:6px;font-size:13px"><span style="font-weight:600;color:#92400E">${esc(c)}</span><span style="font-weight:700;color:#92400E">${fmt(byCat[c])}</span></div>`;
       });
-      // Itemized expense rows with delete
-      const sortedExps=[...exps].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-      html+=`<div style="font-size:12px;font-weight:700;color:#92400E;margin:10px 0 6px">All entries (${exps.length})</div>`;
-      sortedExps.forEach(e=>{
-        html+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:#fff;border:1px solid #FDE68A;border-radius:8px;margin-bottom:6px;font-size:12px">
-          <div style="flex:1;min-width:0"><div style="font-weight:600;color:#92400E">${esc(e.cat)} · ${fmt(e.amount)}</div><div style="color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${fmtD(e.date)}${e.desc?' · '+esc(e.desc):''}</div></div>
-          <button class="btn sm" onclick="delExpense('${e.id}')" style="font-size:11px;background:#FEF2F2;color:#DC2626;flex-shrink:0">🗑</button>
-        </div>`;
-      });
       html+=`</div>`;
     }
   }
   pg.innerHTML=html;
 }
 
-
-function delBankTxn(i){
-  const d=D();const t=d.bankTxns[i];if(!t)return;
-  document.getElementById('cf-msg').innerHTML=`<div class="ibox" style="background:#FEF2F2;border-color:#FECACA">Delete this bank entry?<br><strong>${fmtD(t.date)} · ${esc((t.desc||'').substring(0,50))} · ${fmt(t.amount)}</strong><br><span style="font-size:11px;color:#888">It will move to the Recycle Bin. ${t.matchId?'The payment created from it stays — unmatch first if you want it gone too.':''}</span></div>`;
-  document.getElementById('cf-ok').onclick=()=>{
-    d.trash.push({type:'bankTxn',deletedAt:new Date().toISOString(),txn:JSON.parse(JSON.stringify(t))});
-    d.bankTxns.splice(i,1);
-    saveToCloud();closeModal('cf');renderBank();updateTrashBadge();
-  };
-  openModal('cf');
-}
-function clearAllBankTxns(){
-  const d=D();if(!d.bankTxns||!d.bankTxns.length)return;
-  document.getElementById('cf-msg').innerHTML=`<div class="ibox" style="background:#FEF2F2;border-color:#FECACA">Clear <strong>all ${d.bankTxns.length} imported bank entr${d.bankTxns.length>1?'ies':'y'}</strong>?<br><span style="font-size:11px;color:#888">They move to the Recycle Bin as one batch and can be restored. Payments already created stay.</span></div>`;
-  document.getElementById('cf-ok').onclick=()=>{
-    d.trash.push({type:'bankBatch',deletedAt:new Date().toISOString(),txns:JSON.parse(JSON.stringify(d.bankTxns))});
-    d.bankTxns=[];
-    saveToCloud();closeModal('cf');renderBank();updateTrashBadge();
-  };
-  openModal('cf');
-}
-function delExpense(eid){
-  const d=D();const ix=(d.expenses||[]).findIndex(e=>e.id===eid);if(ix<0)return;
-  const e=d.expenses[ix];
-  document.getElementById('cf-msg').innerHTML=`<div class="ibox" style="background:#FEF2F2;border-color:#FECACA">Delete this expense?<br><strong>${esc(e.cat)} · ${fmt(e.amount)} · ${fmtD(e.date)}</strong><br><span style="font-size:11px;color:#888">${esc((e.desc||'').substring(0,60))}<br>It will move to the Recycle Bin.</span></div>`;
-  document.getElementById('cf-ok').onclick=()=>{
-    d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
-    d.expenses.splice(ix,1);
-    saveToCloud();closeModal('cf');renderBank();updateTrashBadge();
-  };
-  openModal('cf');
-}
 function parseBankFile(input){
   const file=input.files[0];if(!file)return;
   const ext=file.name.split('.').pop().toLowerCase();
