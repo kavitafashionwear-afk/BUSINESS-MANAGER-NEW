@@ -3316,6 +3316,7 @@ function renderBank(){
     <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
       <button class="btn sm" onclick="autoMatchBank()" style="background:#EFF6FF;color:#1E40AF">⚡ Auto-Match</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
+      <button class="btn sm" onclick="repairPaymentDirections()" style="background:#FFF7ED;color:#92400E">🔧 Fix Receipt/Payment Mix-ups</button>
       <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
     </div>`;
 
@@ -3342,6 +3343,7 @@ function renderBank(){
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           ${misc?`<button class="btn sm pri" onclick="openAssign(${i})" style="font-size:11px">➕ Assign (Party / Expense)</button>`:''}
           <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match Payment'}</button>
+          <button class="btn sm" onclick="flipTxnDir(${i})" style="font-size:11px;background:#FFF7ED;color:#92400E">🔄 Mark as ${t.type==='CR'?'OUT (Debit)':'IN (Credit)'}</button>
           ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;bankTxns[${i}].assigned=null;saveToCloud();renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
         </div>
       </div>`;
@@ -3456,6 +3458,7 @@ function parseDCBPdfText(text){
   var txns=[];
   var dateRe=/^(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})\b/;
   var amtRe=/([\d,]+\.\d{2})/g;
+  var prevBalance=null;
   lines.forEach(function(line){
     line=line.trim();
     var dm=line.match(dateRe);
@@ -3473,17 +3476,31 @@ function parseDCBPdfText(text){
     if(nums.length>=2){amount=nums[nums.length-2];balance=nums[nums.length-1];}
     else amount=nums[0];
     if(!amount||amount<=0)return;
-    // CR/DR detection from keywords
     var up=line.toUpperCase();
-    var type=/\bCR\b|CREDIT|NEFT.*CR|IMPS.*CR/.test(up)&&!/\bDR\b/.test(up)?'CR':
-             /\bDR\b|DEBIT/.test(up)?'DR':
-             /UPI|NEFT|IMPS|RTGS|TRANSFER|CHQ|ATM|POS/.test(up)?'DR':'DR';
+    // ── CR/DR detection ──
+    // PRIORITY 1: running-balance movement (most reliable). If this row's closing
+    // balance is HIGHER than the previous row's, money came IN → Credit (CR).
+    // If LOWER, money went OUT → Debit (DR).
+    var type=null;
+    if(balance!==null&&prevBalance!==null){
+      if(balance>prevBalance+0.001)type='CR';
+      else if(balance<prevBalance-0.001)type='DR';
+    }
+    // PRIORITY 2: explicit CR/DR markers in the narration.
+    if(!type){
+      if((/\bCR\b|CREDIT|\bCR$|DEPOSIT|RECEIVED|INWARD/.test(up))&&!/\bDR\b|DEBIT/.test(up))type='CR';
+      else if(/\bDR\b|DEBIT|WITHDRAWAL|OUTWARD/.test(up))type='DR';
+    }
+    // PRIORITY 3: unknown — leave for the user to classify (do NOT silently assume DR).
+    if(!type)type='UNK';
+    if(balance!==null)prevBalance=balance;
     txns.push({date:date,desc:desc||'Bank transaction',amount:amount,balance:balance,type:type,matchId:null,assigned:null});
   });
   if(!txns.length){alert('No transactions found in the PDF. If the statement layout is unusual, download CSV from the DCB app instead and import that.');return;}
   D().bankTxns=txns;bankTxns=D().bankTxns;
   autoMatchBank();
-  alert('✅ Imported '+txns.length+' transaction(s) from PDF. Auto-matching done — review the ❓ Miscellaneous section for unmatched entries.');
+  var unk=txns.filter(function(t){return t.type==='UNK';}).length;
+  alert('✅ Imported '+txns.length+' transaction(s) from PDF. Auto-matching done.'+(unk?'\n⚠️ '+unk+' transaction(s) could not be auto-classified as credit/debit — set them in the ❓ Miscellaneous section.':'\nReview the ❓ Miscellaneous section for unmatched entries.'));
 }
 
 function parseBankPaste(){
@@ -3539,13 +3556,66 @@ function parseBankCSV(csv){
   autoMatchBank();
 }
 
+function flipTxnDir(idx){
+  const d=D();const t=bankTxns[idx];if(!t)return;
+  // Toggle CR<->DR (also resolves an UNK by picking the opposite of nothing → default to CR first tap)
+  t.type=t.type==='CR'?'DR':'CR';
+  // If a payment is linked, sync its direction too so balances stay correct
+  if(t.matchId){
+    const pay=d.payments.find(p=>p.id===t.matchId);
+    if(pay)pay.dir=t.type==='CR'?'in':'out';
+  }
+  // If linked to an expense, sync that too
+  if(t.assigned==='expense'){
+    const exp=(d.expenses||[]).find(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);
+    if(exp)exp.dir=t.type==='CR'?'in':'out';
+  }
+  saveToCloud();renderBank();
+}
+
+function repairPaymentDirections(){
+  const d=D();
+  const plan=[];const details=[];
+  (d.payments||[]).forEach(p=>{
+    let correct=null;
+    // Strongest signal: a payment linked to a specific document
+    if(p.iid)correct='in';            // tied to a sales invoice → receipt IN
+    else if(p.bid)correct='out';      // tied to a purchase bill → payment OUT
+    else{
+      // Else infer from the party's role
+      const party=d.parties.find(x=>x.id===p.pid);
+      if(party){
+        if(party.type==='C')correct='in';
+        else if(party.type==='S')correct='out';
+        // type 'B' (Both) is ambiguous — leave as-is
+      }
+    }
+    if(correct&&p.dir!==correct){
+      const party=d.parties.find(x=>x.id===p.pid);
+      plan.push({pay:p,to:correct});
+      details.push((party?party.name:'?')+': '+fmt(p.amt)+'  '+(p.dir||'?')+' → '+correct);
+    }
+  });
+  if(!plan.length){alert('✓ All receipts and payments are already pointing the right way. Nothing to fix.');return;}
+  const preview=details.slice(0,12).join('\n')+(details.length>12?'\n…and '+(details.length-12)+' more':'');
+  if(confirm('Found '+plan.length+' entry(s) with the wrong direction (a receipt counted as a payment-out, or vice-versa).\n\n'+preview+'\n\nFix them now? This corrects the balances.')){
+    plan.forEach(x=>{x.pay.dir=x.to;});
+    saveToCloud();renderAll();
+    alert('✅ Fixed '+plan.length+' entry(s). Balances are now correct.');
+  }
+}
+
 function autoMatchBank(){
   const d=D();
   bankTxns.forEach(t=>{
     if(t.matchId||t.assigned)return;
-    // 1) Match against recorded payments: exact amount + date within 5 days
+    if(t.type==='UNK')return; // unclassified — let the user set CR/DR first
+    const wantDir=t.type==='CR'?'in':'out';
+    // 1) Match against recorded payments: exact amount + date within 5 days + SAME direction.
+    //    Direction must agree, else a customer receipt could wrongly link to a payment-out.
     const candidates=d.payments.filter(p=>{
       if(p.amt!==t.amount)return false;
+      if(p.dir&&p.dir!==wantDir)return false;
       const diff=Math.abs(new Date(p.date)-new Date(t.date))/(864e5);
       return diff<=5;
     });
@@ -3558,7 +3628,7 @@ function autoMatchBank(){
     });
     if(nameMatches.length===1){
       const p=nameMatches[0];
-      const pay={id:'PAY'+uid4(),pid:p.id,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60)+' (name match)'};
+      const pay={id:'PAY'+uid4(),pid:p.id,amt:t.amount,date:t.date,mode:'NEFT',dir:wantDir,ref:'Bank stmt',rem:t.desc.substring(0,60)+' (name match)'};
       d.payments.push(pay);
       t.matchId=pay.id;t.autoCreated=true;
       return;
