@@ -2231,31 +2231,23 @@ function switchScanTab(tab){
 
 // ── LOCAL PDF parser — no API needed ─────────────────────────────
 function parseBillText(text){
-  // ── Normalise: collapse runs of repeated chars (bold-doubling), strip rules ──
-  // Collapse bold-doubling per LINE: only un-double a line if it is *mostly* paired
-  // characters (a true bold artifact). This protects real words like FEELGOOD.
+  // ── Normalise bold-doubling per LINE (protects real words like FEELGOOD) ──
   function undouble(line){
     var letters=line.replace(/[^A-Za-z]/g,'');
     if(letters.length<4)return line;
-    // count adjacent equal-letter pairs
     var pairs=0,singles=0;
     for(var i=0;i<line.length;){
       if(/[A-Za-z]/.test(line[i])&&line[i]===line[i+1]){pairs++;i+=2;}
       else{if(/[A-Za-z]/.test(line[i]))singles++;i++;}
     }
-    // bold-doubled when overwhelmingly paired
-    if(pairs>=3 && pairs>=singles*2){
-      return line.replace(/([A-Za-z])\1/g,'$1');
-    }
+    if(pairs>=3 && pairs>=singles*2) return line.replace(/([A-Za-z])\1/g,'$1');
     return line;
   }
-  var deq = text.split(/\r?\n/).map(undouble).join('\n');
-  // squeeze 4+ repeats of any char (rule lines etc.)
-  deq = deq.replace(/(.)\1{3,}/g,'$1');
-  var rawLines = deq.split(/\r?\n/);
-  // dedupe consecutive-ish lines but PRESERVE order
+  var deq=text.split(/\r?\n/).map(undouble).join('\n');
+  deq=deq.replace(/(.)\1{3,}/g,'$1');
+
   var seen={}, lines=[];
-  rawLines.forEach(function(l){
+  deq.split('\n').forEach(function(l){
     var t=l.replace(/\s+/g,' ').trim();
     if(!t||/^[_\-=]{4,}$/.test(t))return;
     if(!seen[t]){seen[t]=1;lines.push(t);}
@@ -2265,17 +2257,14 @@ function parseBillText(text){
   function num(v){return parseFloat((v||'').toString().replace(/,/g,''))||0;}
   function safe(v){return (v===undefined||v===null)?'':String(v);}
   function dedupeName(s){
-    // collapse "X X X" repeated whole-string duplication
     s=safe(s).replace(/\s+/g,' ').trim();
-    // remove trailing "Buyer:" / "Consignee:" echoes
     s=s.replace(/\b(Buyer|Consignee)\s*:.*$/i,'').trim();
-    // if the same token-run repeats, keep first run
     var half=Math.floor(s.length/2);
-    for(var L=half;L>=4;L--){
+    for(var L=half;L>=3;L--){
       var a=s.slice(0,L).trim();
-      if(a&&s.indexOf(a, L)>=0 && s.replace(new RegExp(a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'g'),'').replace(/[\s,]/g,'').length===0){
-        return a;
-      }
+      if(!a)continue;
+      var esc=a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      if(s.indexOf(a,L)>=0 && s.replace(new RegExp(esc,'g'),'').replace(/[\s,]/g,'').length===0) return a;
     }
     return s;
   }
@@ -2286,83 +2275,75 @@ function parseBillText(text){
   var gsRe=/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/g, gm, gstAll=[];
   while((gm=gsRe.exec(full))!==null) gstAll.push(gm[0]);
 
-  // ── SELLER (party) name: the printed firm name. On HARSH PRINTS layout it's
-  //    the big line near the top, before "GSTIN". Try several anchors. ──
-  // Strategy: first line that is ALL-CAPS words (>=2 chars), not a keyword, appearing before first "GSTIN".
-  var sellerName='';
+  // ── SELLER NAME: scan top, skip keywords & footer phrases ──
+  var skipRe=/GANESHAYA|PHONES?|TAX\s*INVOICE|BILL|CHALLAN|^DEX$|GSTIN|UDYAM|PAN|SHOP|NAMAH|E-?WAY|CHECKED|DELIVERED|SIGNATORY|TERMS|SUBJECT|GOODS|COMPLAINTS|IRN|ACK|TRANSPORTER/i;
   var gstLineIdx=lines.findIndex(function(l){return /GSTIN\s*:/i.test(l);});
   var scanEnd=gstLineIdx>=0?gstLineIdx:Math.min(lines.length,8);
-  var skipRe=/GANESHAYA|PHONES?|TAX\s*INVOICE|BILL|CHALLAN|^DEX$|GSTIN|UDYAM|PAN|SHOP|\bNAMAH\b/i;
+  var sellerName='';
   for(var i=0;i<scanEnd;i++){
     var ln=lines[i];
     if(skipRe.test(ln))continue;
-    // mostly letters & spaces, looks like a firm name
     if(/^[A-Z][A-Z&.\s]{3,}$/.test(ln) && ln.replace(/[^A-Z]/g,'').length>=4){ sellerName=ln.trim(); break; }
   }
-  // fallback: line directly after Ganeshaya that isn't phones
   if(!sellerName){
     var gi=lines.findIndex(function(l){return /Ganeshaya/i.test(l);});
-    for(var k=gi+1;k>0&&k<lines.length&&k<gi+4;k++){
+    for(var k=gi+1;gi>=0&&k<lines.length&&k<gi+4;k++){
       if(!skipRe.test(lines[k])&&/[A-Za-z]{3}/.test(lines[k])){sellerName=lines[k].trim();break;}
     }
   }
+  // Fallback: "FOR <NAME>" in terms, or first GSTIN line's leading text
+  if(!sellerName){var fm=full.match(/FOR\s+([A-Z][A-Z&.\s]{3,})/);if(fm)sellerName=fm[1].trim();}
   data.partyName=dedupeName(sellerName);
 
-  // ── Seller GSTIN: the one on the SELLER line (first GSTIN before buyer block),
-  //    NOT the buyer/consignee. On this layout seller GSTIN sits on a line with
-  //    "GSTIN:" near PAN/Udyam. Buyer GSTIN line contains "Place of Supply".
-  //    Consignee GSTIN line follows "Consignee:". ──
-  var sellerGstin='', buyerGstin='', consGstin='';
+  // ── GSTIN assignment BY CONTEXT ──
+  var buyerGstin='', consGstin='', sellerGstin='';
   lines.forEach(function(l){
     var g=l.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);
-    if(!g)return;
-    if(/Place\s*of\s*Supply/i.test(l)||/Buyer/i.test(l)){ if(!buyerGstin)buyerGstin=g[0]; }
+    if(g && (/Place\s*of\s*Supply/i.test(l)||/^Buyer/i.test(l)) && !buyerGstin) buyerGstin=g[0];
   });
-  // walk for consignee gstin: first gstin appearing on/after a Consignee line
   var cLineIdx=lines.findIndex(function(l){return /^Consignee\s*:/i.test(l);});
   if(cLineIdx>=0){
     for(var c=cLineIdx;c<Math.min(lines.length,cLineIdx+3);c++){
       var cg=lines[c].match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);
-      if(cg){consGstin=cg[0];break;}
+      if(cg && cg[0]!==buyerGstin){consGstin=cg[0];break;}
     }
   }
-  // seller gstin = first GSTIN in doc that is neither buyer nor consignee
   for(var gi2=0;gi2<gstAll.length;gi2++){
     if(gstAll[gi2]!==buyerGstin&&gstAll[gi2]!==consGstin){sellerGstin=gstAll[gi2];break;}
   }
-  // if seller still empty, take the one near PAN/Udyam line
   if(!sellerGstin){
     var sl=lines.find(function(l){return /GSTIN/i.test(l)&&/(UDYAM|PAN)/i.test(l);});
     if(sl){var sg=sl.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}/);if(sg)sellerGstin=sg[0];}
   }
-  data.partyGstin     = safe(sellerGstin||gstAll[0]||'');
-  data.buyerGstin     = safe(buyerGstin||'');
-  data.consigneeGstin = safe(consGstin||'');
+  data.partyGstin=safe(sellerGstin||gstAll[0]||'');
+  data.buyerGstin=safe(buyerGstin||'');
+  data.consigneeGstin=safe(consGstin||'');
 
   // ── Seller details ──
-  data.partyPan   = safe(find(/PAN\s*NO\.?\s*:\s*([A-Z0-9]{10})/i));
-  data.partyUdyam = safe(find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/i));
-  var phM = full.match(/PHONES?:\s*([\d]{10})/i);
-  data.partyPhone = safe(phM?phM[1]:'');
-  var adM = full.match(/SHOP\s+NO\.?\s+([\d\-]+,[^\n]+)/i);
-  data.partyAddress = safe(adM?'Shop No. '+adM[1].trim():'');
-  // City: pick a known-ish token (last comma-part that's alphabetic)
+  data.partyPan=safe(find(/PAN\s*NO\.?\s*:\s*([A-Z0-9]{10})/i));
+  data.partyUdyam=safe(find(/Udyam[^:]*:\s*(UDYAM-[A-Z0-9-]+)/i));
+  var phM=full.match(/PHONES?:\s*([\d]{10})/i);
+  data.partyPhone=safe(phM?phM[1]:'');
+  var adM=full.match(/SHOP\s+NO\.?\s+([\d\-]+,[^\n]+)/i);
+  data.partyAddress=safe(adM?'Shop No. '+adM[1].trim():'');
   var adParts=(data.partyAddress||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
-  data.partyCity  = safe(adParts.length?adParts[adParts.length-1]:'');
-  data.partyState = safe((data.partyGstin||'').slice(0,2)||'24');
+  data.partyCity=safe(adParts.length?adParts[adParts.length-1]:'');
+  data.partyState=safe((data.partyGstin||'').slice(0,2)||'24');
 
-  // ── Buyer name (everything after Buyer: up to BILL NO.) deduped ──
+  // ── Buyer ──
   var buyerLine=lines.find(function(l){return /^Buyer\s*:/i.test(l);})||'';
   data.buyerName=dedupeName(buyerLine.replace(/^Buyer\s*:\s*/i,'').replace(/\s*BILL\s*NO.*/i,''));
   data.placeOfSupply=safe(find(/Place\s+of\s+Supply\s*:\s*([0-9A-Za-z\-]+)/i));
 
-  // ── Bill no + date ──
-  data.billNo=safe(find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/i)||find(/CHALLAN\s*:\s*([^\s\n]+)/i));
+  // ── Bill no + date — EXCLUDE "E-WAY" false positives ──
+  var bn=find(/BILL\s*NO\.?\s*:\s*([^\s\n]+)/i)||find(/CHALLAN\s*:\s*([^\s\n]+)/i);
+  if(/E-?WAY/i.test(bn))bn='';
+  data.billNo=safe(bn);
   var dr=find(/DATE\s*:\s*(\d{2}\/\d{2}\/\d{2,4})/i);
   if(dr){var dp=dr.split('/'),yr=dp[2].length===2?'20'+dp[2]:dp[2];data.billDate=yr+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0');}
   else data.billDate='';
 
-  // ── Consignee name (deduped) ──
+  // ── Consignee name ──
   if(cLineIdx>=0){
     var cn=lines[cLineIdx].replace(/^Consignee\s*:\s*/i,'').replace(/\s*GSTIN.*$/i,'').trim();
     data.consignee=dedupeName(cn);
@@ -2379,7 +2360,7 @@ function parseBillText(text){
   data.station=safe(stM?stM[1].trim():'');
   var hsnVal=safe(find(/HSN\s*[:\s]\s*(\d{6,8})/i));
 
-  // ── Items: tolerant — desc + PACK + PCS + CUT + qty + rate + amount ──
+  // ── Items ──
   var itemRe=/^\s*(\d+)\s+(.+?)\s+([A-Z]{3,})\s+(\d+)\s+([\d.]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s*$/;
   lines.forEach(function(l){
     var m=l.match(itemRe);
@@ -2399,7 +2380,7 @@ function parseBillText(text){
   data.discount=num(dpm?dpm[1]:'0');
   data.discountAmount=num(dam?dam[1]:'0');
 
-  var frL=lines.find(function(l){return /^FREIGHT\s*-?>/i.test(l)||/FREIGHT\s*->/i.test(l);})||'';
+  var frL=lines.find(function(l){return /FREIGHT\s*->/i.test(l);})||'';
   var frm=frL.match(/:\s*([\d,]+\.\d+)/);
   data.freight=num(frm?frm[1]:'0');
 
@@ -2414,13 +2395,12 @@ function parseBillText(text){
   var gtM=gtL.match(/GRAND\s*TOTAL[:\s]*([\d,]+\.?\d*)/i);
   data.grandTotal=num(gtM?gtM[1]:'0');
 
-  // ── Bank + Remark — FIRST match only, no echo ──
+  // ── Bank + Remark (first only, no echo) ──
   var bkL=lines.find(function(l){return /BANK.*A\/C.*NO/i.test(l)&&/IFSC/i.test(l);})||'';
   var bkM=bkL.match(/(\d{9,})\s*[-–]\s*IFSC\s*[Cc]ode:\s*([A-Z0-9]+)/);
   var rmL=lines.find(function(l){return /^REMARK\s*:/i.test(l);})||'';
   var rmV=rmL.replace(/^REMARK\s*:\s*/i,'').trim();
-  // collapse "M-16 REMARK : M-16 ..." style echoes -> first token group
-  rmV=dedupeName(rmV.replace(/\bREMARK\b\s*:?/ig,' ')).trim();
+  rmV=dedupeName(rmV.replace(/\bREMARK\b\s*:?/ig,' ').replace(/\s+/g,' ').trim());
   data.remarks=safe((bkM?'A/C: '+bkM[1]+' | IFSC: '+bkM[2]:'')+(rmV?(bkM?' | ':'')+rmV:''));
 
   data.mode='credit';
