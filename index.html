@@ -200,6 +200,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="pg-bills" class="main" style="display:none"></div>
   <div id="pg-invoices" class="main" style="display:none"></div>
   <div id="pg-bank" class="main" style="display:none"></div>
+  <div id="pg-cash" class="main" style="display:none"></div>
   <div id="pg-notes" class="main" style="display:none"></div>
   <div id="pg-reports" class="main" style="display:none"></div>
   <div id="pg-trash" class="main" style="display:none"></div>
@@ -215,6 +216,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">📦</span>Purchase</button>
     <button class="nb" id="nb-invoices" onclick="goTab('invoices')"><span class="ic">🧾</span>Sales</button>
     <button class="nb" id="nb-bank" onclick="goTab('bank')"><span class="ic">🏦</span>Bank</button>
+    <button class="nb" id="nb-cash" onclick="goTab('cash')"><span class="ic">💵</span>Cash</button>
     <button class="nb" id="nb-notes" onclick="goTab('notes')"><span class="ic">📋</span>Notes</button>
     <button class="nb" id="nb-reports" onclick="goTab('reports')"><span class="ic">📊</span>Reports</button>
     <button class="nb" id="nb-trash" onclick="goTab('trash')"><span class="ic">🗑️</span>Bin<span id="trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 4px;font-size:10px;margin-left:2px;vertical-align:middle"></span></button>
@@ -279,11 +281,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="fl"><label>PAN No.</label><input id="p-pan" placeholder="e.g. ACIPS3195C" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
       <div class="fl"><label>Udyam / MSME No.</label><input id="p-udyam" placeholder="e.g. UDYAM-GJ-22-0086871"></div>
     </div>
-    <div class="fr">
-      <div class="fl"><label>Bank A/C No.</label><input id="p-bank" placeholder="Account number"></div>
-      <div class="fl"><label>IFSC</label><input id="p-ifsc" placeholder="e.g. DCBL0000179"></div>
+    <div class="card-hd" style="margin-top:4px;display:flex;justify-content:space-between;align-items:center">
+      <span>🏦 Bank / UPI Details</span>
+      <button class="btn sm" type="button" onclick="addBankRow()" style="font-size:11px">+ Add Account</button>
     </div>
-    <div class="fl"><label>UPI ID</label><input id="p-upi" placeholder="e.g. party@upi"></div>
+    <div style="font-size:11px;color:var(--sub);margin:-4px 0 8px">Add every account, IFSC and UPI this party pays from — used to auto-match bank statement entries.</div>
+    <div id="p-banks-list"></div>
     <div class="fl"><label>Opening Balance (₹)</label><input id="p-ob" type="number" placeholder="0" min="0"></div>
     <div class="fl"><label>OB Type</label>
       <select id="p-ob-type">
@@ -426,11 +429,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </select>
     </div>
     <div class="fl"><label>Bill Mode</label>
-      <select id="i-mode">
+      <select id="i-mode" onchange="onInvModeChange()">
         <option value="credit">Credit (add to outstanding)</option>
-        <option value="cash">Cash Bill (instantly settled)</option>
+        <option value="cash">Full Cash Bill (instantly settled)</option>
+        <option value="partial">Credit + Part Cash now</option>
       </select>
     </div>
+    <div class="fl" id="i-cashnow-wrap" style="display:none"><label>💵 Cash received now (₹)</label><input id="i-cashnow" type="number" placeholder="0" min="0" step="0.01" oninput="calcInvTotal()"><div style="font-size:11px;color:var(--sub);margin-top:4px">Recorded under Cash in Hand. Remaining stays as outstanding.</div></div>
     <div class="ibox blu" id="i-preview" style="margin-top:4px">Fill items to see total</div>
     <div class="fl" style="margin-top:8px"><label>Remarks / Transport Details</label><input id="i-rem" placeholder="Optional"></div>
   </div>
@@ -803,11 +808,11 @@ function toggleBiz(){
 // ═══ NAV ═══
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
-  ['home','parties','bills','invoices','detail','notes','bank','trash'].forEach(p=>{
+  ['home','parties','bills','invoices','detail','notes','bank','cash','trash'].forEach(p=>{
     const el=document.getElementById('pg-'+p);
     if(el)el.style.display=p===t?'block':'none';
   });
-  ['home','parties','bills','invoices','notes','bank','trash'].forEach(n=>{
+  ['home','parties','bills','invoices','notes','bank','cash','trash'].forEach(n=>{
     const el=document.getElementById('nb-'+n);
     if(el)el.className='nb'+(n===t?' act':'');
   });
@@ -821,14 +826,78 @@ function renderTab(t){
   else if(t==='invoices')renderInvoices();
   else if(t==='notes')renderNotes();
   else if(t==='bank')renderBank();
+  else if(t==='cash')renderCash();
   else if(t==='reports')renderReports();
   else if(t==='trash')renderTrash();
 }
 function fabAction(){
-  if(curTab==='parties')openPartyModal();
-  else if(curTab==='bills')openBillModal();
+  // When viewing a single party's detail, the FAB should NOT add a party.
+  // Offer document actions relevant to that party instead.
+  if(curParty){openFabMenu('detail');return;}
+  if(curTab==='parties'){openFabMenu('parties');return;}
+  if(curTab==='bills')openBillModal();
   else if(curTab==='invoices')openInvModal();
+  else if(curTab==='cash')openCashAdjust('in');
   else openInvModal();
+}
+// Lightweight popover menu anchored above the FAB
+function openFabMenu(ctx){
+  closeFabMenu();
+  let items=[];
+  if(ctx==='parties'){
+    items=[
+      {label:'➕ Add New Party',fn:'openPartyModal()'},
+      {label:'✏️ Edit Existing Party',fn:'openEditPartyPicker()'}
+    ];
+  } else if(ctx==='detail'){
+    const pid=curParty;
+    items=[
+      {label:'🧾 New Invoice',fn:`openInvModal('${pid}')`},
+      {label:'📦 New Purchase Bill',fn:`openBillModal('${pid}')`},
+      {label:'💵 Settle in Cash',fn:`openCashSettle('${pid}')`},
+      {label:'✏️ Edit This Party',fn:`editParty('${pid}')`}
+    ];
+  }
+  const menu=document.createElement('div');
+  menu.id='fab-menu';
+  menu.style.cssText='position:fixed;bottom:134px;right:16px;z-index:60;display:flex;flex-direction:column;gap:8px;align-items:flex-end';
+  menu.innerHTML=items.map(it=>`<button onclick="closeFabMenu();${it.fn}" style="background:#fff;border:1.5px solid var(--bdr);border-radius:24px;padding:10px 16px;font-size:13px;font-weight:600;box-shadow:0 3px 10px rgba(0,0,0,.15);cursor:pointer;white-space:nowrap">${it.label}</button>`).join('');
+  document.body.appendChild(menu);
+  // Backdrop to dismiss
+  const back=document.createElement('div');
+  back.id='fab-back';
+  back.style.cssText='position:fixed;inset:0;z-index:55';
+  back.onclick=closeFabMenu;
+  document.body.appendChild(back);
+  // Turn FAB into a close (×) while menu is open
+  const fab=document.getElementById('fab');if(fab){fab.textContent='✕';fab.dataset.open='1';}
+}
+function closeFabMenu(){
+  document.getElementById('fab-menu')?.remove();
+  document.getElementById('fab-back')?.remove();
+  const fab=document.getElementById('fab');if(fab){fab.textContent='+';fab.dataset.open='';}
+}
+// Picker to choose an existing party to edit
+function openEditPartyPicker(){
+  const d=D();
+  const parties=[...d.parties].filter(p=>!p.deleted).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!parties.length){alert('No parties yet. Add one first.');return;}
+  const rows=parties.map(p=>{
+    const typeLbl=p.type==='S'?'Supplier':p.type==='C'?'Customer':'Both';
+    return `<div onclick="closeModal('cf');editParty('${p.id}')" style="padding:11px 12px;border:1.5px solid var(--bdr);border-radius:10px;margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center" onmouseover="this.style.background='#F9FAFB'" onmouseout="this.style.background='#fff'">
+      <div><div style="font-weight:700;font-size:13px">${esc(p.name)}</div><div style="font-size:11px;color:var(--sub)">${p.city?esc(p.city)+' · ':''}${typeLbl}</div></div>
+      <span style="color:var(--pri2);font-size:13px">Edit ✏️</span>
+    </div>`;
+  }).join('');
+  document.getElementById('cf-msg').innerHTML=`<div style="font-size:13px;font-weight:700;margin-bottom:10px">Select a party to edit</div><input id="edit-pk-srch" placeholder="Search..." oninput="filterEditPicker()" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;margin-bottom:10px;box-sizing:border-box"><div id="edit-pk-list" style="max-height:340px;overflow-y:auto">${rows}</div>`;
+  document.getElementById('cf-ok').style.display='none';
+  openModal('cf');
+}
+function filterEditPicker(){
+  const q=(document.getElementById('edit-pk-srch')?.value||'').toLowerCase();
+  document.querySelectorAll('#edit-pk-list>div').forEach(el=>{
+    el.style.display=el.textContent.toLowerCase().includes(q)?'':'none';
+  });
 }
 
 // ═══ BALANCE HELPERS ═══
@@ -866,6 +935,28 @@ function invBalance(iid){
   const inv=d.invoices.find(i=>i.id===iid);if(!inv)return 0;
   const recv=d.payments.filter(p=>p.iid===iid).reduce((s,p)=>s+p.amt,0);
   return inv.grand-recv;
+}
+
+// ═══ CASH IN HAND ═══
+// Every cash movement in one place: cash-bill sales (in), cash purchases (out),
+// and any payment/receipt whose mode is Cash (direction decides in/out).
+function cashLedger(){
+  const d=D();const rows=[];
+  // Opening cash carried forward (optional)
+  if(d.cashOpening)rows.push({date:d.cashOpeningDate||'',desc:'Opening cash balance',ref:'Opening',dir:'in',amt:d.cashOpening,kind:'opening'});
+  // Cash payments & receipts (mode === 'Cash')
+  (d.payments||[]).filter(p=>(p.mode||'').toLowerCase()==='cash').forEach(p=>{
+    const party=d.parties.find(x=>x.id===p.pid);
+    rows.push({date:p.date,desc:(p.dir==='in'?'Cash received — ':'Cash paid — ')+(party?party.name:'—')+(p.rem?' ('+p.rem+')':''),ref:p.ref||'Cash',dir:p.dir,amt:p.amt,kind:'pay',id:p.id});
+  });
+  // Cash expenses recorded from bank/misc as cash (if any) — expenses with mode cash
+  (d.expenses||[]).filter(e=>(e.mode||'').toLowerCase()==='cash').forEach(e=>{
+    rows.push({date:e.date,desc:'Cash expense — '+(e.cat||'')+(e.desc?' ('+e.desc+')':''),ref:'Expense',dir:e.dir==='in'?'in':'out',amt:e.amount,kind:'exp'});
+  });
+  return rows.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+}
+function cashInHand(){
+  return cashLedger().reduce((s,r)=>s+(r.dir==='in'?r.amt:-r.amt),0);
 }
 
 
@@ -907,6 +998,11 @@ function renderHome(){
     <div class="stats" style="margin-top:0">
       <div class="stat"><div class="sl">📦 Pending Bills</div><div class="sv ora">${pendBills}</div></div>
       <div class="stat"><div class="sl">🧾 Pending Invoices</div><div class="sv blu">${pendInvs}</div></div>
+      <div class="stat" style="grid-column:1/-1;background:#FEFCE8;border:1.5px solid #FDE047;cursor:pointer" onclick="goTab('cash')">
+        <div class="sl">💵 Cash in Hand</div>
+        <div class="sv" style="color:${cashInHand()>=0?'#854D0E':'#DC2626'}">${fmt(cashInHand())}</div>
+        <div style="font-size:11px;color:var(--sub)">All cash sales & settlements · tap to view ledger</div>
+      </div>
       <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE">
         <div class="sl">📊 Stock in Hand (Purchased - Sold)</div>
         <div class="sv" style="color:${stockValue()>=0?'#059669':'#DC2626'}">${fmt(Math.abs(stockValue()))}${d.cfStock?'<span style="font-size:11px;color:var(--sub);margin-left:8px">incl. C/F ₹'+new Intl.NumberFormat("en-IN").format(d.cfStock)+'</span>':''}</div>
@@ -935,6 +1031,65 @@ function recentActivity(){
     <div class="pi"><div class="pn">${esc(i.txt)}</div><div class="ps">${fmtD(i.date)}</div></div>
     <div class="pb ${i.type==='inv'?'grn':'red'}" style="color:${i.type==='inv'?'var(--g)':'var(--r)'}">${i.amt}</div>
   </div>`).join('');
+}
+
+// ═══ CASH IN HAND ═══
+function renderCash(){
+  const d=D();
+  const rows=cashLedger().slice().reverse();
+  const inTot=cashLedger().filter(r=>r.dir==='in').reduce((s,r)=>s+r.amt,0);
+  const outTot=cashLedger().filter(r=>r.dir==='out').reduce((s,r)=>s+r.amt,0);
+  const bal=cashInHand();
+  document.getElementById('pg-cash').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button class="btn sm" onclick="goTab('home')">← Back</button>
+    </div>
+    <div style="background:#FEFCE8;border:1.5px solid #FDE047;border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="font-size:12px;color:#854D0E;font-weight:700">💵 CASH IN HAND</div>
+      <div style="font-size:30px;font-weight:800;color:${bal>=0?'#854D0E':'#DC2626'};margin-top:4px">${fmt(bal)}</div>
+      <div style="font-size:12px;color:#92825a;margin-top:2px">${BIZ[curBiz].name}</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="sl">↙ Cash In</div><div class="sv grn">${fmt(inTot)}</div></div>
+      <div class="stat"><div class="sl">↗ Cash Out</div><div class="sv red">${fmt(outTot)}</div></div>
+    </div>
+    <div class="btn-row" style="margin-bottom:14px">
+      <button class="btn pri" onclick="openCashAdjust('in')">+ Cash In</button>
+      <button class="btn" onclick="openCashAdjust('out')">− Cash Out</button>
+      <button class="btn sm" onclick="openCashOpening()">⚙ Set Opening Cash</button>
+    </div>
+    <div class="card" style="padding:0 16px">
+      <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">CASH LEDGER (${rows.length})</div>
+      ${rows.length?rows.map(r=>`<div class="prow" style="cursor:default">
+        <div class="pav" style="background:${r.dir==='in'?'#059669':'#DC2626'};font-size:16px">${r.dir==='in'?'↙':'↗'}</div>
+        <div class="pi">
+          <div class="pn" style="font-size:13px">${esc(r.desc)}</div>
+          <div class="ps">${fmtD(r.date)} · ${esc(r.ref||'')}</div>
+        </div>
+        <div class="pb" style="color:${r.dir==='in'?'var(--g)':'var(--r)'}">${r.dir==='in'?'+':'−'}${fmt(r.amt)}</div>
+      </div>`).join(''):'<div class="empty"><div class="ei">💵</div><p>No cash movements yet.<br><span style="font-size:12px;color:#999">Cash bills & cash settlements appear here.</span></p></div>'}
+    </div>`;
+  ['home','parties','bills','invoices','detail','notes','bank','trash'].forEach(p=>{const el=document.getElementById('pg-'+p);if(el)el.style.display='none';});
+  document.getElementById('pg-cash').style.display='block';
+}
+// Manual cash adjustment (opening, miscellaneous in/out) recorded as a Cash expense entry
+function openCashAdjust(dir){
+  const amtStr=prompt((dir==='in'?'Cash IN':'Cash OUT')+' amount (₹):');
+  if(amtStr===null)return;
+  const amt=parseFloat(amtStr)||0;
+  if(amt<=0){alert('Enter a valid amount');return;}
+  const note=prompt('Note (e.g. "petty cash", "owner withdrawal"):')||'';
+  const d=D();if(!d.expenses)d.expenses=[];
+  d.expenses.push({id:'EXP'+uid4(),date:td(),desc:note||'Cash adjustment',amount:amt,cat:'Cash Adjustment',dir:dir,mode:'cash'});
+  saveToCloud();renderCash();
+}
+function openCashOpening(){
+  const d=D();
+  const cur=d.cashOpening||0;
+  const v=prompt('Opening cash balance for '+BIZ[curBiz].name+' (₹):',cur);
+  if(v===null)return;
+  d.cashOpening=parseFloat(v)||0;d.cashOpeningDate=d.cashOpeningDate||td();
+  saveToCloud();renderCash();
 }
 
 // ═══ PARTIES ═══
@@ -1034,6 +1189,7 @@ function openPartyDetail(pid){
     <div class="det-hd" style="background:var(--pri)">
       <div class="dn">${esc(party.name)}</div>
       <div class="ds">${party.city?esc(party.city)+' · ':''}${party.phone?'📞 '+esc(party.phone):''}${party.gstin?' · GSTIN: '+esc(party.gstin):''}</div>
+      ${(()=>{const bks=partyBanks(party);return bks.length?`<div style="font-size:11px;opacity:.85;margin-top:6px;line-height:1.5">${bks.map(b=>'🏦 '+[b.bankName,b.acNo,b.ifsc,b.upi].filter(Boolean).map(esc).join(' · ')).join('<br>')}</div>`:'';})()}
     </div>
     <div class="stats">
       <div class="stat" style="grid-column:1/-1">
@@ -1048,6 +1204,7 @@ function openPartyDetail(pid){
     </div>
     <div class="btn-row" style="margin-bottom:14px">
       <button class="btn grn" onclick="openPayModal('${pid}')">💰 Payment</button>
+      <button class="btn" style="background:#FEF9C3;border-color:#FDE047;color:#854D0E" onclick="openCashSettle('${pid}')">💵 Settle in Cash</button>
       <button class="btn pri" onclick="openBillModal('${pid}')">+ Purchase Bill</button>
       <button class="btn" onclick="openInvModal('${pid}')">+ Invoice</button>
       <button class="btn" onclick="openNoteModal('${pid}')">📋 Note</button>
@@ -1069,25 +1226,66 @@ function openPartyModal(pid){
   document.getElementById('party-mo-title').textContent=pid?'Edit Party':'Add Party';
   if(pid){
     const p=D().parties.find(x=>x.id===pid);if(!p)return;
-    ['name','phone','city','gstin','pan','udyam','bank','ifsc','upi','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value=p[f]||'';});
+    ['name','phone','city','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value=p[f]||'';});
     document.getElementById('p-type').value=p.type||'S';
     document.getElementById('p-state').value=p.state||'07';
     document.getElementById('p-ob').value=p.ob||0;
     document.getElementById('p-ob-type').value=p.obType||'CR';
+    loadBankRows(partyBanks(p));
   } else {
-    ['name','phone','city','gstin','pan','udyam','bank','ifsc','upi','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value='';});
+    ['name','phone','city','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value='';});
     document.getElementById('p-type').value='S';
     document.getElementById('p-state').value='07';
     document.getElementById('p-ob').value=0;
     document.getElementById('p-ob-type').value='CR';
+    loadBankRows([]);
   }
   openModal('party');
+}
+// Normalise a party's bank info to an array, supporting the old single-field format
+function partyBanks(p){
+  if(p&&Array.isArray(p.banks)&&p.banks.length)return p.banks;
+  // Migrate legacy single fields
+  if(p&&(p.bank||p.ifsc||p.upi))return [{bankName:'',acNo:p.bank||'',ifsc:p.ifsc||'',upi:p.upi||''}];
+  return [];
+}
+var _bankRowSeq=0;
+function bankRowHtml(b){
+  b=b||{};_bankRowSeq++;const n=_bankRowSeq;
+  return `<div class="bankrow" id="bkrow-${n}" style="background:#F9FAFB;border-radius:10px;padding:10px;margin-bottom:8px;position:relative">
+    <button type="button" onclick="document.getElementById('bkrow-${n}').remove()" style="position:absolute;top:6px;right:6px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:1px 7px;cursor:pointer;font-size:12px">✕</button>
+    <div class="fl"><label>Bank Name</label><input class="bk-name" placeholder="e.g. HDFC Bank" value="${esc(b.bankName||'')}"></div>
+    <div class="fr">
+      <div class="fl"><label>A/C No.</label><input class="bk-acno" placeholder="Account number" value="${esc(b.acNo||'')}"></div>
+      <div class="fl"><label>IFSC</label><input class="bk-ifsc" placeholder="e.g. HDFC0000179" value="${esc(b.ifsc||'')}" oninput="this.value=this.value.toUpperCase()"></div>
+    </div>
+    <div class="fl"><label>UPI ID(s) <span style="font-weight:400;color:var(--sub)">— comma-separate multiple</span></label><input class="bk-upi" placeholder="e.g. party@okhdfc, 99999@ybl" value="${esc(b.upi||'')}"></div>
+  </div>`;
+}
+function addBankRow(b){document.getElementById('p-banks-list').insertAdjacentHTML('beforeend',bankRowHtml(b));}
+function loadBankRows(banks){
+  const list=document.getElementById('p-banks-list');list.innerHTML='';
+  if(!banks||!banks.length){addBankRow();return;}
+  banks.forEach(b=>addBankRow(b));
+}
+function getBankRows(){
+  const rows=[];
+  document.querySelectorAll('#p-banks-list .bankrow').forEach(r=>{
+    const bankName=(r.querySelector('.bk-name')?.value||'').trim();
+    const acNo=(r.querySelector('.bk-acno')?.value||'').trim();
+    const ifsc=(r.querySelector('.bk-ifsc')?.value||'').trim().toUpperCase();
+    const upi=(r.querySelector('.bk-upi')?.value||'').trim();
+    if(bankName||acNo||ifsc||upi)rows.push({bankName,acNo,ifsc,upi});
+  });
+  return rows;
 }
 function editParty(pid){openPartyModal(pid);}
 function saveParty(){
   const name=document.getElementById('p-name').value.trim();
   if(!name){alert('Party name required');return;}
   const d=D();
+  const banks=getBankRows();
+  const first=banks[0]||{};
   const party={
     id:editPartyId||('P'+String(d.pC||1).padStart(4,'0')),
     name,type:document.getElementById('p-type').value,
@@ -1097,17 +1295,22 @@ function saveParty(){
     gstin:document.getElementById('p-gstin').value.trim().toUpperCase(),
     pan:(document.getElementById('p-pan')?.value||'').trim().toUpperCase(),
     udyam:(document.getElementById('p-udyam')?.value||'').trim(),
-    bank:document.getElementById('p-bank').value.trim(),
-    ifsc:document.getElementById('p-ifsc').value.trim().toUpperCase(),
-    upi:document.getElementById('p-upi').value.trim(),
+    banks:banks,
+    // legacy mirror (first account) so older code paths keep working
+    bank:first.acNo||'',
+    ifsc:first.ifsc||'',
+    upi:first.upi||'',
     ob:parseFloat(document.getElementById('p-ob').value)||0,
     obType:document.getElementById('p-ob-type').value,
     rem:document.getElementById('p-rem').value.trim()
   };
+  // Preserve any fields on the existing record we don't edit here
+  if(editPartyId){const ex=d.parties.find(x=>x.id===editPartyId);if(ex){['deleted'].forEach(k=>{if(ex[k]!==undefined)party[k]=ex[k];});}}
   if(editPartyId){const i=d.parties.findIndex(x=>x.id===editPartyId);if(i>=0)d.parties[i]=party;}
   else{d.parties.push(party);d.pC=(d.pC||1)+1;}
+  const wasEdit=editPartyId;
   saveToCloud();closeModal('party');renderAll();
-  if(curParty===editPartyId)openPartyDetail(editPartyId);
+  if(curParty===wasEdit)openPartyDetail(wasEdit);
 }
 function confirmDelParty(pid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this party and all their data to Recycle Bin? You can restore everything anytime.</div>';
@@ -1552,6 +1755,8 @@ function openInvModal(pid){
   document.getElementById('i-round').value='round';
   document.getElementById('i-mode').value='credit';
   document.getElementById('i-rem').value='';
+  const cnw=document.getElementById('i-cashnow');if(cnw)cnw.value='';
+  const cnwrap=document.getElementById('i-cashnow-wrap');if(cnwrap)cnwrap.style.display='none';
   document.getElementById('i-items-list').innerHTML='';
   // Populate customer list
   const custs=d.parties.filter(p=>p.type==='C'||p.type==='B');
@@ -1559,6 +1764,12 @@ function openInvModal(pid){
   if(pid){const p=d.parties.find(x=>x.id===pid);if(p){document.getElementById('i-cust').value=p.name;autoSetGST(p);}}
   addInvItem();
   openModal('inv');
+}
+function onInvModeChange(){
+  const mode=document.getElementById('i-mode').value;
+  const wrap=document.getElementById('i-cashnow-wrap');
+  if(wrap)wrap.style.display=mode==='partial'?'block':'none';
+  calcInvTotal();
 }
 function autoSetGST(party){
   if(!party)return;
@@ -1632,7 +1843,14 @@ function calcInvTotal(){
   const isSplit=gstStr.endsWith('s');
   const gstLabel=isSplit?(gstPct/2)+'% CGST + '+(gstPct/2)+'% SGST':gstPct+'% IGST';
   const prev=document.getElementById('i-preview');
-  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
+  const mode=document.getElementById('i-mode')?.value||'credit';
+  let extra='';
+  if(mode==='partial'){
+    const cashNow=parseFloat(document.getElementById('i-cashnow')?.value)||0;
+    const rem=grand-cashNow;
+    extra=` | 💵 Cash now: ${fmt(cashNow)} | <strong style="color:${rem<=0?'#059669':'#DC2626'}">Outstanding: ${fmt(Math.max(0,rem))}</strong>`;
+  }else if(mode==='cash'){extra=' | 💵 <strong>Fully settled in cash</strong>';}
+  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>${extra}`;
 }
 function saveInvoice(){
   const d=D();
@@ -1669,6 +1887,9 @@ function saveInvoice(){
   else if(roundMode==='floor'){roundAdj=Math.floor(grand)-grand;grand=Math.floor(grand);}
   else if(roundMode==='ceil'){roundAdj=Math.ceil(grand)-grand;grand=Math.ceil(grand);}
   const num=document.getElementById('i-num').value;
+  const selMode=document.getElementById('i-mode').value;
+  // 'partial' is stored as a credit invoice with a separate cash receipt
+  const storeMode=selMode==='cash'?'cash':'credit';
   const inv={
     id:'I'+String(d.iC||1).padStart(5,'0'),
     num,date:document.getElementById('i-date').value,
@@ -1677,14 +1898,22 @@ function saveInvoice(){
     custGstin:document.getElementById('i-cust-gstin').value.trim().toUpperCase(),
     custAadhaar:document.getElementById('i-cust-aadhaar').value.trim(),
     items,sub,disc,discAmt,trans,gstStr,gstPct,gstAmt,roundAdj,grand,
-    mode:document.getElementById('i-mode').value,
+    mode:storeMode,
     rem:document.getElementById('i-rem').value.trim()
   };
   if(editInvId){
     const i=d.invoices.findIndex(x=>x.id===editInvId);if(i>=0){inv.id=editInvId;d.invoices[i]=inv;}editInvId=null;
   } else {
     d.invoices.push(inv);d.iC=(d.iC||1)+1;
-    if(inv.mode==='cash'){d.payments.push({id:'PAY'+uid4(),pid:customer.id,iid:inv.id,amt:grand,date:inv.date,mode:'Cash',dir:'in',ref:'Cash Bill',rem:''}); }
+    if(selMode==='cash'){
+      d.payments.push({id:'PAY'+uid4(),pid:customer.id,iid:inv.id,amt:grand,date:inv.date,mode:'Cash',dir:'in',ref:'Cash Bill',rem:''});
+    } else if(selMode==='partial'){
+      let cashNow=parseFloat(document.getElementById('i-cashnow').value)||0;
+      if(cashNow>grand)cashNow=grand;
+      if(cashNow>0){
+        d.payments.push({id:'PAY'+uid4(),pid:customer.id,iid:inv.id,amt:cashNow,date:inv.date,mode:'Cash',dir:'in',ref:'Part Cash',rem:'Part payment at billing'});
+      }
+    }
   }
   saveToCloud();closeModal('inv');printInvoice(inv.id);renderAll();
   if(curParty===customer.id)openPartyDetail(customer.id);
@@ -1742,6 +1971,17 @@ function savePayment(){
   d.payments.push(pay);
   saveToCloud();closeModal('pay');renderAll();
   if(curParty===payTargetId)openPartyDetail(payTargetId);
+}
+function openCashSettle(pid){
+  openPayModal(pid);
+  // Force Cash mode and label the modal accordingly
+  const modeSel=document.getElementById('pay-mode');
+  if(modeSel)modeSel.value='Cash';
+  const title=document.getElementById('pay-mo-title');
+  const d=D();const party=d.parties.find(p=>p.id===pid);
+  const isCust=party&&(party.type==='C'||party.type==='B');
+  if(title)title.textContent=isCust?'💵 Settle in Cash (Receipt)':'💵 Settle in Cash (Payment)';
+  const ref=document.getElementById('pay-ref');if(ref)ref.value='Cash settlement';
 }
 function delPayment(pid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this payment entry?</div>';
@@ -2068,7 +2308,7 @@ function viewBill(bid){
 
 // ═══ MODAL UTILS ═══
 function openModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='flex';el.classList.add('show');}}
-function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}}
+function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}if(id==='cf'){const ok=document.getElementById('cf-ok');if(ok)ok.style.display='';}}
 function closePrint(){document.getElementById('print-overlay').style.display='none';document.body.style.overflow='';}
 function shareWA(){
   const body=document.getElementById('print-body');
@@ -3605,6 +3845,43 @@ function repairPaymentDirections(){
   }
 }
 
+// Match a bank transaction to a party using account no / IFSC / UPI / name signals.
+// Returns {party, reason} or null. Higher-confidence signals win.
+function findPartyForTxn(t){
+  const d=D();
+  const descU=(t.desc||'').toUpperCase().replace(/\s+/g,' ');
+  const descCompact=descU.replace(/[^A-Z0-9@.]/g,''); // for acno/upi substring hits
+  let best=null;
+  d.parties.forEach(p=>{
+    if(p.deleted)return;
+    const banks=partyBanks(p);
+    let score=0,reason='';
+    banks.forEach(b=>{
+      // Account number (match last 4+ digits to be safe against masking like xxxx1234)
+      if(b.acNo){
+        const ac=b.acNo.replace(/\D/g,'');
+        if(ac.length>=4){
+          const tail=ac.slice(-Math.min(ac.length,12));
+          if(descCompact.includes(ac)||descCompact.includes(tail.slice(-6))&&tail.length>=6){score=Math.max(score,100);reason='A/C '+ac.slice(-4);}
+        }
+      }
+      // IFSC
+      if(b.ifsc){const f=b.ifsc.toUpperCase().replace(/\s/g,'');if(f.length>=6&&descCompact.includes(f)){score=Math.max(score,90);reason=reason||'IFSC '+f;}}
+      // UPI (can be comma-separated list)
+      if(b.upi){
+        b.upi.split(/[,\s]+/).filter(Boolean).forEach(u=>{
+          const uu=u.toUpperCase();
+          if(uu.length>=4&&descCompact.includes(uu.replace(/[^A-Z0-9@.]/g,''))){score=Math.max(score,85);reason=reason||'UPI '+u;}
+        });
+      }
+    });
+    // Name match (all significant words present)
+    const words=p.name.toUpperCase().split(/\s+/).filter(w=>w.length>=4);
+    if(words.length&&words.every(w=>descU.includes(w))){if(score<60){score=60;reason=reason||'name';}}
+    if(score>0&&(!best||score>best.score))best={party:p,score:score,reason:reason};
+  });
+  return best;
+}
 function autoMatchBank(){
   const d=D();
   bankTxns.forEach(t=>{
@@ -3612,7 +3889,6 @@ function autoMatchBank(){
     if(t.type==='UNK')return; // unclassified — let the user set CR/DR first
     const wantDir=t.type==='CR'?'in':'out';
     // 1) Match against recorded payments: exact amount + date within 5 days + SAME direction.
-    //    Direction must agree, else a customer receipt could wrongly link to a payment-out.
     const candidates=d.payments.filter(p=>{
       if(p.amt!==t.amount)return false;
       if(p.dir&&p.dir!==wantDir)return false;
@@ -3620,17 +3896,13 @@ function autoMatchBank(){
       return diff<=5;
     });
     if(candidates.length===1){t.matchId=candidates[0].id;return;}
-    // 1.5) Party-name match: if a party's name appears in the narration, settle against that party
-    const descU=(t.desc||'').toUpperCase();
-    const nameMatches=d.parties.filter(p=>{
-      const words=p.name.toUpperCase().split(/\s+/).filter(w=>w.length>=4);
-      return words.length&&words.every(w=>descU.includes(w));
-    });
-    if(nameMatches.length===1){
-      const p=nameMatches[0];
-      const pay={id:'PAY'+uid4(),pid:p.id,amt:t.amount,date:t.date,mode:'NEFT',dir:wantDir,ref:'Bank stmt',rem:t.desc.substring(0,60)+' (name match)'};
+    // 1.5) Multi-signal party match: account no / IFSC / UPI / name in the narration.
+    const hit=findPartyForTxn(t);
+    if(hit){
+      const p=hit.party;
+      const pay={id:'PAY'+uid4(),pid:p.id,amt:t.amount,date:t.date,mode:'NEFT',dir:wantDir,ref:'Bank stmt',rem:t.desc.substring(0,60)+' ('+hit.reason+' match)'};
       d.payments.push(pay);
-      t.matchId=pay.id;t.autoCreated=true;
+      t.matchId=pay.id;t.autoCreated=true;t.matchReason=hit.reason;
       return;
     }
     // 2) DR txns: match against unpaid purchase bills by exact amount → auto-create payment
