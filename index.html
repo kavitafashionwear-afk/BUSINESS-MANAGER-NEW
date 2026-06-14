@@ -311,7 +311,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <option value="37">Andhra Pradesh (37)</option>
       </select>
     </div>
-    <div class="fl"><label>GSTIN</label><input id="p-gstin" placeholder="e.g. 24ACIPS3195C1ZL" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
+    <div class="fl"><label>GSTIN</label><input id="p-gstin" placeholder="e.g. 24ACIPS3195C1ZL" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();syncPartyStateFromGstin()"></div>
     <div class="fr">
       <div class="fl"><label>PAN No.</label><input id="p-pan" placeholder="e.g. ACIPS3195C" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
       <div class="fl"><label>Udyam / MSME No.</label><input id="p-udyam" placeholder="e.g. UDYAM-GJ-22-0086871"></div>
@@ -888,10 +888,38 @@ function subscribeData(){
         S.KF=d.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
         if(!S.KF.trash)S.KF.trash=[];
         if(!S.KF.notes)S.KF.notes=[];
+        // One-time-safe normalization: align party state + invoice GST split with GSTIN.
+        // Never changes any amount — only the CGST+SGST vs IGST classification.
+        normalizeGstData(S.MI);
+        normalizeGstData(S.KF);
       }
       setSyncDot('ok');
       renderAll();
     },()=>setSyncDot('err'));
+}
+// Align stored party.state and invoice gstStr with the authoritative GSTIN.
+// Returns number of fixes. Pure reclassification — totals (gstAmt, grand) are untouched.
+function normalizeGstData(store){
+  if(!store)return 0;
+  let fixes=0;
+  (store.parties||[]).forEach(p=>{
+    if(p.gstin){
+      const st=stateFromGstin(p.gstin);
+      if(st&&p.state!==st){p.state=st;fixes++;}
+    }
+  });
+  (store.invoices||[]).forEach(inv=>{
+    const party=(store.parties||[]).find(p=>p.id===inv.pid);
+    // Resolve geography from GSTIN only (don't touch invoices with no GSTIN anywhere)
+    const g=(inv.custGstin)||(party&&party.gstin)||'';
+    const code=stateFromGstin(g);
+    if(!code)return; // no authoritative source — leave the stored split as-is
+    const wantIntra=(code===HOME_STATE);
+    const pct=parseFloat(inv.gstStr)||inv.gstPct||0;
+    const desired=pct+(wantIntra?'s':'i');
+    if(inv.gstStr!==desired){inv.gstStr=desired;fixes++;}
+  });
+  return fixes;
 }
 async function saveToCloud(){
   if(!uid)return;
@@ -1683,6 +1711,38 @@ function getBankRows(){
   return rows;
 }
 function editParty(pid){openPartyModal(pid);}
+function fixGstTypes(){
+  const d=D();
+  // Build a before/after report for invoices whose split will change
+  const changes=[];
+  (d.invoices||[]).forEach(inv=>{
+    const party=(d.parties||[]).find(p=>p.id===inv.pid);
+    const g=(inv.custGstin)||(party&&party.gstin)||'';
+    const code=stateFromGstin(g);
+    if(!code)return;
+    const wantIntra=(code===HOME_STATE);
+    const was=String(inv.gstStr).endsWith('s');
+    if(was!==wantIntra){
+      changes.push((party?party.name:inv.pid)+' ('+inv.num+'): '+(was?'CGST+SGST':'IGST')+' → '+(wantIntra?'CGST+SGST':'IGST'));
+    }
+  });
+  const partyFixes=(d.parties||[]).filter(p=>p.gstin&&stateFromGstin(p.gstin)&&p.state!==stateFromGstin(p.gstin)).length;
+  if(!changes.length&&!partyFixes){
+    alert('✓ All GST classifications already match the customers\' GSTIN states. Nothing to fix.');
+    return;
+  }
+  const preview=changes.slice(0,12).join('\n')+(changes.length>12?'\n…and '+(changes.length-12)+' more':'');
+  if(confirm('Found '+changes.length+' invoice(s) and '+partyFixes+' party state(s) to correct based on GSTIN.\n\n'+preview+'\n\nThese only change the IGST vs CGST+SGST split — totals stay the same. Apply?')){
+    const n=normalizeGstData(d);
+    saveToCloud();renderAll();
+    alert('✅ Fixed. Re-open or re-print the invoices to see the correct tax type.');
+  }
+}
+function syncPartyStateFromGstin(){
+  const g=(document.getElementById('p-gstin')?.value||'').trim();
+  const st=stateFromGstin(g);
+  if(st){const sel=document.getElementById('p-state');if(sel){const has=[...sel.options].some(o=>o.value===st);if(has)sel.value=st;}}
+}
 function saveParty(){
   const name=document.getElementById('p-name').value.trim();
   if(!name){alert('Party name required');return;}
@@ -1807,7 +1867,7 @@ function renderInvoices(){
   const totalPending=invs.filter(i=>invBalance(i.id)>0).reduce((s,i)=>s+invBalance(i.id),0);
 
   document.getElementById('pg-invoices').innerHTML=`
-    <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
+    <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#FEF3C7;border-color:#FCD34D;color:#92400E" onclick="fixGstTypes()">🔧 Fix GST</button><button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox grn">Total Receivable: <strong>${fmt(totalPending)}</strong></div>`:''}
     <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search invoices..." oninput="renderInvoices()" value="${esc(search)}"></div>
     <div class="seg">
@@ -2203,6 +2263,20 @@ function effectiveCustState(party){
   if(party&&party.gstin){const s=stateFromGstin(party.gstin);if(s)return s;}
   return party?(party.state||HOME_STATE):HOME_STATE;
 }
+// SINGLE SOURCE OF TRUTH for a stored invoice's GST geography.
+// Priority: invoice GSTIN → party GSTIN → party.state → stored tax type on the invoice.
+// Returns {code, isIntra, source}. Used by print + reports so it's always correct,
+// even for invoices saved before the state was known.
+function custStateInfo(inv, party){
+  let g=(inv&&inv.custGstin)||(party&&party.gstin)||'';
+  let code=stateFromGstin(g);
+  if(code)return {code:code,isIntra:code===HOME_STATE,source:'gstin'};
+  // No GSTIN anywhere. Honour the tax type deliberately stored on the invoice
+  // (e.g. imported as IGST for a J&K party) before guessing from the default state.
+  if(inv&&inv.gstStr){return {code:(party&&party.state)||'',isIntra:String(inv.gstStr).endsWith('s'),source:'gstStr'};}
+  if(party&&party.state){return {code:party.state,isIntra:party.state===HOME_STATE,source:'partyState'};}
+  return {code:HOME_STATE,isIntra:true,source:'default'};
+}
 function autoSetGST(party){
   const gstSel=document.getElementById('i-gst');
   if(!gstSel)return;
@@ -2484,11 +2558,11 @@ function printInvoice(iid){
   const d=D();const biz=BIZ[curBiz];
   const inv=d.invoices.find(i=>i.id===iid);if(!inv)return;
   const party=d.parties.find(p=>p.id===inv.pid);
-  const isSplit=inv.gstStr.endsWith('s');
   const gstPct=inv.gstPct||0;
-  const sellerState='07';
-  const buyerState=party&&party.state||'07';
-  const isIntrastate=sellerState===buyerState;
+  // Resolve geography from GSTIN (authoritative), not the possibly-stale party.state
+  const si=custStateInfo(inv,party);
+  const isIntrastate=si.isIntra;
+  const stateLabel=(si.code?si.code+' ':'')+(isIntrastate?'(Intra-state)':'(Inter-state)');
 
   const itemRows=inv.items.map((it,i)=>`<tr style="background:${i%2?'#F9F9F9':'#fff'}">
     <td style="padding:6px 8px;border:1px solid #E0E0E0;text-align:center">${i+1}</td>
@@ -2531,7 +2605,7 @@ function printInvoice(iid){
         <div style="font-size:12px">📞 ${esc(party&&party.phone||'-')}</div>
         ${(inv.custGstin||(party&&party.gstin))?`<div style="font-size:12px;font-weight:700">GSTIN: ${esc(inv.custGstin||(party&&party.gstin)||'')}</div>`:''}
         ${inv.custAadhaar?`<div style="font-size:12px">Aadhaar: ${esc(inv.custAadhaar)}</div>`:''}
-        <div style="font-size:12px">State: ${esc(party&&party.state||'')} ${isIntrastate?'(Intra-state)':'(Inter-state)'}</div>
+        <div style="font-size:12px">State: ${esc(stateLabel)}</div>
       </div>
       ${inv.ship?`<div style="border:1px solid #E0E0E0;border-radius:8px;padding:10px">
         <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">SHIP TO</div>
