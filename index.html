@@ -42,6 +42,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .botnav .nb{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:10px;font-weight:600;color:var(--sub);cursor:pointer;border:none;background:none;padding:0}
 .botnav .nb.act{color:var(--pri2)}
 .botnav .nb .ic{font-size:20px}
+/* NAV DRAWER */
+.hamb{background:rgba(255,255,255,.15);border:none;color:#fff;width:38px;height:38px;border-radius:10px;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.hamb:hover{background:rgba(255,255,255,.28)}
+.drawer-back{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:120;opacity:0;pointer-events:none;transition:opacity .2s}
+.drawer-back.show{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;left:0;bottom:0;width:270px;max-width:82vw;background:#fff;z-index:130;transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1);box-shadow:2px 0 16px rgba(0,0,0,.18);display:flex;flex-direction:column;overflow-y:auto}
+.drawer.show{transform:translateX(0)}
+.drawer .dh{background:var(--pri);color:#fff;padding:20px 18px 16px}
+.drawer .dh .dt{font-size:17px;font-weight:800}
+.drawer .dh .dsub{font-size:12px;opacity:.75;margin-top:2px}
+.drawer .ditem{display:flex;align-items:center;gap:14px;padding:13px 18px;font-size:14px;font-weight:600;color:var(--txt);cursor:pointer;border:none;background:none;width:100%;text-align:left;border-left:3px solid transparent}
+.drawer .ditem:hover{background:#F9FAFB}
+.drawer .ditem.act{background:var(--pri3,#EFF6FF);border-left-color:var(--pri2);color:var(--pri2)}
+.drawer .ditem .di{font-size:19px;width:24px;text-align:center}
+.drawer .dgroup{font-size:11px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;padding:14px 18px 6px}
 /* MAIN */
 .main{flex:1;padding:14px;padding-bottom:74px;max-width:800px;margin:0 auto;width:100%}
 /* CARDS */
@@ -186,6 +201,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 
   <!-- TOP NAV -->
   <div class="topnav" id="topnav">
+    <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
       <div style="font-size:11px;opacity:.7">Business Manager <span class="sync-dot" id="sync-dot"></span></div>
@@ -194,6 +210,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="av" id="av" onclick="doLogout()">H</div>
   </div>
 
+  <!-- NAV DRAWER -->
+  <div class="drawer-back" id="drawer-back" onclick="closeDrawer()"></div>
+  <nav class="drawer" id="drawer">
+    <div class="dh">
+      <div class="dt" id="drawer-biz">Business Manager</div>
+      <div class="dsub" id="drawer-sub">Navigate</div>
+    </div>
+    <div class="dgroup">Main</div>
+    <button class="ditem" data-tab="home" onclick="navTo('home')"><span class="di">🏠</span> Home</button>
+    <button class="ditem" data-tab="parties" onclick="navTo('parties')"><span class="di">👥</span> Parties</button>
+    <button class="ditem" data-tab="bills" onclick="navTo('bills')"><span class="di">📦</span> Purchase</button>
+    <button class="ditem" data-tab="invoices" onclick="navTo('invoices')"><span class="di">🧾</span> Sales</button>
+    <div class="dgroup">Money</div>
+    <button class="ditem" data-tab="bank" onclick="navTo('bank')"><span class="di">🏦</span> Bank</button>
+    <button class="ditem" data-tab="cash" onclick="navTo('cash')"><span class="di">💵</span> Cash in Hand</button>
+    <button class="ditem" data-tab="loans" onclick="navTo('loans')"><span class="di">📊</span> Assets, Loans &amp; OD</button>
+    <div class="dgroup">More</div>
+    <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
+    <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
+    <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
+  </nav>
+
   <!-- PAGES -->
   <div id="pg-home" class="main"></div>
   <div id="pg-parties" class="main" style="display:none"></div>
@@ -201,6 +239,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="pg-invoices" class="main" style="display:none"></div>
   <div id="pg-bank" class="main" style="display:none"></div>
   <div id="pg-cash" class="main" style="display:none"></div>
+  <div id="pg-loans" class="main" style="display:none"></div>
   <div id="pg-notes" class="main" style="display:none"></div>
   <div id="pg-reports" class="main" style="display:none"></div>
   <div id="pg-trash" class="main" style="display:none"></div>
@@ -213,13 +252,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <nav class="botnav">
     <button class="nb act" id="nb-home" onclick="goTab('home')"><span class="ic">🏠</span>Home</button>
     <button class="nb" id="nb-parties" onclick="goTab('parties')"><span class="ic">👥</span>Parties</button>
-    <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">📦</span>Purchase</button>
     <button class="nb" id="nb-invoices" onclick="goTab('invoices')"><span class="ic">🧾</span>Sales</button>
-    <button class="nb" id="nb-bank" onclick="goTab('bank')"><span class="ic">🏦</span>Bank</button>
-    <button class="nb" id="nb-cash" onclick="goTab('cash')"><span class="ic">💵</span>Cash</button>
-    <button class="nb" id="nb-notes" onclick="goTab('notes')"><span class="ic">📋</span>Notes</button>
-    <button class="nb" id="nb-reports" onclick="goTab('reports')"><span class="ic">📊</span>Reports</button>
-    <button class="nb" id="nb-trash" onclick="goTab('trash')"><span class="ic">🗑️</span>Bin<span id="trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 4px;font-size:10px;margin-left:2px;vertical-align:middle"></span></button>
+    <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">📦</span>Purchase</button>
+    <button class="nb" id="nb-more" onclick="openDrawer()"><span class="ic">☰</span>More</button>
   </nav>
 </div>
 
@@ -411,14 +446,22 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="fl"><label>Discount %</label><input id="i-disc" type="number" placeholder="0" min="0" max="100" oninput="calcInvTotal()"></div>
       <div class="fl"><label>Transport (₹)</label><input id="i-trans" type="number" placeholder="0" min="0" oninput="calcInvTotal()"></div>
     </div>
-    <div class="fl"><label>GST (auto from customer state)</label>
+    <div class="fl"><label>GST (auto from customer GSTIN / state)</label>
       <select id="i-gst" onchange="calcInvTotal()">
         <option value="5i">5% IGST (Inter-state)</option>
-        <option value="5s">5% CGST+SGST (Delhi)</option>
+        <option value="5s">5% CGST+SGST (Delhi / Intra-state)</option>
         <option value="12i">12% IGST</option>
         <option value="12s">12% CGST+SGST</option>
         <option value="0">0% Exempt</option>
       </select>
+      <div id="i-gst-hint" style="font-size:11px;color:var(--sub);margin-top:4px"></div>
+    </div>
+    <div class="fl" style="background:#F0FDF4;border:1.5px solid #BBF7D0;border-radius:10px;padding:10px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
+        <input type="checkbox" id="i-incl-gst" onchange="calcInvTotal()" style="width:auto;margin:0">
+        <span>🔄 Amounts are GST-inclusive — back-calculate tax &amp; taxable from the total</span>
+      </label>
+      <div style="font-size:11px;color:var(--sub);margin-top:4px">Tick this if your rates already include GST (e.g. you quote a final round figure). Taxable value and GST are extracted from the entered amount instead of added on top.</div>
     </div>
     <div class="fl"><label>Rounding Off</label>
       <select id="i-round">
@@ -595,6 +638,78 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
 </div></div>
 
+<!-- LOAN MODAL -->
+<div class="ov" id="mo-loan">
+<div class="mb">
+  <div class="mhd"><div><h3 id="loan-mo-title">Add Loan</h3><div class="sub">Friends, family or bank OD</div></div><button class="xb" onclick="closeModal('loan')">✕</button></div>
+  <div class="mbd">
+    <div class="fl"><label>Type *</label>
+      <select id="ln-kind" onchange="onLoanKindChange()">
+        <option value="loan">Friends / Family Loan</option>
+        <option value="od">Bank Overdraft (OD)</option>
+      </select>
+    </div>
+    <div class="fl"><label>Name *</label><input id="ln-name" placeholder="e.g. Rajesh Uncle / DCB OD A/C"></div>
+    <div class="fl" id="ln-relation-wrap"><label>Relation / Source</label><input id="ln-relation" placeholder="e.g. Friend, Brother, Father"></div>
+    <div class="fr">
+      <div class="fl"><label id="ln-principal-label">Loan Principal / Opening (₹)</label><input id="ln-principal" type="number" placeholder="0" min="0" step="0.01"></div>
+      <div class="fl"><label>Interest Rate % (optional)</label><input id="ln-rate" placeholder="e.g. 12"></div>
+    </div>
+    <div id="ln-bank-wrap">
+      <div class="fr">
+        <div class="fl"><label>Bank Name (optional)</label><input id="ln-bankname" placeholder="e.g. DCB Bank"></div>
+        <div class="fl"><label>A/C No. (optional)</label><input id="ln-acno" placeholder="Account number"></div>
+      </div>
+    </div>
+    <div class="fl"><label>Note</label><input id="ln-note" placeholder="Optional"></div>
+    <div class="ibox blu" style="margin-top:4px;font-size:12px">💡 For OD, "Sanctioned Limit" is the total facility. Use Withdraw/Deposit to track how much is drawn.</div>
+  </div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('loan')">Cancel</button>
+    <button class="btn pri" onclick="saveLoan()">Save</button>
+  </div>
+</div></div>
+
+<!-- LOAN TXN MODAL -->
+<div class="ov" id="mo-loantxn">
+<div class="mb">
+  <div class="mhd"><div><h3 id="lt-title">Loan Transaction</h3></div><button class="xb" onclick="closeModal('loantxn')">✕</button></div>
+  <div class="mbd">
+    <div class="fr">
+      <div class="fl"><label>Amount (₹) *</label><input id="lt-amt" type="number" placeholder="0" min="1" step="0.01"></div>
+      <div class="fl"><label>Date *</label><input id="lt-date" type="date"></div>
+    </div>
+    <div class="fl"><label>Note</label><input id="lt-note" placeholder="Optional"></div>
+  </div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('loantxn')">Cancel</button>
+    <button class="btn pri" onclick="saveLoanTxn()">Save</button>
+  </div>
+</div></div>
+
+<!-- ASSET MODAL -->
+<div class="ov" id="mo-asset">
+<div class="mb">
+  <div class="mhd"><div><h3 id="asset-mo-title">Add Asset</h3><div class="sub">Machinery, vehicle, furniture, investments</div></div><button class="xb" onclick="closeModal('asset')">✕</button></div>
+  <div class="mbd">
+    <div class="fl"><label>Asset Name *</label><input id="as-name" placeholder="e.g. Juki Sewing Machine"></div>
+    <div class="fr">
+      <div class="fl"><label>Category</label>
+        <select id="as-cat">
+          <option>Machinery</option><option>Vehicle</option><option>Furniture</option><option>Property</option><option>Investment / FD</option><option>Other</option>
+        </select>
+      </div>
+      <div class="fl"><label>Value (₹) *</label><input id="as-value" type="number" placeholder="0" min="0" step="0.01"></div>
+    </div>
+    <div class="fl"><label>Date of Purchase</label><input id="as-date" type="date"></div>
+    <div class="fl"><label>Note</label><input id="as-note" placeholder="Optional"></div>
+  </div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('asset')">Cancel</button>
+    <button class="btn pri" onclick="saveAsset()">Save Asset</button>
+  </div>
+</div></div>
+
 <!-- CONFIRM MODAL -->
 <div class="ov" id="mo-cf">
 <div class="mb" style="border-radius:20px;max-height:auto">
@@ -664,7 +779,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -799,22 +914,49 @@ function toggleBiz(){
   curBiz=curBiz==='MI'?'KF':'MI';
   const biz=BIZ[curBiz];
   document.getElementById('biz-name').textContent=biz.name;
+  const db2=document.getElementById('drawer-biz');if(db2)db2.textContent=biz.name;
   document.documentElement.style.setProperty('--pri',biz.color);
   document.documentElement.style.setProperty('--pri2',biz.color2);
   document.documentElement.style.setProperty('--pri3',biz.color3);
   renderAll();
 }
 
+// ═══ NAV DRAWER ═══
+function openDrawer(){
+  const biz=BIZ[curBiz];
+  const db2=document.getElementById('drawer-biz');if(db2)db2.textContent=biz.name;
+  // Highlight active item
+  document.querySelectorAll('#drawer .ditem').forEach(el=>{
+    el.classList.toggle('act',el.dataset.tab===curTab);
+  });
+  // Sync trash badge into drawer
+  const d=D();const tn=(d.trash||[]).length;
+  const tb=document.getElementById('drawer-trash-badge');
+  if(tb){if(tn){tb.textContent=tn;tb.style.display='';}else tb.style.display='none';}
+  document.getElementById('drawer').classList.add('show');
+  document.getElementById('drawer-back').classList.add('show');
+}
+function closeDrawer(){
+  document.getElementById('drawer').classList.remove('show');
+  document.getElementById('drawer-back').classList.remove('show');
+}
+function navTo(t){closeDrawer();goTab(t);}
+
 // ═══ NAV ═══
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
-  ['home','parties','bills','invoices','detail','notes','bank','cash','trash'].forEach(p=>{
+  ['home','parties','bills','invoices','detail','notes','bank','cash','loans','trash'].forEach(p=>{
     const el=document.getElementById('pg-'+p);
     if(el)el.style.display=p===t?'block':'none';
   });
-  ['home','parties','bills','invoices','notes','bank','cash','trash'].forEach(n=>{
+  // Slim bottom nav: only these 4 have buttons; "More" stays inactive
+  ['home','parties','bills','invoices'].forEach(n=>{
     const el=document.getElementById('nb-'+n);
     if(el)el.className='nb'+(n===t?' act':'');
+  });
+  // Keep drawer highlight in sync
+  document.querySelectorAll('#drawer .ditem').forEach(el=>{
+    el.classList.toggle('act',el.dataset.tab===t);
   });
   renderTab(t);
 }
@@ -827,6 +969,7 @@ function renderTab(t){
   else if(t==='notes')renderNotes();
   else if(t==='bank')renderBank();
   else if(t==='cash')renderCash();
+  else if(t==='loans')renderLoans();
   else if(t==='reports')renderReports();
   else if(t==='trash')renderTrash();
 }
@@ -1003,6 +1146,11 @@ function renderHome(){
         <div class="sv" style="color:${cashInHand()>=0?'#854D0E':'#DC2626'}">${fmt(cashInHand())}</div>
         <div style="font-size:11px;color:var(--sub)">All cash sales & settlements · tap to view ledger</div>
       </div>
+      <div class="stat" style="grid-column:1/-1;background:#EEF2FF;border:1.5px solid #C7D2FE;cursor:pointer" onclick="goTab('loans')">
+        <div class="sl">🤝 Loans & OD</div>
+        <div class="sv" style="color:#4338CA">${fmt(totalLoanOutstanding())}<span style="font-size:11px;color:var(--sub);margin-left:8px">loans owed</span></div>
+        <div style="font-size:11px;color:var(--sub)">OD drawn ${fmt(odUsed())} · tap to manage</div>
+      </div>
       <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE">
         <div class="sl">📊 Stock in Hand (Purchased - Sold)</div>
         <div class="sv" style="color:${stockValue()>=0?'#059669':'#DC2626'}">${fmt(Math.abs(stockValue()))}${d.cfStock?'<span style="font-size:11px;color:var(--sub);margin-left:8px">incl. C/F ₹'+new Intl.NumberFormat("en-IN").format(d.cfStock)+'</span>':''}</div>
@@ -1090,6 +1238,261 @@ function openCashOpening(){
   if(v===null)return;
   d.cashOpening=parseFloat(v)||0;d.cashOpeningDate=d.cashOpeningDate||td();
   saveToCloud();renderCash();
+}
+
+// ═══════════════════════════════
+//  LOANS  &  OVERDRAFT (OD)
+// ═══════════════════════════════
+// d.loans = [{id,name,relation,kind:'loan'|'od',principal,rate,note,bankName,acNo, txns:[{id,date,dir:'in'|'out',amt,note}]}]
+// A loan/OD is a LIABILITY: 'in' = money received (balance ↑ you owe more);
+// 'out' = repayment (balance ↓). Outstanding = openingPrincipal + Σin − Σout.
+function ensureLoans(){const d=D();if(!d.loans)d.loans=[];if(!d.loanC)d.loanC=1;return d.loans;}
+function loanBalance(loan){
+  // For friends/family loans, principal is the opening amount owed.
+  // For OD, principal is the SANCTIONED LIMIT (not an amount owed), so the
+  // outstanding/drawn balance is purely the net of withdrawals minus deposits.
+  const base=loan.kind==='od'?0:(parseFloat(loan.principal)||0);
+  const txns=loan.txns||[];
+  const inSum=txns.filter(t=>t.dir==='in').reduce((s,t)=>s+(parseFloat(t.amt)||0),0);
+  const outSum=txns.filter(t=>t.dir==='out').reduce((s,t)=>s+(parseFloat(t.amt)||0),0);
+  return base+inSum-outSum;
+}
+function totalLoanOutstanding(){return ensureLoans().filter(l=>l.kind!=='od').reduce((s,l)=>s+loanBalance(l),0);}
+function odUsed(){
+  // OD utilisation = sum of OD-kind loan balances (what you've drawn down)
+  return ensureLoans().filter(l=>l.kind==='od').reduce((s,l)=>s+loanBalance(l),0);
+}
+
+// ═══ ASSETS & BALANCE SHEET ═══
+function ensureAssets(){const d=D();if(!d.assets)d.assets=[];if(!d.assetC)d.assetC=1;return d.assets;}
+function totalFixedAssets(){return ensureAssets().reduce((s,a)=>s+(parseFloat(a.value)||0),0);}
+function balanceSheet(){
+  const d=D();
+  const debtors=d.parties.filter(p=>p.type==='C'||p.type==='B').reduce((s,p)=>{const b=partyBalance(p.id);return s+(b>0?b:0);},0);
+  const creditors=d.parties.filter(p=>p.type==='S'||p.type==='B').reduce((s,p)=>{const b=partyBalance(p.id);return s+(b<0?Math.abs(b):0);},0);
+  const cash=cashInHand();
+  const stock=stockValue();
+  const fixed=totalFixedAssets();
+  const loans=totalLoanOutstanding();
+  const od=odUsed();
+  const assets={cash:cash>0?cash:0,debtors,stock:stock>0?stock:0,fixed};
+  assets.total=assets.cash+assets.debtors+assets.stock+assets.fixed;
+  const liabilities={creditors,loans,od};
+  liabilities.total=liabilities.creditors+liabilities.loans+liabilities.od;
+  return {assets,liabilities,netWorth:assets.total-liabilities.total};
+}
+
+function renderLoans(){
+  const d=D();const loans=ensureLoans();
+  const od=loans.filter(l=>l.kind==='od');
+  const friendly=loans.filter(l=>l.kind!=='od');
+  const odLimit=od.reduce((s,l)=>s+(parseFloat(l.principal)||0),0); // for OD, principal = sanctioned limit
+  const odDrawn=od.reduce((s,l)=>s+(l.txns||[]).filter(t=>t.dir==='in').reduce((a,t)=>a+(parseFloat(t.amt)||0),0)-(l.txns||[]).filter(t=>t.dir==='out').reduce((a,t)=>a+(parseFloat(t.amt)||0),0),0);
+  const odAvail=odLimit-odDrawn;
+  const loanTot=friendly.reduce((s,l)=>s+loanBalance(l),0);
+
+  const loanCard=l=>{
+    const bal=loanBalance(l);
+    const txns=(l.txns||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    return `<div class="card" style="padding:14px;margin-bottom:10px;border-left:4px solid ${l.kind==='od'?'#7C3AED':'#0EA5E9'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:700">${esc(l.name)}${l.kind==='od'?' <span class="bdg" style="background:#EDE9FE;color:#5B21B6">OD</span>':''}</div>
+          <div style="font-size:11px;color:var(--sub)">${l.relation?esc(l.relation)+' · ':''}${l.rate?'@'+esc(l.rate)+'% · ':''}${l.bankName?esc(l.bankName):''}${l.acNo?' · A/C '+esc(l.acNo):''}</div>
+          ${l.note?`<div style="font-size:11px;color:var(--sub);margin-top:2px">${esc(l.note)}</div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:8px">
+          <div style="font-size:10px;color:var(--sub)">${l.kind==='od'?'Drawn':'Outstanding'}</div>
+          <div style="font-size:17px;font-weight:800;color:${bal>0?'#DC2626':'#059669'}">${fmt(bal)}</div>
+          ${l.kind==='od'?`<div style="font-size:10px;color:var(--sub)">of ${fmt(parseFloat(l.principal)||0)} limit</div>`:''}
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn sm grn" onclick="openLoanTxn('${l.id}','in')">${l.kind==='od'?'↘ Withdraw':'↘ Received'}</button>
+        <button class="btn sm" onclick="openLoanTxn('${l.id}','out')">${l.kind==='od'?'↗ Deposit':'↗ Repaid'}</button>
+        <button class="btn sm" onclick="openLoanModal('${l.id}')">✏️ Edit</button>
+        <button class="btn sm red" onclick="delLoan('${l.id}')">🗑</button>
+      </div>
+      ${txns.length?`<div style="margin-top:10px;border-top:1px solid var(--bdr);padding-top:6px">
+        ${txns.map(t=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px">
+          <div><span style="color:${t.dir==='in'?'#DC2626':'#059669'};font-weight:700">${t.dir==='in'?'↘':'↗'}</span> ${fmtD(t.date)}${t.note?' · '+esc(t.note):''}</div>
+          <div style="font-weight:700;color:${t.dir==='in'?'#DC2626':'#059669'}">${t.dir==='in'?'+':'−'}${fmt(t.amt)}</div>
+        </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  };
+
+  const bs=balanceSheet();
+  const assets=ensureAssets();
+  const assetRow=a=>`<div class="prow" style="cursor:default">
+    <div class="pav" style="background:#0EA5E9;font-size:15px">${a.cat==='Vehicle'?'🚗':a.cat==='Machinery'?'⚙️':a.cat==='Furniture'?'🪑':a.cat==='Property'?'🏠':a.cat==='Investment / FD'?'📈':'📦'}</div>
+    <div class="pi"><div class="pn" style="font-size:13px">${esc(a.name)}</div><div class="ps">${esc(a.cat||'Asset')}${a.date?' · '+fmtD(a.date):''}${a.note?' · '+esc(a.note):''}</div></div>
+    <div class="pb" style="color:#0369A1">${fmt(a.value)}<div style="font-size:10px"><button onclick="openAssetModal('${a.id}')" style="background:none;border:none;color:var(--pri2);cursor:pointer;font-size:11px">edit</button> · <button onclick="delAsset('${a.id}')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:11px">del</button></div></div>
+  </div>`;
+  const sheetRow=(label,val,color)=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span>${label}</span><span style="font-weight:700;color:${color||'inherit'}">${fmt(val)}</span></div>`;
+
+  document.getElementById('pg-loans').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button class="btn sm" onclick="goTab('home')">← Back</button>
+    </div>
+    <div style="background:var(--pri);color:#fff;border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="font-size:12px;opacity:.8;font-weight:700">📊 ASSETS, LIABILITIES, LOANS &amp; OD</div>
+      <div style="font-size:13px;opacity:.85;margin-top:2px">${BIZ[curBiz].name}</div>
+    </div>
+
+    <!-- BALANCE SHEET -->
+    <div class="card">
+      <div class="card-hd">📊 Balance Sheet (live)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div style="font-size:12px;font-weight:800;color:#059669;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin-bottom:4px">ASSETS</div>
+          ${sheetRow('💵 Cash in Hand',bs.assets.cash)}
+          ${sheetRow('💰 Receivables',bs.assets.debtors)}
+          ${sheetRow('📦 Stock in Hand',bs.assets.stock)}
+          ${sheetRow('🏭 Fixed Assets',bs.assets.fixed)}
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Assets</strong><strong style="color:#059669">${fmt(bs.assets.total)}</strong></div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:800;color:#DC2626;border-bottom:2px solid #FEE2E2;padding-bottom:4px;margin-bottom:4px">LIABILITIES</div>
+          ${sheetRow('📤 Payables',bs.liabilities.creditors)}
+          ${sheetRow('🤝 Loans',bs.liabilities.loans)}
+          ${sheetRow('🏦 OD Drawn',bs.liabilities.od)}
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Liabilities</strong><strong style="color:#DC2626">${fmt(bs.liabilities.total)}</strong></div>
+        </div>
+      </div>
+      <div style="background:${bs.netWorth>=0?'#ECFDF5':'#FEF2F2'};border-radius:10px;padding:12px;margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:13px;font-weight:700">📈 Net Worth (Assets − Liabilities)</span>
+        <span style="font-size:18px;font-weight:800;color:${bs.netWorth>=0?'#059669':'#DC2626'}">${fmt(bs.netWorth)}</span>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="sl">🤝 Loans Outstanding</div><div class="sv red">${fmt(loanTot)}</div><div style="font-size:10px;color:var(--sub)">${friendly.length} account(s)</div></div>
+      <div class="stat"><div class="sl">🏦 OD Available</div><div class="sv" style="color:${odAvail>=0?'#059669':'#DC2626'}">${fmt(odAvail)}</div><div style="font-size:10px;color:var(--sub)">${fmt(odDrawn)} of ${fmt(odLimit)} used</div></div>
+    </div>
+    <div class="btn-row" style="margin-bottom:14px">
+      <button class="btn pri" onclick="openLoanModal()">+ Add Loan</button>
+      <button class="btn" style="background:#F5F3FF;color:#5B21B6;border-color:#DDD6FE" onclick="openLoanModal(null,'od')">+ Add OD Facility</button>
+      <button class="btn" style="background:#EFF6FF;color:#0369A1;border-color:#BAE6FD" onclick="openAssetModal()">+ Add Asset</button>
+    </div>
+    ${od.length?`<div class="card-hd" style="padding:0 4px">🏦 Overdraft Facilities</div>${od.map(loanCard).join('')}`:''}
+    ${friendly.length?`<div class="card-hd" style="padding:0 4px;margin-top:8px">🤝 Friends &amp; Family Loans</div>${friendly.map(loanCard).join('')}`:''}
+    ${assets.length?`<div class="card" style="padding:0 16px;margin-top:8px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">🏭 FIXED ASSETS &amp; INVESTMENTS</div>${assets.map(assetRow).join('')}</div>`:''}
+    ${!loans.length&&!assets.length?'<div class="empty"><div class="ei">📊</div><p>No loans, OD or assets yet.<br><span style="font-size:12px;color:#999">Add a loan, OD facility or business asset.</span></p></div>':''}
+  `;
+  ['home','parties','bills','invoices','detail','notes','bank','cash','trash'].forEach(p=>{const el=document.getElementById('pg-'+p);if(el)el.style.display='none';});
+  document.getElementById('pg-loans').style.display='block';
+}
+
+// ═══ ASSET MODAL ═══
+var editAssetId=null;
+function openAssetModal(aid){
+  ensureAssets();editAssetId=aid||null;
+  const d=D();const a=aid?d.assets.find(x=>x.id===aid):null;
+  document.getElementById('asset-mo-title').textContent=aid?'Edit Asset':'Add Asset';
+  document.getElementById('as-name').value=a?a.name||'':'';
+  document.getElementById('as-cat').value=a?a.cat||'Machinery':'Machinery';
+  document.getElementById('as-value').value=a?(a.value||''):'';
+  document.getElementById('as-date').value=a?(a.date||td()):td();
+  document.getElementById('as-note').value=a?a.note||'':'';
+  openModal('asset');
+}
+function saveAsset(){
+  const d=D();ensureAssets();
+  const name=document.getElementById('as-name').value.trim();
+  if(!name){alert('Enter asset name');return;}
+  const obj={
+    id:editAssetId||('AS'+String(d.assetC||1).padStart(3,'0')),
+    name,
+    cat:document.getElementById('as-cat').value,
+    value:parseFloat(document.getElementById('as-value').value)||0,
+    date:document.getElementById('as-date').value||td(),
+    note:document.getElementById('as-note').value.trim()
+  };
+  if(editAssetId){const i=d.assets.findIndex(x=>x.id===editAssetId);if(i>=0)d.assets[i]=obj;}
+  else{d.assets.push(obj);d.assetC=(d.assetC||1)+1;}
+  editAssetId=null;
+  saveToCloud();closeModal('asset');renderLoans();
+}
+function delAsset(aid){
+  const d=D();const a=d.assets.find(x=>x.id===aid);if(!a)return;
+  if(!confirm('Delete asset "'+a.name+'"?'))return;
+  d.assets=d.assets.filter(x=>x.id!==aid);
+  saveToCloud();renderLoans();
+}
+
+var editLoanId=null;
+function openLoanModal(lid,presetKind){
+  ensureLoans();editLoanId=lid||null;
+  const d=D();
+  const l=lid?d.loans.find(x=>x.id===lid):null;
+  const kind=l?l.kind:(presetKind||'loan');
+  const isOD=kind==='od';
+  document.getElementById('loan-mo-title').textContent=(lid?'Edit ':'Add ')+(isOD?'OD Facility':'Loan');
+  document.getElementById('ln-kind').value=kind;
+  document.getElementById('ln-name').value=l?l.name||'':'';
+  document.getElementById('ln-relation').value=l?l.relation||'':'';
+  document.getElementById('ln-principal').value=l?(l.principal||''):'';
+  document.getElementById('ln-rate').value=l?(l.rate||''):'';
+  document.getElementById('ln-bankname').value=l?l.bankName||'':'';
+  document.getElementById('ln-acno').value=l?l.acNo||'':'';
+  document.getElementById('ln-note').value=l?l.note||'':'';
+  onLoanKindChange();
+  openModal('loan');
+}
+function onLoanKindChange(){
+  const isOD=document.getElementById('ln-kind').value==='od';
+  document.getElementById('ln-principal-label').textContent=isOD?'Sanctioned OD Limit (₹)':'Loan Principal / Opening (₹)';
+  document.getElementById('ln-relation-wrap').style.display=isOD?'none':'block';
+  document.getElementById('ln-bank-wrap').style.display=isOD?'block':'block';
+}
+function saveLoan(){
+  const d=D();ensureLoans();
+  const name=document.getElementById('ln-name').value.trim();
+  if(!name){alert('Enter a name');return;}
+  const obj={
+    id:editLoanId||('LN'+String(d.loanC||1).padStart(3,'0')),
+    kind:document.getElementById('ln-kind').value,
+    name,
+    relation:document.getElementById('ln-relation').value.trim(),
+    principal:parseFloat(document.getElementById('ln-principal').value)||0,
+    rate:document.getElementById('ln-rate').value.trim(),
+    bankName:document.getElementById('ln-bankname').value.trim(),
+    acNo:document.getElementById('ln-acno').value.trim(),
+    note:document.getElementById('ln-note').value.trim(),
+    txns:editLoanId?(d.loans.find(x=>x.id===editLoanId)?.txns||[]):[]
+  };
+  if(editLoanId){const i=d.loans.findIndex(x=>x.id===editLoanId);if(i>=0)d.loans[i]=obj;}
+  else{d.loans.push(obj);d.loanC=(d.loanC||1)+1;}
+  editLoanId=null;
+  saveToCloud();closeModal('loan');renderLoans();
+}
+function delLoan(lid){
+  const d=D();const l=d.loans.find(x=>x.id===lid);if(!l)return;
+  if(!confirm('Delete "'+l.name+'" and its '+(l.txns||[]).length+' transaction(s)?'))return;
+  d.loans=d.loans.filter(x=>x.id!==lid);
+  saveToCloud();renderLoans();
+}
+var _loanTxnTarget=null,_loanTxnDir=null;
+function openLoanTxn(lid,dir){
+  _loanTxnTarget=lid;_loanTxnDir=dir;
+  const d=D();const l=d.loans.find(x=>x.id===lid);if(!l)return;
+  const isOD=l.kind==='od';
+  const inLbl=isOD?'Withdraw (draw from OD)':'Amount received';
+  const outLbl=isOD?'Deposit (repay OD)':'Amount repaid';
+  document.getElementById('lt-title').textContent=(dir==='in'?inLbl:outLbl)+' — '+l.name;
+  document.getElementById('lt-amt').value='';
+  document.getElementById('lt-date').value=td();
+  document.getElementById('lt-note').value='';
+  openModal('loantxn');
+}
+function saveLoanTxn(){
+  const d=D();const l=d.loans.find(x=>x.id===_loanTxnTarget);if(!l)return;
+  const amt=parseFloat(document.getElementById('lt-amt').value)||0;
+  if(amt<=0){alert('Enter a valid amount');return;}
+  if(!l.txns)l.txns=[];
+  l.txns.push({id:'LT'+uid4(),date:document.getElementById('lt-date').value||td(),dir:_loanTxnDir,amt,note:document.getElementById('lt-note').value.trim()});
+  saveToCloud();closeModal('loantxn');renderLoans();
 }
 
 // ═══ PARTIES ═══
@@ -1444,6 +1847,8 @@ function updateTrashBadge(){
   const cnt=(d.trash||[]).length;
   const badge=document.getElementById('trash-badge');
   if(badge){badge.style.display=cnt>0?'inline':'none';badge.textContent=cnt;}
+  const dbadge=document.getElementById('drawer-trash-badge');
+  if(dbadge){dbadge.style.display=cnt>0?'':'none';dbadge.textContent=cnt;}
 }
 
 // ═══ BILL MODAL ═══
@@ -1580,20 +1985,29 @@ function checkNewParty(inputId, noteId, type) {
   }
 }
 
-function getOrCreateParty(name, type) {
+function getOrCreateParty(name, type, gstin) {
   if (!name) return null;
   var d = D();
   var party = d.parties.find(function(p) {
     return p.name.toLowerCase() === name.toLowerCase();
   });
-  if (party) return party;
-  // Auto-create
+  if (party) {
+    // If a GSTIN is now known and the party lacks one (or has wrong state), backfill it
+    if (gstin) {
+      var st = stateFromGstin(gstin);
+      if (!party.gstin) party.gstin = gstin.toUpperCase();
+      if (st) party.state = st;
+    }
+    return party;
+  }
+  // Auto-create — derive state from GSTIN when available, else default Delhi
+  var derivedState = stateFromGstin(gstin) || '07';
   var newParty = {
     id: 'P' + String(d.pC || 1).padStart(4, '0'),
     name: name,
     type: type,
-    state: '07',
-    phone: '', city: '', gstin: '', bank: '', ifsc: '', upi: '',
+    state: derivedState,
+    phone: '', city: '', gstin: (gstin||'').toUpperCase(), bank: '', ifsc: '', upi: '',
     ob: 0, obType: type === 'C' ? 'CR' : 'DR', rem: ''
   };
   d.parties.push(newParty);
@@ -1702,6 +2116,7 @@ function editInvoice(iid){
   document.getElementById('i-cust-aadhaar').value=inv.custAadhaar||'';document.getElementById('i-disc').value=inv.disc||'';
   document.getElementById('i-trans').value=inv.trans||'';document.getElementById('i-gst').value=inv.gstStr||'5i';
   document.getElementById('i-mode').value=inv.mode||'credit';document.getElementById('i-rem').value=inv.rem||'';
+  const iincl2=document.getElementById('i-incl-gst');if(iincl2)iincl2.checked=!!inv.inclGst;
   const party=d.parties.find(p=>p.id===inv.pid);document.getElementById('i-cust').value=party?party.name:'';
   document.getElementById('cus-list').innerHTML=d.parties.filter(p=>p.type==='C'||p.type==='B').map(p=>`<option value="${esc(p.name)}">`).join('');
   document.getElementById('i-items-list').innerHTML='';
@@ -1755,6 +2170,7 @@ function openInvModal(pid){
   document.getElementById('i-round').value='round';
   document.getElementById('i-mode').value='credit';
   document.getElementById('i-rem').value='';
+  const iincl=document.getElementById('i-incl-gst');if(iincl)iincl.checked=false;
   const cnw=document.getElementById('i-cashnow');if(cnw)cnw.value='';
   const cnwrap=document.getElementById('i-cashnow-wrap');if(cnwrap)cnwrap.style.display='none';
   document.getElementById('i-items-list').innerHTML='';
@@ -1771,16 +2187,45 @@ function onInvModeChange(){
   if(wrap)wrap.style.display=mode==='partial'?'block':'none';
   calcInvTotal();
 }
-function autoSetGST(party){
-  if(!party)return;
-  const gstSel=document.getElementById('i-gst');
-  if(party.state==='07'){gstSel.value='5s';}
-  else{gstSel.value='5i';}
+// Home state for both firms is Delhi (07). Inter-state ⇒ IGST; intra-state ⇒ CGST+SGST.
+const HOME_STATE='07';
+function stateFromGstin(g){
+  if(!g)return '';
+  const m=String(g).trim().match(/^(\d{2})/);
+  return m?m[1]:'';
 }
+// Determine the customer's effective state code: GSTIN typed on the invoice wins,
+// else the party's stored GSTIN, else the party's state field.
+function effectiveCustState(party){
+  const invGstin=(document.getElementById('i-cust-gstin')?.value||'').trim();
+  const fromInv=stateFromGstin(invGstin);
+  if(fromInv)return fromInv;
+  if(party&&party.gstin){const s=stateFromGstin(party.gstin);if(s)return s;}
+  return party?(party.state||HOME_STATE):HOME_STATE;
+}
+function autoSetGST(party){
+  const gstSel=document.getElementById('i-gst');
+  if(!gstSel)return;
+  // Don't override if the user has explicitly chosen 12% or exempt
+  const cur=gstSel.value;
+  if(cur==='12i'||cur==='12s'||cur==='0')return;
+  const st=effectiveCustState(party);
+  // Intra-state (same as home/Delhi) ⇒ CGST+SGST ; inter-state ⇒ IGST
+  gstSel.value=(st===HOME_STATE)?'5s':'5i';
+}
+// Re-evaluate GST whenever the customer GSTIN field changes
+document.addEventListener('input',e=>{
+  if(e.target.id==='i-cust-gstin'){
+    const d=D();const p=d.parties.find(x=>x.name===(document.getElementById('i-cust')?.value||''));
+    autoSetGST(p);calcInvTotal();
+  }
+});
 document.addEventListener('change',e=>{
   if(e.target.id==='i-cust'){
     const d=D();const p=d.parties.find(x=>x.name===e.target.value);
-    if(p)autoSetGST(p);
+    // Prefill the customer's stored GSTIN so state/GST auto-detect correctly
+    if(p&&p.gstin){const gi=document.getElementById('i-cust-gstin');if(gi&&!gi.value.trim())gi.value=p.gstin;}
+    autoSetGST(p);
     calcInvTotal();
   }
 });
@@ -1832,16 +2277,29 @@ function calcInvTotal(){
   const gstStr=document.getElementById('i-gst')?.value||'5i';
   const gstPct=parseFloat(gstStr)||0;
   const roundMode=document.getElementById('i-round')?.value||'round';
+  const inclGst=document.getElementById('i-incl-gst')?.checked;
   const discAmt=sub*disc/100;
-  const taxable=sub-discAmt+trans;
-  const gstAmt=taxable*gstPct/100;
-  let grand=taxable+gstAmt;
+  let taxable,gstAmt,grand;
+  if(inclGst){
+    // The amounts already INCLUDE GST. Back-calculate taxable & tax from the gross.
+    const gross=sub-discAmt+trans;
+    taxable=gstPct>0?gross/(1+gstPct/100):gross;
+    gstAmt=gross-taxable;
+    grand=gross;
+  }else{
+    taxable=sub-discAmt+trans;
+    gstAmt=taxable*gstPct/100;
+    grand=taxable+gstAmt;
+  }
   let roundAdj=0;
   if(roundMode==='round'){roundAdj=Math.round(grand)-grand;grand=Math.round(grand);}
   else if(roundMode==='floor'){roundAdj=Math.floor(grand)-grand;grand=Math.floor(grand);}
   else if(roundMode==='ceil'){roundAdj=Math.ceil(grand)-grand;grand=Math.ceil(grand);}
   const isSplit=gstStr.endsWith('s');
   const gstLabel=isSplit?(gstPct/2)+'% CGST + '+(gstPct/2)+'% SGST':gstPct+'% IGST';
+  // GST type hint
+  const hint=document.getElementById('i-gst-hint');
+  if(hint)hint.textContent=isSplit?'🏠 Intra-state (Delhi) — CGST + SGST':(gstPct>0?'🚚 Inter-state — IGST':'Exempt');
   const prev=document.getElementById('i-preview');
   const mode=document.getElementById('i-mode')?.value||'credit';
   let extra='';
@@ -1850,12 +2308,19 @@ function calcInvTotal(){
     const rem=grand-cashNow;
     extra=` | 💵 Cash now: ${fmt(cashNow)} | <strong style="color:${rem<=0?'#059669':'#DC2626'}">Outstanding: ${fmt(Math.max(0,rem))}</strong>`;
   }else if(mode==='cash'){extra=' | 💵 <strong>Fully settled in cash</strong>';}
-  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>${extra}`;
+  if(prev){
+    if(inclGst){
+      prev.innerHTML=`🔄 <strong>GST-inclusive</strong> · Entered total: ${fmt(sub-discAmt+trans)} → Taxable: <strong>${fmt(taxable)}</strong> | ${gstLabel}: ${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>${extra}`;
+    }else{
+      prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>${extra}`;
+    }
+  }
 }
 function saveInvoice(){
   const d=D();
   const custName=document.getElementById('i-cust').value.trim();
   if(!custName){alert('Enter customer name');return;}
+  const custGstinEntered=document.getElementById('i-cust-gstin').value.trim().toUpperCase();
   // In edit mode, preserve original pid; only create new party if new name
   let customer;
   if(editInvId){
@@ -1864,12 +2329,18 @@ function saveInvoice(){
     if(existingParty&&existingParty.name.trim().toLowerCase()===custName.toLowerCase()){
       customer=existingParty; // same party, no change
     } else {
-      customer=getOrCreateParty(custName,'C'); // different name typed
+      customer=getOrCreateParty(custName,'C',custGstinEntered); // different name typed
     }
   } else {
-    customer=getOrCreateParty(custName,'C');
+    customer=getOrCreateParty(custName,'C',custGstinEntered);
   }
   if(!customer){alert('Could not create party');return;}
+  // Keep the party's GSTIN & state in sync with what was entered on the invoice
+  if(custGstinEntered){
+    if(!customer.gstin)customer.gstin=custGstinEntered;
+    const st=stateFromGstin(custGstinEntered);
+    if(st)customer.state=st;
+  }
   const items=getInvItems();
   if(!items.length){alert('Add at least one item');return;}
   const sub=items.reduce((s,i)=>s+i.amt,0);
@@ -1878,10 +2349,19 @@ function saveInvoice(){
   const gstStr=document.getElementById('i-gst').value;
   const gstPct=parseFloat(gstStr)||0;
   const roundMode=document.getElementById('i-round').value;
+  const inclGst=document.getElementById('i-incl-gst')?.checked;
   const discAmt=sub*disc/100;
-  const taxable=sub-discAmt+trans;
-  const gstAmt=taxable*gstPct/100;
-  let grand=taxable+gstAmt;
+  let taxable,gstAmt,grand;
+  if(inclGst){
+    const gross=sub-discAmt+trans;
+    taxable=gstPct>0?gross/(1+gstPct/100):gross;
+    gstAmt=gross-taxable;
+    grand=gross;
+  }else{
+    taxable=sub-discAmt+trans;
+    gstAmt=taxable*gstPct/100;
+    grand=taxable+gstAmt;
+  }
   let roundAdj=0;
   if(roundMode==='round'){roundAdj=Math.round(grand)-grand;grand=Math.round(grand);}
   else if(roundMode==='floor'){roundAdj=Math.floor(grand)-grand;grand=Math.floor(grand);}
@@ -1895,9 +2375,9 @@ function saveInvoice(){
     num,date:document.getElementById('i-date').value,
     pid:customer.id,
     ship:document.getElementById('i-ship').value.trim(),
-    custGstin:document.getElementById('i-cust-gstin').value.trim().toUpperCase(),
+    custGstin:custGstinEntered,
     custAadhaar:document.getElementById('i-cust-aadhaar').value.trim(),
-    items,sub,disc,discAmt,trans,gstStr,gstPct,gstAmt,roundAdj,grand,
+    items,sub,disc,discAmt,trans,gstStr,gstPct,gstAmt,roundAdj,grand,inclGst:!!inclGst,taxable,
     mode:storeMode,
     rem:document.getElementById('i-rem').value.trim()
   };
@@ -2074,9 +2554,9 @@ function printInvoice(iid){
     <!-- TOTALS -->
     <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
       <table style="width:280px;border-collapse:collapse;font-size:12px">
-        <tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">Sub Total</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">${fmt(inv.sub)}</td></tr>
-        ${inv.disc?`<tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">Discount (${inv.disc}%)</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0;color:#DC2626">-${fmt(inv.discAmt)}</td></tr>`:''}
-        ${inv.trans?`<tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">Transport</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">+${fmt(inv.trans)}</td></tr>`:''}
+        <tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">${inv.inclGst?'Taxable Value':'Sub Total'}</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">${fmt(inv.inclGst?(inv.taxable!=null?inv.taxable:inv.sub):inv.sub)}</td></tr>
+        ${inv.disc&&!inv.inclGst?`<tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">Discount (${inv.disc}%)</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0;color:#DC2626">-${fmt(inv.discAmt)}</td></tr>`:''}
+        ${inv.trans&&!inv.inclGst?`<tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">Transport</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">+${fmt(inv.trans)}</td></tr>`:''}
         ${gstRows}
         ${inv.roundAdj?`<tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">Rounding Off</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">${inv.roundAdj>0?'+':'-'}${fmt(Math.abs(inv.roundAdj))}</td></tr>`:''}
         <tr style="background:${biz.color};color:#fff;font-weight:700;font-size:14px">
@@ -2318,7 +2798,7 @@ function shareWA(){
 }
 // Close modal on overlay click
 document.addEventListener('click',e=>{
-  ['mo-party','mo-bill','mo-inv','mo-pay','mo-cf'].forEach(id=>{
+  ['mo-party','mo-bill','mo-inv','mo-pay','mo-cf','mo-loan','mo-loantxn','mo-asset'].forEach(id=>{
     const el=document.getElementById(id);
     if(el&&e.target===el){closeModal(id.replace('mo-',''));}
   });
@@ -3566,9 +4046,11 @@ function renderBank(){
       const party=pay?d.parties.find(p=>p.id===pay.pid):null;
       let statusLine='';
       if(t.assigned==='expense')statusLine=`<div style="font-size:11px;color:#92400E;margin-top:3px">🏷 Recorded as expense</div>`;
+      else if(t.assigned==='loan'){const ln=d.loans?d.loans.find(x=>x.id===t.assignedLoan):null;statusLine=`<div style="font-size:11px;color:#1E40AF;margin-top:3px">🤝 Loan: ${esc(ln?ln.name:'account')}</div>`;}
+      else if(t.assigned==='asset'){const as=d.assets?d.assets.find(x=>x.id===t.assignedAsset):null;statusLine=`<div style="font-size:11px;color:#0369A1;margin-top:3px">🏭 Asset: ${esc(as?as.name:'asset')}</div>`;}
       else if(t.matchId)statusLine=`<div style="font-size:11px;color:#059669;margin-top:3px">✅ ${esc(party?party.name:'Unknown')} — ${fmt(pay?pay.amt:0)} · ${esc(pay?pay.mode:'')}${t.autoCreated?' · auto-settled':''}</div>`;
       else statusLine=`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— unidentified entry —</div>`;
-      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.matchId?'#059669':'#DC2626'}">
+      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.matchId?'#059669':'#DC2626'}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--sub);margin-bottom:2px">${fmtD(t.date)}</div>
@@ -3938,6 +4420,11 @@ function openAssign(idx){
   _assignIdx=idx;
   const d=D();const t=bankTxns[idx];
   const parties=[...d.parties].sort((a,b)=>a.name.localeCompare(b.name));
+  const loans=ensureLoans();
+  // For a CR (money in): loan 'in' = loan received / OD withdrawn.
+  // For a DR (money out): loan 'out' = loan repaid / OD deposited.
+  const loanDir=t.type==='CR'?'in':'out';
+  const loanVerb=t.type==='CR'?'received / OD withdrawn (you owe more)':'repaid / OD deposited (you owe less)';
   const html=`
   <div style="margin-bottom:12px">
     <div style="font-size:13px;font-weight:700">${esc(t.desc)}</div>
@@ -3949,6 +4436,27 @@ function openAssign(idx){
     ${parties.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
   </select>
   <button class="btn pri" style="width:100%;justify-content:center;margin-bottom:16px" onclick="assignToParty()">✓ Record as Party ${t.type==='CR'?'Receipt':'Payment'}</button>
+  <div style="border-top:1.5px dashed var(--bdr);padding-top:14px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">🤝 Or assign to a Loan / OD account (${loanVerb}):</div>
+    <select id="asg-loan" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+      <option value="">Select loan / OD account...</option>
+      ${loans.map(l=>`<option value="${l.id}">${esc(l.name)}${l.kind==='od'?' (OD)':''} — bal ${fmt(loanBalance(l))}</option>`).join('')}
+    </select>
+    <button class="btn" style="width:100%;justify-content:center;background:#EFF6FF;color:#1E40AF;border-color:#BFDBFE" onclick="assignToLoan()">🤝 Record as Loan ${t.type==='CR'?'Received/Withdraw':'Repayment/Deposit'}</button>
+    ${loans.length?'':'<div style="font-size:11px;color:var(--sub);margin-top:6px">No loan accounts yet — add one under ☰ → Loans &amp; OD.</div>'}
+  </div>
+  <div style="border-top:1.5px dashed var(--bdr);padding-top:14px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">🏭 Or record as an Asset purchase (capitalise, moves to Assets):</div>
+    <select id="asg-asset" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+      <option value="">➕ New asset...</option>
+      ${ensureAssets().map(a=>`<option value="${a.id}">Add to: ${esc(a.name)} (${fmt(a.value)})</option>`).join('')}
+    </select>
+    <input id="asg-asset-name" placeholder="Asset name (for new asset)" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;margin-bottom:8px;box-sizing:border-box">
+    <select id="asg-asset-cat" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+      <option>Machinery</option><option>Vehicle</option><option>Furniture</option><option>Property</option><option>Investment / FD</option><option>Other</option>
+    </select>
+    <button class="btn" style="width:100%;justify-content:center;background:#EFF6FF;color:#0369A1;border-color:#BAE6FD" onclick="assignToAsset()">🏭 Record as Asset</button>
+  </div>
   <div style="border-top:1.5px dashed var(--bdr);padding-top:14px">
     <div style="font-size:12px;font-weight:700;margin-bottom:6px">🏷 Or mark as business expense:</div>
     <select id="asg-cat" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
@@ -3960,6 +4468,36 @@ function openAssign(idx){
   document.getElementById('cf-msg').innerHTML=html;
   document.getElementById('cf-ok').style.display='none';
   openModal('cf');
+}
+function assignToLoan(){
+  const d=D();const t=bankTxns[_assignIdx];
+  const lid=document.getElementById('asg-loan').value;
+  if(!lid){alert('Select a loan / OD account');return;}
+  const loan=d.loans.find(x=>x.id===lid);if(!loan){alert('Loan not found');return;}
+  if(!loan.txns)loan.txns=[];
+  const dir=t.type==='CR'?'in':'out';
+  loan.txns.push({id:'LT'+uid4(),date:t.date,dir:dir,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)});
+  t.assigned='loan';t.assignedLoan=lid;
+  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+}
+function assignToAsset(){
+  const d=D();const t=bankTxns[_assignIdx];ensureAssets();
+  const existingId=document.getElementById('asg-asset').value;
+  const newName=(document.getElementById('asg-asset-name').value||'').trim();
+  const cat=document.getElementById('asg-asset-cat').value;
+  if(existingId){
+    // Top up an existing asset's value
+    const a=d.assets.find(x=>x.id===existingId);if(!a){alert('Asset not found');return;}
+    a.value=(parseFloat(a.value)||0)+t.amount;
+    if(!a.txns)a.txns=[];a.txns.push({date:t.date,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)});
+    t.assigned='asset';t.assignedAsset=a.id;
+  }else{
+    if(!newName){alert('Enter an asset name (or pick an existing asset)');return;}
+    const a={id:'AS'+String(d.assetC||1).padStart(3,'0'),name:newName,cat:cat,value:t.amount,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40)};
+    d.assets.push(a);d.assetC=(d.assetC||1)+1;
+    t.assigned='asset';t.assignedAsset=a.id;
+  }
+  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
 function assignToParty(){
   const d=D();const t=bankTxns[_assignIdx];
