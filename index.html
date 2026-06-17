@@ -4295,6 +4295,7 @@ function renderBank(){
           <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match Payment'}</button>
           <button class="btn sm" onclick="flipTxnDir(${i})" style="font-size:11px;background:#FFF7ED;color:#92400E">🔄 Mark as ${t.type==='CR'?'OUT (Debit)':'IN (Credit)'}</button>
           ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;bankTxns[${i}].assigned=null;saveToCloud();renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
+          <button class="btn sm" onclick="deleteBankTxn(${i})" style="font-size:11px;background:#FEF2F2;color:#DC2626;margin-left:auto">🗑 Delete</button>
         </div>
       </div>`;
     }
@@ -4521,6 +4522,57 @@ function flipTxnDir(idx){
     if(exp)exp.dir=t.type==='CR'?'in':'out';
   }
   saveToCloud();renderBank();
+}
+
+// Delete a single bank statement entry, reversing any side-effects it created.
+function deleteBankTxn(idx){
+  const d=D();const t=bankTxns[idx];if(!t)return;
+  let extra='';
+  if(t.matchId&&t.autoCreated)extra='\n\nThe payment/receipt this entry auto-created will also be removed.';
+  else if(t.matchId)extra='\n\nThis will unlink the matched payment (the payment itself is kept).';
+  else if(t.assigned==='loan')extra='\n\nThe loan transaction this entry created will be removed.';
+  else if(t.assigned==='asset')extra='\n\nThe asset value this entry added will be reversed.';
+  else if(t.assigned==='expense')extra='\n\nThe expense this entry created will be removed.';
+  if(!confirm('Delete this bank entry?\n\n'+(t.desc||'').substring(0,80)+'\n'+fmtD(t.date)+' · '+(t.type==='CR'?'+':'−')+fmt(t.amount)+extra))return;
+
+  // Reverse side-effects
+  if(t.matchId){
+    if(t.autoCreated){
+      // remove the payment this entry created
+      d.payments=(d.payments||[]).filter(p=>p.id!==t.matchId);
+    }
+    // else: leave the user's own payment intact, just drop the link by deleting the txn
+  }
+  if(t.assigned==='loan'&&t.assignedLoan){
+    const loan=(d.loans||[]).find(l=>l.id===t.assignedLoan);
+    if(loan&&loan.txns){
+      // remove the matching loan txn (same date+amount+note from this bank entry)
+      const note='Bank: '+(t.desc||'').substring(0,50);
+      const j=loan.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);
+      if(j>=0)loan.txns.splice(j,1);
+    }
+  }
+  if(t.assigned==='asset'&&t.assignedAsset){
+    const a=(d.assets||[]).find(x=>x.id===t.assignedAsset);
+    if(a){
+      if(a.txns){
+        const note='Bank: '+(t.desc||'').substring(0,50);
+        const j=a.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);
+        if(j>=0)a.txns.splice(j,1);
+      }
+      a.value=(parseFloat(a.value)||0)-t.amount;
+      if(a.value<0)a.value=0;
+    }
+  }
+  if(t.assigned==='expense'){
+    const j=(d.expenses||[]).findIndex(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);
+    if(j>=0)d.expenses.splice(j,1);
+  }
+
+  // Remove the bank entry itself
+  bankTxns.splice(idx,1);
+  d.bankTxns=bankTxns;
+  saveToCloud();renderAll();renderBank();
 }
 
 function repairPaymentDirections(){
