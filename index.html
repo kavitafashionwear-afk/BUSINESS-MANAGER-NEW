@@ -710,6 +710,47 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
 </div></div>
 
+<!-- RESERVES & SURPLUS MODAL -->
+<div class="ov" id="mo-reserve">
+<div class="mb">
+  <div class="mhd"><div><h3 id="reserve-mo-title">Add Reserve / Surplus</h3><div class="sub">Retained profit, capital, general reserve</div></div><button class="xb" onclick="closeModal('reserve')">✕</button></div>
+  <div class="mbd">
+    <div class="fl"><label>Reserve Name *</label><input id="rs-name" placeholder="e.g. Retained Earnings FY25-26"></div>
+    <div class="fr">
+      <div class="fl"><label>Category</label>
+        <select id="rs-cat">
+          <option>Retained Earnings</option><option>Owner Capital</option><option>General Reserve</option><option>Capital Reserve</option><option>Other</option>
+        </select>
+      </div>
+      <div class="fl"><label>Opening Amount (₹) *</label><input id="rs-amount" type="number" placeholder="0" min="0" step="0.01"></div>
+    </div>
+    <div class="fl"><label>As of Date</label><input id="rs-date" type="date"></div>
+    <div class="fl"><label>Note</label><input id="rs-note" placeholder="Optional"></div>
+    <div class="ibox blu" style="margin-top:4px;font-size:12px">💡 Reserves &amp; Surplus is the firm's own equity — profits retained or capital put in. Use "Add to Reserve" to transfer profit in, "Withdraw / Use" when drawn down.</div>
+  </div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('reserve')">Cancel</button>
+    <button class="btn pri" onclick="saveReserve()" style="background:#16A34A;border-color:#16A34A">Save Reserve</button>
+  </div>
+</div></div>
+
+<!-- RESERVE TXN MODAL -->
+<div class="ov" id="mo-reservetxn">
+<div class="mb">
+  <div class="mhd"><div><h3 id="rt-title">Reserve Transaction</h3></div><button class="xb" onclick="closeModal('reservetxn')">✕</button></div>
+  <div class="mbd">
+    <div class="fr">
+      <div class="fl"><label>Amount (₹) *</label><input id="rt-amt" type="number" placeholder="0" min="1" step="0.01"></div>
+      <div class="fl"><label>Date *</label><input id="rt-date" type="date"></div>
+    </div>
+    <div class="fl"><label>Note</label><input id="rt-note" placeholder="Optional"></div>
+  </div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('reservetxn')">Cancel</button>
+    <button class="btn pri" onclick="saveReserveTxn()" style="background:#16A34A;border-color:#16A34A">Save</button>
+  </div>
+</div></div>
+
 <!-- CONFIRM MODAL -->
 <div class="ov" id="mo-cf">
 <div class="mb" style="border-radius:20px;max-height:auto">
@@ -779,7 +820,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -1294,6 +1335,18 @@ function odUsed(){
 // ═══ ASSETS & BALANCE SHEET ═══
 function ensureAssets(){const d=D();if(!d.assets)d.assets=[];if(!d.assetC)d.assetC=1;return d.assets;}
 function totalFixedAssets(){return ensureAssets().reduce((s,a)=>s+(parseFloat(a.value)||0),0);}
+// ═══ RESERVES & SURPLUS (equity) ═══
+// d.reserves = [{id,name,cat,amount,date,note,txns:[{id,date,dir:'in'|'out',amt,note}]}]
+// 'in' = addition to reserve (profit transferred, capital infused); 'out' = drawdown/withdrawal.
+function ensureReserves(){const d=D();if(!d.reserves)d.reserves=[];if(!d.reserveC)d.reserveC=1;return d.reserves;}
+function reserveBalance(r){
+  const base=parseFloat(r.amount)||0;
+  const txns=r.txns||[];
+  const inSum=txns.filter(t=>t.dir==='in').reduce((s,t)=>s+(parseFloat(t.amt)||0),0);
+  const outSum=txns.filter(t=>t.dir==='out').reduce((s,t)=>s+(parseFloat(t.amt)||0),0);
+  return base+inSum-outSum;
+}
+function totalReserves(){return ensureReserves().reduce((s,r)=>s+reserveBalance(r),0);}
 function balanceSheet(){
   const d=D();
   const debtors=d.parties.filter(p=>p.type==='C'||p.type==='B').reduce((s,p)=>{const b=partyBalance(p.id);return s+(b>0?b:0);},0);
@@ -1303,11 +1356,14 @@ function balanceSheet(){
   const fixed=totalFixedAssets();
   const loans=totalLoanOutstanding();
   const od=odUsed();
+  const reserves=totalReserves();
   const assets={cash:cash>0?cash:0,debtors,stock:stock>0?stock:0,fixed};
   assets.total=assets.cash+assets.debtors+assets.stock+assets.fixed;
   const liabilities={creditors,loans,od};
   liabilities.total=liabilities.creditors+liabilities.loans+liabilities.od;
-  return {assets,liabilities,netWorth:assets.total-liabilities.total};
+  // Net worth before reserves; reserves are shown as a separate equity column.
+  const netWorth=assets.total-liabilities.total;
+  return {assets,liabilities,reserves,netWorth};
 }
 
 function renderLoans(){
@@ -1352,19 +1408,52 @@ function renderLoans(){
 
   const bs=balanceSheet();
   const assets=ensureAssets();
+  const reserves=ensureReserves();
+  const reserveCard=r=>{
+    const bal=reserveBalance(r);
+    const txns=(r.txns||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const icon=r.cat==='Owner Capital'?'👤':r.cat==='Retained Earnings'?'📈':r.cat==='General Reserve'?'🛡️':r.cat==='Capital Reserve'?'🏛️':'💰';
+    return `<div class="card" style="padding:14px;margin-bottom:10px;border-left:4px solid #16A34A">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:15px;font-weight:700">${icon} ${esc(r.name)}</div>
+          <div style="font-size:11px;color:var(--sub)">${esc(r.cat||'Reserve')}${r.date?' · since '+fmtD(r.date):''}</div>
+          ${r.note?`<div style="font-size:11px;color:var(--sub);margin-top:2px">${esc(r.note)}</div>`:''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:8px">
+          <div style="font-size:10px;color:var(--sub)">Balance</div>
+          <div style="font-size:17px;font-weight:800;color:#16A34A">${fmt(bal)}</div>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn sm grn" onclick="openReserveTxn('${r.id}','in')">↗ Add to Reserve</button>
+        <button class="btn sm" onclick="openReserveTxn('${r.id}','out')">↘ Withdraw / Use</button>
+        <button class="btn sm" onclick="openReserveModal('${r.id}')">✏️ Edit</button>
+        <button class="btn sm red" onclick="delReserve('${r.id}')">🗑</button>
+      </div>
+      ${txns.length?`<div style="margin-top:10px;border-top:1px solid var(--bdr);padding-top:6px">
+        ${txns.map(t=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px">
+          <div><span style="color:${t.dir==='in'?'#16A34A':'#DC2626'};font-weight:700">${t.dir==='in'?'↗':'↘'}</span> ${fmtD(t.date)}${t.note?' · '+esc(t.note):''}</div>
+          <div style="font-weight:700;color:${t.dir==='in'?'#16A34A':'#DC2626'}">${t.dir==='in'?'+':'−'}${fmt(t.amt)}</div>
+        </div>`).join('')}
+      </div>`:''}
+    </div>`;
+  };
   const assetRow=a=>`<div class="prow" style="cursor:default">
     <div class="pav" style="background:#0EA5E9;font-size:15px">${a.cat==='Vehicle'?'🚗':a.cat==='Machinery'?'⚙️':a.cat==='Furniture'?'🪑':a.cat==='Property'?'🏠':a.cat==='Investment / FD'?'📈':'📦'}</div>
     <div class="pi"><div class="pn" style="font-size:13px">${esc(a.name)}</div><div class="ps">${esc(a.cat||'Asset')}${a.date?' · '+fmtD(a.date):''}${a.note?' · '+esc(a.note):''}</div></div>
     <div class="pb" style="color:#0369A1">${fmt(a.value)}<div style="font-size:10px"><button onclick="openAssetModal('${a.id}')" style="background:none;border:none;color:var(--pri2);cursor:pointer;font-size:11px">edit</button> · <button onclick="delAsset('${a.id}')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:11px">del</button></div></div>
   </div>`;
   const sheetRow=(label,val,color)=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span>${label}</span><span style="font-weight:700;color:${color||'inherit'}">${fmt(val)}</span></div>`;
+  // Liabilities + Equity (reserves) total — should balance against assets in proper double-entry
+  const liabPlusEquity=bs.liabilities.total+bs.reserves;
 
   document.getElementById('pg-loans').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <button class="btn sm" onclick="goTab('home')">← Back</button>
     </div>
     <div style="background:var(--pri);color:#fff;border-radius:14px;padding:18px;margin-bottom:14px">
-      <div style="font-size:12px;opacity:.8;font-weight:700">📊 ASSETS, LIABILITIES, LOANS &amp; OD</div>
+      <div style="font-size:12px;opacity:.8;font-weight:700">📊 ASSETS, LIABILITIES, RESERVES, LOANS &amp; OD</div>
       <div style="font-size:13px;opacity:.85;margin-top:2px">${BIZ[curBiz].name}</div>
     </div>
 
@@ -1386,9 +1475,15 @@ function renderLoans(){
           ${sheetRow('🤝 Loans',bs.liabilities.loans)}
           ${sheetRow('🏦 OD Drawn',bs.liabilities.od)}
           <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Liabilities</strong><strong style="color:#DC2626">${fmt(bs.liabilities.total)}</strong></div>
+          <div style="font-size:12px;font-weight:800;color:#16A34A;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin:10px 0 4px">RESERVES &amp; SURPLUS</div>
+          ${sheetRow('💰 Reserves & Surplus',bs.reserves,'#16A34A')}
         </div>
       </div>
-      <div style="background:${bs.netWorth>=0?'#ECFDF5':'#FEF2F2'};border-radius:10px;padding:12px;margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+      <div style="background:#F0FDF4;border-radius:10px;padding:10px 12px;margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;font-weight:700;color:#166534">Liabilities + Reserves & Surplus</span>
+        <span style="font-size:15px;font-weight:800;color:#16A34A">${fmt(liabPlusEquity)}</span>
+      </div>
+      <div style="background:${bs.netWorth>=0?'#ECFDF5':'#FEF2F2'};border-radius:10px;padding:12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:13px;font-weight:700">📈 Net Worth (Assets − Liabilities)</span>
         <span style="font-size:18px;font-weight:800;color:${bs.netWorth>=0?'#059669':'#DC2626'}">${fmt(bs.netWorth)}</span>
       </div>
@@ -1397,16 +1492,19 @@ function renderLoans(){
     <div class="stats">
       <div class="stat"><div class="sl">🤝 Loans Outstanding</div><div class="sv red">${fmt(loanTot)}</div><div style="font-size:10px;color:var(--sub)">${friendly.length} account(s)</div></div>
       <div class="stat"><div class="sl">🏦 OD Available</div><div class="sv" style="color:${odAvail>=0?'#059669':'#DC2626'}">${fmt(odAvail)}</div><div style="font-size:10px;color:var(--sub)">${fmt(odDrawn)} of ${fmt(odLimit)} used</div></div>
+      <div class="stat" style="grid-column:1/-1;background:#F0FDF4;border:1.5px solid #BBF7D0"><div class="sl">💰 Reserves & Surplus</div><div class="sv" style="color:#16A34A">${fmt(bs.reserves)}</div><div style="font-size:10px;color:var(--sub)">${reserves.length} account(s)</div></div>
     </div>
     <div class="btn-row" style="margin-bottom:14px">
       <button class="btn pri" onclick="openLoanModal()">+ Add Loan</button>
       <button class="btn" style="background:#F5F3FF;color:#5B21B6;border-color:#DDD6FE" onclick="openLoanModal(null,'od')">+ Add OD Facility</button>
       <button class="btn" style="background:#EFF6FF;color:#0369A1;border-color:#BAE6FD" onclick="openAssetModal()">+ Add Asset</button>
+      <button class="btn" style="background:#F0FDF4;color:#166534;border-color:#BBF7D0" onclick="openReserveModal()">+ Add Reserve</button>
     </div>
-    ${od.length?`<div class="card-hd" style="padding:0 4px">🏦 Overdraft Facilities</div>${od.map(loanCard).join('')}`:''}
+    ${reserves.length?`<div class="card-hd" style="padding:0 4px">💰 Reserves &amp; Surplus</div>${reserves.map(reserveCard).join('')}`:''}
+    ${od.length?`<div class="card-hd" style="padding:0 4px;margin-top:8px">🏦 Overdraft Facilities</div>${od.map(loanCard).join('')}`:''}
     ${friendly.length?`<div class="card-hd" style="padding:0 4px;margin-top:8px">🤝 Friends &amp; Family Loans</div>${friendly.map(loanCard).join('')}`:''}
     ${assets.length?`<div class="card" style="padding:0 16px;margin-top:8px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">🏭 FIXED ASSETS &amp; INVESTMENTS</div>${assets.map(assetRow).join('')}</div>`:''}
-    ${!loans.length&&!assets.length?'<div class="empty"><div class="ei">📊</div><p>No loans, OD or assets yet.<br><span style="font-size:12px;color:#999">Add a loan, OD facility or business asset.</span></p></div>':''}
+    ${!loans.length&&!assets.length&&!reserves.length?'<div class="empty"><div class="ei">📊</div><p>No loans, OD, assets or reserves yet.<br><span style="font-size:12px;color:#999">Add a loan, OD facility, asset or reserve.</span></p></div>':''}
   `;
   ['home','parties','bills','invoices','detail','notes','bank','cash','trash'].forEach(p=>{const el=document.getElementById('pg-'+p);if(el)el.style.display='none';});
   document.getElementById('pg-loans').style.display='block';
@@ -1447,6 +1545,62 @@ function delAsset(aid){
   if(!confirm('Delete asset "'+a.name+'"?'))return;
   d.assets=d.assets.filter(x=>x.id!==aid);
   saveToCloud();renderLoans();
+}
+
+// ═══ RESERVES & SURPLUS MODAL ═══
+var editReserveId=null;
+function openReserveModal(rid){
+  ensureReserves();editReserveId=rid||null;
+  const d=D();const r=rid?d.reserves.find(x=>x.id===rid):null;
+  document.getElementById('reserve-mo-title').textContent=rid?'Edit Reserve':'Add Reserve / Surplus';
+  document.getElementById('rs-name').value=r?r.name||'':'';
+  document.getElementById('rs-cat').value=r?r.cat||'Retained Earnings':'Retained Earnings';
+  document.getElementById('rs-amount').value=r?(r.amount||''):'';
+  document.getElementById('rs-date').value=r?(r.date||td()):td();
+  document.getElementById('rs-note').value=r?r.note||'':'';
+  openModal('reserve');
+}
+function saveReserve(){
+  const d=D();ensureReserves();
+  const name=document.getElementById('rs-name').value.trim();
+  if(!name){alert('Enter a name');return;}
+  const obj={
+    id:editReserveId||('RS'+String(d.reserveC||1).padStart(3,'0')),
+    name,
+    cat:document.getElementById('rs-cat').value,
+    amount:parseFloat(document.getElementById('rs-amount').value)||0,
+    date:document.getElementById('rs-date').value||td(),
+    note:document.getElementById('rs-note').value.trim(),
+    txns:editReserveId?(d.reserves.find(x=>x.id===editReserveId)?.txns||[]):[]
+  };
+  if(editReserveId){const i=d.reserves.findIndex(x=>x.id===editReserveId);if(i>=0)d.reserves[i]=obj;}
+  else{d.reserves.push(obj);d.reserveC=(d.reserveC||1)+1;}
+  editReserveId=null;
+  saveToCloud();closeModal('reserve');renderLoans();
+}
+function delReserve(rid){
+  const d=D();const r=d.reserves.find(x=>x.id===rid);if(!r)return;
+  if(!confirm('Delete reserve "'+r.name+'" and its '+(r.txns||[]).length+' transaction(s)?'))return;
+  d.reserves=d.reserves.filter(x=>x.id!==rid);
+  saveToCloud();renderLoans();
+}
+var _reserveTxnTarget=null,_reserveTxnDir=null;
+function openReserveTxn(rid,dir){
+  _reserveTxnTarget=rid;_reserveTxnDir=dir;
+  const d=D();const r=d.reserves.find(x=>x.id===rid);if(!r)return;
+  document.getElementById('rt-title').textContent=(dir==='in'?'Add to ':'Withdraw / Use from ')+r.name;
+  document.getElementById('rt-amt').value='';
+  document.getElementById('rt-date').value=td();
+  document.getElementById('rt-note').value='';
+  openModal('reservetxn');
+}
+function saveReserveTxn(){
+  const d=D();const r=d.reserves.find(x=>x.id===_reserveTxnTarget);if(!r)return;
+  const amt=parseFloat(document.getElementById('rt-amt').value)||0;
+  if(amt<=0){alert('Enter a valid amount');return;}
+  if(!r.txns)r.txns=[];
+  r.txns.push({id:'RT'+uid4(),date:document.getElementById('rt-date').value||td(),dir:_reserveTxnDir,amt,note:document.getElementById('rt-note').value.trim()});
+  saveToCloud();closeModal('reservetxn');renderLoans();
 }
 
 var editLoanId=null;
@@ -2872,7 +3026,7 @@ function shareWA(){
 }
 // Close modal on overlay click
 document.addEventListener('click',e=>{
-  ['mo-party','mo-bill','mo-inv','mo-pay','mo-cf','mo-loan','mo-loantxn','mo-asset'].forEach(id=>{
+  ['mo-party','mo-bill','mo-inv','mo-pay','mo-cf','mo-loan','mo-loantxn','mo-asset','mo-reserve','mo-reservetxn'].forEach(id=>{
     const el=document.getElementById(id);
     if(el&&e.target===el){closeModal(id.replace('mo-',''));}
   });
