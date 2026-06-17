@@ -433,10 +433,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
     </div>
     <div class="fl"><label>Ship To (if different)</label><input id="i-ship" placeholder="Optional consignee"></div>
+    <div class="fl"><label>Customer Address</label><input id="i-cust-addr" placeholder="Billing address (street, area, city)"></div>
     <div class="fr">
+      <div class="fl"><label>PIN Code</label><input id="i-cust-pin" placeholder="e.g. 110031" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
       <div class="fl"><label>Customer GSTIN</label><input id="i-cust-gstin" placeholder="e.g. 07ABCDE1234F1Z5" oninput="this.value=this.value.toUpperCase()"></div>
-      <div class="fl"><label>Aadhaar No.</label><input id="i-cust-aadhaar" placeholder="e.g. XXXX-XXXX-1234" maxlength="20"></div>
     </div>
+    <div class="fl"><label>Aadhaar No.</label><input id="i-cust-aadhaar" placeholder="e.g. XXXX-XXXX-1234" maxlength="20"></div>
     <!-- ITEMS -->
     <div class="card-hd" style="margin-top:8px">Items</div>
     <div id="i-items-list"></div>
@@ -2191,8 +2193,13 @@ function checkNewParty(inputId, noteId, type) {
   });
   if (exists) {
     note.style.display = 'none';
-    // Auto-set GST for invoice
-    if (inputId === 'i-cust') autoSetGST(exists);
+    // Auto-set GST + prefill stored address/PIN/GSTIN for the invoice
+    if (inputId === 'i-cust') {
+      var gi=document.getElementById('i-cust-gstin');if(gi&&!gi.value.trim()&&exists.gstin)gi.value=exists.gstin;
+      var ai=document.getElementById('i-cust-addr');if(ai&&!ai.value.trim()&&exists.addr)ai.value=exists.addr;
+      var pi=document.getElementById('i-cust-pin');if(pi&&!pi.value.trim()&&exists.pin)pi.value=exists.pin;
+      autoSetGST(exists);
+    }
   } else {
     note.style.display = 'block';
     if (nameEl) nameEl.textContent = val;
@@ -2328,6 +2335,9 @@ function editInvoice(iid){
   document.getElementById('i-num').value=inv.num;document.getElementById('i-date').value=inv.date;
   document.getElementById('i-ship').value=inv.ship||'';document.getElementById('i-cust-gstin').value=inv.custGstin||'';
   document.getElementById('i-cust-aadhaar').value=inv.custAadhaar||'';document.getElementById('i-disc').value=inv.disc||'';
+  const _ep=d.parties.find(p=>p.id===inv.pid);
+  document.getElementById('i-cust-addr').value=inv.custAddr||(_ep&&_ep.addr)||'';
+  document.getElementById('i-cust-pin').value=inv.custPin||(_ep&&_ep.pin)||'';
   document.getElementById('i-trans').value=inv.trans||'';document.getElementById('i-gst').value=inv.gstStr||'5i';
   document.getElementById('i-mode').value=inv.mode||'credit';document.getElementById('i-rem').value=inv.rem||'';
   const iincl2=document.getElementById('i-incl-gst');if(iincl2)iincl2.checked=!!inv.inclGst;
@@ -2378,6 +2388,8 @@ function openInvModal(pid){
   document.getElementById('i-ship').value='';
   document.getElementById('i-cust-gstin').value='';
   document.getElementById('i-cust-aadhaar').value='';
+  document.getElementById('i-cust-addr').value='';
+  document.getElementById('i-cust-pin').value='';
   document.getElementById('i-disc').value='';
   document.getElementById('i-trans').value='';
   document.getElementById('i-gst').value='5i';
@@ -2391,7 +2403,7 @@ function openInvModal(pid){
   // Populate customer list
   const custs=d.parties.filter(p=>p.type==='C'||p.type==='B');
   document.getElementById('cus-list').innerHTML=custs.map(p=>`<option value="${esc(p.name)}">`).join('');
-  if(pid){const p=d.parties.find(x=>x.id===pid);if(p){document.getElementById('i-cust').value=p.name;autoSetGST(p);}}
+  if(pid){const p=d.parties.find(x=>x.id===pid);if(p){document.getElementById('i-cust').value=p.name;if(p.gstin)document.getElementById('i-cust-gstin').value=p.gstin;if(p.addr)document.getElementById('i-cust-addr').value=p.addr;if(p.pin)document.getElementById('i-cust-pin').value=p.pin;autoSetGST(p);}}
   addInvItem();
   openModal('inv');
 }
@@ -2569,6 +2581,11 @@ function saveInvoice(){
     const st=stateFromGstin(custGstinEntered);
     if(st)customer.state=st;
   }
+  // Capture customer address + PIN; persist onto the party record so they're remembered
+  const custAddrEntered=(document.getElementById('i-cust-addr')?.value||'').trim();
+  const custPinEntered=(document.getElementById('i-cust-pin')?.value||'').trim();
+  if(custAddrEntered)customer.addr=custAddrEntered;
+  if(custPinEntered)customer.pin=custPinEntered;
   const items=getInvItems();
   if(!items.length){alert('Add at least one item');return;}
   const sub=items.reduce((s,i)=>s+i.amt,0);
@@ -2604,6 +2621,8 @@ function saveInvoice(){
     pid:customer.id,
     ship:document.getElementById('i-ship').value.trim(),
     custGstin:custGstinEntered,
+    custAddr:custAddrEntered,
+    custPin:custPinEntered,
     custAadhaar:document.getElementById('i-cust-aadhaar').value.trim(),
     items,sub,disc,discAmt,trans,gstStr,gstPct,gstAmt,roundAdj,grand,inclGst:!!inclGst,taxable,
     mode:storeMode,
@@ -2755,7 +2774,7 @@ function printInvoice(iid){
       <div style="border:1px solid #E0E0E0;border-radius:8px;padding:10px">
         <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">BILL TO</div>
         <div style="font-weight:800;font-size:15px">${esc(party&&party.name||'')}</div>
-        <div style="font-size:12px;color:#555">${esc(party&&party.addr||party&&party.city||'')}</div>
+        <div style="font-size:12px;color:#555">${esc(inv.custAddr||(party&&party.addr)||(party&&party.city)||'')}${(inv.custPin||(party&&party.pin))?' - '+esc(inv.custPin||(party&&party.pin)):''}</div>
         <div style="font-size:12px">📞 ${esc(party&&party.phone||'-')}</div>
         ${(inv.custGstin||(party&&party.gstin))?`<div style="font-size:12px;font-weight:700">GSTIN: ${esc(inv.custGstin||(party&&party.gstin)||'')}</div>`:''}
         ${inv.custAadhaar?`<div style="font-size:12px">Aadhaar: ${esc(inv.custAadhaar)}</div>`:''}
@@ -4276,9 +4295,10 @@ function renderBank(){
       if(t.assigned==='expense')statusLine=`<div style="font-size:11px;color:#92400E;margin-top:3px">🏷 Recorded as expense</div>`;
       else if(t.assigned==='loan'){const ln=d.loans?d.loans.find(x=>x.id===t.assignedLoan):null;statusLine=`<div style="font-size:11px;color:#1E40AF;margin-top:3px">🤝 Loan: ${esc(ln?ln.name:'account')}</div>`;}
       else if(t.assigned==='asset'){const as=d.assets?d.assets.find(x=>x.id===t.assignedAsset):null;statusLine=`<div style="font-size:11px;color:#0369A1;margin-top:3px">🏭 Asset: ${esc(as?as.name:'asset')}</div>`;}
+      else if(t.assigned==='reserve'){const rs=d.reserves?d.reserves.find(x=>x.id===t.assignedReserve):null;statusLine=`<div style="font-size:11px;color:#166534;margin-top:3px">💰 Reserve: ${esc(rs?rs.name:'account')}</div>`;}
       else if(t.matchId)statusLine=`<div style="font-size:11px;color:#059669;margin-top:3px">✅ ${esc(party?party.name:'Unknown')} — ${fmt(pay?pay.amt:0)} · ${esc(pay?pay.mode:'')}${t.autoCreated?' · auto-settled':''}</div>`;
       else statusLine=`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— unidentified entry —</div>`;
-      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.matchId?'#059669':'#DC2626'}">
+      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.assigned==='reserve'?'#16A34A':t.matchId?'#059669':'#DC2626'}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--sub);margin-bottom:2px">${fmtD(t.date)}</div>
@@ -4532,6 +4552,7 @@ function deleteBankTxn(idx){
   else if(t.matchId)extra='\n\nThis will unlink the matched payment (the payment itself is kept).';
   else if(t.assigned==='loan')extra='\n\nThe loan transaction this entry created will be removed.';
   else if(t.assigned==='asset')extra='\n\nThe asset value this entry added will be reversed.';
+  else if(t.assigned==='reserve')extra='\n\nThe reserve transaction this entry created will be removed.';
   else if(t.assigned==='expense')extra='\n\nThe expense this entry created will be removed.';
   if(!confirm('Delete this bank entry?\n\n'+(t.desc||'').substring(0,80)+'\n'+fmtD(t.date)+' · '+(t.type==='CR'?'+':'−')+fmt(t.amount)+extra))return;
 
@@ -4567,6 +4588,14 @@ function deleteBankTxn(idx){
   if(t.assigned==='expense'){
     const j=(d.expenses||[]).findIndex(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);
     if(j>=0)d.expenses.splice(j,1);
+  }
+  if(t.assigned==='reserve'&&t.assignedReserve){
+    const r=(d.reserves||[]).find(x=>x.id===t.assignedReserve);
+    if(r&&r.txns){
+      const note='Bank: '+(t.desc||'').substring(0,50);
+      const j=r.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);
+      if(j>=0)r.txns.splice(j,1);
+    }
   }
 
   // Remove the bank entry itself
@@ -4737,6 +4766,18 @@ function openAssign(idx){
     </select>
     <button class="btn" style="width:100%;justify-content:center;background:#EFF6FF;color:#0369A1;border-color:#BAE6FD" onclick="assignToAsset()">🏭 Record as Asset</button>
   </div>
+  <div style="border-top:1.5px dashed var(--bdr);padding-top:14px;margin-bottom:16px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">💰 Or assign to a Reserve &amp; Surplus account (${t.type==='CR'?'addition to reserve':'withdrawal / use of reserve'}):</div>
+    <select id="asg-reserve" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+      <option value="">➕ New reserve...</option>
+      ${ensureReserves().map(r=>`<option value="${r.id}">Add to: ${esc(r.name)} (bal ${fmt(reserveBalance(r))})</option>`).join('')}
+    </select>
+    <input id="asg-reserve-name" placeholder="Reserve name (for new reserve)" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;margin-bottom:8px;box-sizing:border-box">
+    <select id="asg-reserve-cat" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+      <option>Retained Earnings</option><option>Owner Capital</option><option>General Reserve</option><option>Capital Reserve</option><option>Other</option>
+    </select>
+    <button class="btn" style="width:100%;justify-content:center;background:#F0FDF4;color:#166534;border-color:#BBF7D0" onclick="assignToReserve()">💰 Record to Reserve &amp; Surplus</button>
+  </div>
   <div style="border-top:1.5px dashed var(--bdr);padding-top:14px">
     <div style="font-size:12px;font-weight:700;margin-bottom:6px">🏷 Or mark as business expense:</div>
     <select id="asg-cat" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
@@ -4776,6 +4817,29 @@ function assignToAsset(){
     const a={id:'AS'+String(d.assetC||1).padStart(3,'0'),name:newName,cat:cat,value:t.amount,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40)};
     d.assets.push(a);d.assetC=(d.assetC||1)+1;
     t.assigned='asset';t.assignedAsset=a.id;
+  }
+  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+}
+function assignToReserve(){
+  const d=D();const t=bankTxns[_assignIdx];ensureReserves();
+  const existingId=document.getElementById('asg-reserve').value;
+  const newName=(document.getElementById('asg-reserve-name').value||'').trim();
+  const cat=document.getElementById('asg-reserve-cat').value;
+  // CR (money in) = addition to reserve; DR (money out) = withdrawal/use of reserve.
+  const dir=t.type==='CR'?'in':'out';
+  const note='Bank: '+(t.desc||'').substring(0,50);
+  if(existingId){
+    const r=d.reserves.find(x=>x.id===existingId);if(!r){alert('Reserve not found');return;}
+    if(!r.txns)r.txns=[];
+    r.txns.push({id:'RT'+uid4(),date:t.date,dir:dir,amt:t.amount,note:note});
+    t.assigned='reserve';t.assignedReserve=r.id;
+  }else{
+    if(!newName){alert('Enter a reserve name (or pick an existing reserve)');return;}
+    // New reserve: an inflow seeds the opening amount; an outflow starts at 0 then records the draw
+    const r={id:'RS'+String(d.reserveC||1).padStart(3,'0'),name:newName,cat:cat,amount:0,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40),
+      txns:[{id:'RT'+uid4(),date:t.date,dir:dir,amt:t.amount,note:note}]};
+    d.reserves.push(r);d.reserveC=(d.reserveC||1)+1;
+    t.assigned='reserve';t.assignedReserve=r.id;
   }
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
