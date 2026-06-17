@@ -432,7 +432,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ✨ <strong id="i-new-party-name"></strong> not found — will be <strong>auto-created as a new Customer</strong> when you save this invoice.
       </div>
     </div>
-    <div class="fl"><label>Ship To (if different)</label><input id="i-ship" placeholder="Optional consignee"></div>
+    <div class="fl"><label>Consignee / Ship To (if different)</label><input id="i-ship" placeholder="Consignee name (optional)"></div>
+    <div class="fr">
+      <div class="fl"><label>Consignee GSTIN</label><input id="i-ship-gstin" placeholder="e.g. 29ABCDE1234F1Z5" oninput="this.value=this.value.toUpperCase()"></div>
+      <div class="fl"><label>Consignee Address</label><input id="i-ship-addr" placeholder="Delivery address"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>🚚 Transport / Carrier</label><input id="i-transport" placeholder="e.g. VRL Logistics"></div>
+      <div class="fl"><label>🚛 Vehicle No.</label><input id="i-vehicle" placeholder="e.g. DL01AB1234" oninput="this.value=this.value.toUpperCase()"></div>
+    </div>
     <div class="fl"><label>Customer Address</label><input id="i-cust-addr" placeholder="Billing address (street, area, city)"></div>
     <div class="fr">
       <div class="fl"><label>PIN Code</label><input id="i-cust-pin" placeholder="e.g. 110031" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
@@ -2334,6 +2342,10 @@ function editInvoice(iid){
   document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';
   document.getElementById('i-num').value=inv.num;document.getElementById('i-date').value=inv.date;
   document.getElementById('i-ship').value=inv.ship||'';document.getElementById('i-cust-gstin').value=inv.custGstin||'';
+  document.getElementById('i-ship-gstin').value=inv.shipGstin||'';
+  document.getElementById('i-ship-addr').value=inv.shipAddr||'';
+  document.getElementById('i-transport').value=inv.transport||'';
+  document.getElementById('i-vehicle').value=inv.vehicle||'';
   document.getElementById('i-cust-aadhaar').value=inv.custAadhaar||'';document.getElementById('i-disc').value=inv.disc||'';
   const _ep=d.parties.find(p=>p.id===inv.pid);
   document.getElementById('i-cust-addr').value=inv.custAddr||(_ep&&_ep.addr)||'';
@@ -2386,6 +2398,10 @@ function openInvModal(pid){
   document.getElementById('i-date').value=td();
   document.getElementById('i-cust').value='';
   document.getElementById('i-ship').value='';
+  document.getElementById('i-ship-gstin').value='';
+  document.getElementById('i-ship-addr').value='';
+  document.getElementById('i-transport').value='';
+  document.getElementById('i-vehicle').value='';
   document.getElementById('i-cust-gstin').value='';
   document.getElementById('i-cust-aadhaar').value='';
   document.getElementById('i-cust-addr').value='';
@@ -2620,6 +2636,10 @@ function saveInvoice(){
     num,date:document.getElementById('i-date').value,
     pid:customer.id,
     ship:document.getElementById('i-ship').value.trim(),
+    shipGstin:(document.getElementById('i-ship-gstin')?.value||'').trim().toUpperCase(),
+    shipAddr:(document.getElementById('i-ship-addr')?.value||'').trim(),
+    transport:(document.getElementById('i-transport')?.value||'').trim(),
+    vehicle:(document.getElementById('i-vehicle')?.value||'').trim().toUpperCase(),
     custGstin:custGstinEntered,
     custAddr:custAddrEntered,
     custPin:custPinEntered,
@@ -2751,6 +2771,11 @@ function printInvoice(iid){
     ?`<tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">CGST @ ${gstPct/2}%</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">${fmt(inv.gstAmt/2)}</td></tr>
        <tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">SGST @ ${gstPct/2}%</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">${fmt(inv.gstAmt/2)}</td></tr>`
     :`<tr><td colspan="5" style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">IGST @ ${gstPct}%</td><td style="padding:5px 8px;text-align:right;border:1px solid #E0E0E0">${fmt(inv.gstAmt)}</td></tr>`;
+  // Total quantity across all line items (and a per-unit breakup if units differ)
+  const qtyTotal=inv.items.reduce((s,it)=>s+(parseFloat(it.qty)||0),0);
+  const unitSet=[...new Set(inv.items.map(it=>(it.unit||'').toUpperCase()).filter(Boolean))];
+  const qtyUnitLabel=unitSet.length===1?' '+unitSet[0]:'';
+  const itemCount=inv.items.length;
 
   document.getElementById('print-body').innerHTML=`
   <div style="font-family:Arial,sans-serif;font-size:13px;color:#111">
@@ -2780,11 +2805,17 @@ function printInvoice(iid){
         ${inv.custAadhaar?`<div style="font-size:12px">Aadhaar: ${esc(inv.custAadhaar)}</div>`:''}
         <div style="font-size:12px">State: ${esc(stateLabel)}</div>
       </div>
-      ${inv.ship?`<div style="border:1px solid #E0E0E0;border-radius:8px;padding:10px">
-        <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">SHIP TO</div>
-        <div style="font-size:13px">${esc(inv.ship)}</div>
+      ${(inv.ship||inv.shipAddr||inv.shipGstin)?`<div style="border:1px solid #E0E0E0;border-radius:8px;padding:10px">
+        <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">CONSIGNEE / SHIP TO</div>
+        ${inv.ship?`<div style="font-size:13px;font-weight:700">${esc(inv.ship)}</div>`:''}
+        ${inv.shipAddr?`<div style="font-size:12px;color:#555">${esc(inv.shipAddr)}</div>`:''}
+        ${inv.shipGstin?`<div style="font-size:12px;font-weight:700">GSTIN: ${esc(inv.shipGstin)}</div>`:''}
       </div>`:'<div></div>'}
     </div>
+    ${(inv.transport||inv.vehicle)?`<div style="display:flex;gap:18px;border:1px solid #E0E0E0;border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:12px">
+      ${inv.transport?`<div><span style="color:#666">🚚 Transport:</span> <strong>${esc(inv.transport)}</strong></div>`:''}
+      ${inv.vehicle?`<div><span style="color:#666">🚛 Vehicle No.:</span> <strong>${esc(inv.vehicle)}</strong></div>`:''}
+    </div>`:''}
     <!-- ITEMS TABLE -->
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
       <thead><tr style="background:${biz.color};color:#fff">
@@ -2797,6 +2828,12 @@ function printInvoice(iid){
         <th style="padding:8px;border:1px solid rgba(255,255,255,.2);text-align:right">Amount</th>
       </tr></thead>
       <tbody>${itemRows}</tbody>
+      <tfoot><tr style="background:#F0F0F0;font-weight:800">
+        <td colspan="4" style="padding:8px;border:1px solid #E0E0E0;text-align:right">Total (${itemCount} item${itemCount!==1?'s':''})</td>
+        <td style="padding:8px;border:1px solid #E0E0E0;text-align:right">${fmtR(qtyTotal)}${qtyUnitLabel}</td>
+        <td style="padding:8px;border:1px solid #E0E0E0"></td>
+        <td style="padding:8px;border:1px solid #E0E0E0;text-align:right">${fmt(inv.sub)}</td>
+      </tr></tfoot>
     </table>
     <!-- TOTALS -->
     <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
@@ -3007,6 +3044,12 @@ function viewBill(bid){
         <th style="padding:8px">HSN</th>${extH}<th style="padding:8px">Unit</th>
         <th style="padding:8px">Qty</th><th style="padding:8px">Rate</th><th style="padding:8px;text-align:right">Amount</th>
       </tr></thead><tbody>${itemRowsFull}</tbody>
+      <tfoot><tr style="background:#F0F0F0;font-weight:800">
+        <td colspan="${hasExtCols?6:3}" style="padding:8px;border:1px solid #E0E0E0;text-align:right">Total (${bill.items.length} item${bill.items.length!==1?'s':''})</td>
+        <td style="padding:8px;border:1px solid #E0E0E0;text-align:right">${fmtR(bill.items.reduce((s,it)=>s+(parseFloat(it.qty)||0),0))}${(()=>{const u=[...new Set(bill.items.map(it=>(it.unit||'').toUpperCase()).filter(Boolean))];return u.length===1?' '+u[0]:'';})()}</td>
+        <td style="padding:8px;border:1px solid #E0E0E0"></td>
+        <td style="padding:8px;border:1px solid #E0E0E0;text-align:right">${fmt(bill.sub)}</td>
+      </tr></tfoot>
     </table>
     <div style="display:flex;justify-content:flex-end;margin-bottom:14px">
       <table style="width:280px;border-collapse:collapse;font-size:12px">
