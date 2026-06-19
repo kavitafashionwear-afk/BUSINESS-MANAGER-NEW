@@ -222,9 +222,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="ditem" data-tab="parties" onclick="navTo('parties')"><span class="di">👥</span> Parties</button>
     <button class="ditem" data-tab="bills" onclick="navTo('bills')"><span class="di">📦</span> Purchase</button>
     <button class="ditem" data-tab="invoices" onclick="navTo('invoices')"><span class="di">🧾</span> Sales</button>
+    <button class="ditem" data-tab="inventory" onclick="navTo('inventory')"><span class="di">📦</span> Inventory</button>
     <div class="dgroup">Money</div>
     <button class="ditem" data-tab="bank" onclick="navTo('bank')"><span class="di">🏦</span> Bank</button>
     <button class="ditem" data-tab="cash" onclick="navTo('cash')"><span class="di">💵</span> Cash in Hand</button>
+    <button class="ditem" data-tab="expenses" onclick="navTo('expenses')"><span class="di">🧾</span> Expenses</button>
     <button class="ditem" data-tab="loans" onclick="navTo('loans')"><span class="di">📊</span> Assets, Loans &amp; OD</button>
     <div class="dgroup">More</div>
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
@@ -239,6 +241,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div id="pg-invoices" class="main" style="display:none"></div>
   <div id="pg-bank" class="main" style="display:none"></div>
   <div id="pg-cash" class="main" style="display:none"></div>
+  <div id="pg-expenses" class="main" style="display:none"></div>
+  <div id="pg-inventory" class="main" style="display:none"></div>
   <div id="pg-loans" class="main" style="display:none"></div>
   <div id="pg-notes" class="main" style="display:none"></div>
   <div id="pg-reports" class="main" style="display:none"></div>
@@ -761,6 +765,46 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
 </div></div>
 
+<!-- EXPENSE MODAL -->
+<div class="ov" id="mo-expense">
+<div class="mb">
+  <div class="mhd"><div><h3 id="exp-mo-title">Record Expense</h3><div class="sub">Rent, salary, freight, courier, utilities…</div></div><button class="xb" onclick="closeModal('expense')">✕</button></div>
+  <div class="mbd">
+    <div class="fr">
+      <div class="fl"><label>Date *</label><input id="exp-date" type="date"></div>
+      <div class="fl"><label>Amount (₹) *</label><input id="exp-amt" type="number" placeholder="0" min="0" step="0.01" oninput="this.value=Math.abs(this.value)"></div>
+    </div>
+    <div class="fl"><label>Category *</label>
+      <select id="exp-cat" onchange="onExpCatChange()"></select>
+    </div>
+    <div class="fl" id="exp-custom-wrap" style="display:none"><label>Custom Category Name *</label><input id="exp-custom" placeholder="e.g. Diwali Gifts"></div>
+    <div class="fl"><label>Paid Via *</label>
+      <select id="exp-mode">
+        <option value="cash">💵 Cash (reduces Cash in Hand)</option>
+        <option value="bank">🏦 Bank / NEFT / Cheque</option>
+        <option value="upi">📲 UPI</option>
+      </select>
+    </div>
+    <div class="fl"><label>Description / Notes</label><input id="exp-desc" placeholder="e.g. June shop rent, Blue Dart courier #4471"></div>
+    <div class="fl"><label>Paid To (optional)</label><input id="exp-payee" placeholder="e.g. Landlord, electricity board, staff name"></div>
+    <div class="ibox blu" style="font-size:12px">💡 Cash expenses automatically appear in your Cash in Hand ledger. All expenses flow into the Profit report.</div>
+  </div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('expense')">Cancel</button>
+    <button class="btn pri" onclick="saveExpense()">Save Expense</button>
+  </div>
+</div></div>
+
+<!-- ITEM DETAIL MODAL -->
+<div class="ov" id="mo-item">
+<div class="mb">
+  <div class="mhd"><div><h3 id="item-mo-title">Item</h3><div class="sub" id="item-mo-sub"></div></div><button class="xb" onclick="closeModal('item')">✕</button></div>
+  <div class="mbd" id="item-mo-body"></div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('item')">Close</button>
+  </div>
+</div></div>
+
 <!-- CONFIRM MODAL -->
 <div class="ov" id="mo-cf">
 <div class="mb" style="border-radius:20px;max-height:auto">
@@ -830,7 +874,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;if(!b.invMeta)b.invMeta={};return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -1024,7 +1068,7 @@ function navTo(t){closeDrawer();goTab(t);}
 // ═══ NAV ═══
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
-  ['home','parties','bills','invoices','detail','notes','bank','cash','loans','trash'].forEach(p=>{
+  ['home','parties','bills','invoices','detail','notes','bank','cash','expenses','inventory','loans','trash'].forEach(p=>{
     const el=document.getElementById('pg-'+p);
     if(el)el.style.display=p===t?'block':'none';
   });
@@ -1048,6 +1092,8 @@ function renderTab(t){
   else if(t==='notes')renderNotes();
   else if(t==='bank')renderBank();
   else if(t==='cash')renderCash();
+  else if(t==='expenses')renderExpenses();
+  else if(t==='inventory')renderInventory();
   else if(t==='loans')renderLoans();
   else if(t==='reports')renderReports();
   else if(t==='trash')renderTrash();
@@ -1060,6 +1106,7 @@ function fabAction(){
   if(curTab==='bills')openBillModal();
   else if(curTab==='invoices')openInvModal();
   else if(curTab==='cash')openCashAdjust('in');
+  else if(curTab==='expenses')openExpenseModal();
   else openInvModal();
 }
 // Lightweight popover menu anchored above the FAB
@@ -1225,15 +1272,21 @@ function renderHome(){
         <div class="sv" style="color:${cashInHand()>=0?'#854D0E':'#DC2626'}">${fmt(cashInHand())}</div>
         <div style="font-size:11px;color:var(--sub)">All cash sales & settlements · tap to view ledger</div>
       </div>
+      <div class="stat" style="grid-column:1/-1;background:#FFF7ED;border:1.5px solid #FED7AA;cursor:pointer" onclick="goTab('expenses')">
+        <div class="sl">🧾 Expenses (this month)</div>
+        <div class="sv" style="color:#9A3412">${fmt(monthExpenses())}<span style="font-size:11px;color:var(--sub);margin-left:8px">total ${fmt(totalExpenses())}</span></div>
+        <div style="font-size:11px;color:var(--sub)">Rent, salary, freight & more · tap to manage</div>
+      </div>
       <div class="stat" style="grid-column:1/-1;background:#EEF2FF;border:1.5px solid #C7D2FE;cursor:pointer" onclick="goTab('loans')">
         <div class="sl">🤝 Loans & OD</div>
         <div class="sv" style="color:#4338CA">${fmt(totalLoanOutstanding())}<span style="font-size:11px;color:var(--sub);margin-left:8px">loans owed</span></div>
         <div style="font-size:11px;color:var(--sub)">OD drawn ${fmt(odUsed())} · tap to manage</div>
       </div>
-      <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE">
+      <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE;cursor:pointer" onclick="goTab('inventory')">
         <div class="sl">📊 Stock in Hand (Purchased - Sold)</div>
         <div class="sv" style="color:${stockValue()>=0?'#059669':'#DC2626'}">${fmt(Math.abs(stockValue()))}${d.cfStock?'<span style="font-size:11px;color:var(--sub);margin-left:8px">incl. C/F ₹'+new Intl.NumberFormat("en-IN").format(d.cfStock)+'</span>':''}</div>
-        <button class="btn sm" style="margin-top:8px;width:100%;justify-content:center" onclick="openCFModal()">📦 Set Last Year C/F Stock</button>
+        <div style="font-size:11px;color:var(--sub);margin-top:2px">Tap for item-wise inventory →</div>
+        <button class="btn sm" style="margin-top:8px;width:100%;justify-content:center" onclick="event.stopPropagation();openCFModal()">📦 Set Last Year C/F Stock</button>
       </div>
     </div>
     <div class="card">
@@ -1317,6 +1370,473 @@ function openCashOpening(){
   if(v===null)return;
   d.cashOpening=parseFloat(v)||0;d.cashOpeningDate=d.cashOpeningDate||td();
   saveToCloud();renderCash();
+}
+
+// ═══════════════════════════════
+//  EXPENSES
+// ═══════════════════════════════
+// d.expenses = [{id,date,desc,amount,cat,dir:'out'|'in',mode:'cash'|'bank'|'upi',payee}]
+// Cash-mode expenses already flow into cashLedger(). All expenses feed the Profit report.
+const EXPENSE_CATS=['Office Rent','Electricity','Salary / Wages','Packing','Courier / Transport','Freight','Petrol / Travel','Internet / Phone','Tea / Food','Stationery','Repairs & Maintenance','Bank Charges','Rent of Godown','GST / Tax Paid','Commission','Printing','Misc / Other'];
+let editExpId=null;
+let expMonth=null; // YYYY-MM filter, null = all
+
+// Sum of real expenses (dir 'out', excludes opening cash-adjustment 'in')
+function totalExpenses(list){
+  const d=D();
+  const src=list||(d.expenses||[]);
+  return src.filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+}
+function monthExpenses(ym){
+  const d=D();const m=ym||td().slice(0,7);
+  return (d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment'&&(e.date||'').slice(0,7)===m).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+}
+
+function renderExpenses(){
+  const d=D();if(!d.expenses)d.expenses=[];
+  const search=(document.getElementById('exp-srch')||{}).value||'';
+  // Build month options from existing expenses
+  const months=[...new Set((d.expenses||[]).map(e=>(e.date||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  if(expMonth&&!months.includes(expMonth))expMonth=null;
+
+  // Filter (exclude the legacy "Cash Adjustment" pseudo-entries from the expense list — they belong to Cash ledger)
+  let list=(d.expenses||[]).filter(e=>e.cat!=='Cash Adjustment'&&(e.dir||'out')==='out');
+  if(expMonth)list=list.filter(e=>(e.date||'').slice(0,7)===expMonth);
+  if(search){const q=search.toLowerCase();list=list.filter(e=>((e.cat||'')+' '+(e.desc||'')+' '+(e.payee||'')+' '+(e.amount||'')).toLowerCase().includes(q));}
+  list=list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  const total=list.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const cashTot=list.filter(e=>(e.mode||'cash')==='cash').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const bankTot=list.filter(e=>(e.mode||'')==='bank').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const upiTot=list.filter(e=>(e.mode||'')==='upi').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+
+  // Category breakdown
+  const catMap={};
+  list.forEach(e=>{const c=e.cat||'Other';catMap[c]=(catMap[c]||0)+(parseFloat(e.amount)||0);});
+  const catRows=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const maxCat=catRows.length?catRows[0][1]:1;
+
+  const monthSel=`<select onchange="expMonth=this.value||null;renderExpenses()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;font-family:inherit">
+    <option value="">All time</option>
+    ${months.map(m=>{const dt=new Date(m+'-01');const lbl=dt.toLocaleDateString('en-IN',{month:'short',year:'numeric'});return `<option value="${m}" ${expMonth===m?'selected':''}>${lbl}</option>`;}).join('')}
+  </select>`;
+
+  const modeBadge=m=>{const x={cash:['💵','#FEF3C7','#92400E'],bank:['🏦','#DBEAFE','#1E40AF'],upi:['📲','#EDE9FE','#5B21B6']}[m||'cash']||['💵','#F3F4F6','#374151'];return `<span style="background:${x[1]};color:${x[2]};font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">${x[0]} ${(m||'cash').toUpperCase()}</span>`;};
+
+  const rows=list.length?list.map((e,idx)=>{
+    const realIdx=(d.expenses||[]).indexOf(e);
+    return`<div class="prow" style="cursor:pointer" onclick="editExpense('${e.id}')">
+      <div class="pav" style="background:#B45309;font-size:16px">🧾</div>
+      <div class="pi">
+        <div class="pn">${esc(e.cat||'Expense')}</div>
+        <div class="ps">${fmtD(e.date)} ${modeBadge(e.mode)}${e.desc?' · '+esc(e.desc):''}${e.payee?' · '+esc(e.payee):''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div class="pb" style="color:var(--r)">−${fmt(e.amount)}</div>
+        <button class="btn sm red" style="margin-top:4px;padding:3px 9px;font-size:11px" onclick="event.stopPropagation();delExpense('${e.id}')">🗑</button>
+      </div>
+    </div>`;
+  }).join(''):'<div class="empty"><div class="ei">🧾</div><p>No expenses'+(expMonth?' this month':'')+' yet.<br><span style="font-size:12px;color:#999">Tap + to record rent, salary, freight, courier…</span></p></div>';
+
+  document.getElementById('pg-expenses').innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button class="btn sm" onclick="goTab('home')">← Back</button>
+    </div>
+    <div style="background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:12px;color:#9A3412;font-weight:700">🧾 TOTAL EXPENSES${expMonth?' ('+new Date(expMonth+'-01').toLocaleDateString('en-IN',{month:'short',year:'numeric'})+')':''}</div>
+          <div style="font-size:30px;font-weight:800;color:#9A3412;margin-top:4px">${fmt(total)}</div>
+          <div style="font-size:12px;color:#b06a3a;margin-top:2px">${list.length} entry(s) · ${BIZ[curBiz].name}</div>
+        </div>
+        ${monthSel}
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="sl">💵 Cash</div><div class="sv ora" style="font-size:16px">${fmt(cashTot)}</div></div>
+      <div class="stat"><div class="sl">🏦 Bank</div><div class="sv blu" style="font-size:16px">${fmt(bankTot)}</div></div>
+      <div class="stat"><div class="sl">📲 UPI</div><div class="sv" style="font-size:16px;color:#5B21B6">${fmt(upiTot)}</div></div>
+    </div>
+    <div class="btn-row" style="margin-bottom:14px">
+      <button class="btn pri" onclick="openExpenseModal()">+ Record Expense</button>
+    </div>
+    ${catRows.length?`<div class="card">
+      <div class="card-hd">By Category</div>
+      ${catRows.map(([c,v])=>`<div style="margin-bottom:9px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600">${esc(c)}</span><span style="font-weight:700;color:var(--r)">${fmt(v)}</span></div>
+        <div style="height:6px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(4,Math.round(v/maxCat*100))}%;background:#D97706"></div></div>
+      </div>`).join('')}
+    </div>`:''}
+    <div class="srch-wrap"><input class="srch" id="exp-srch" placeholder="Search expenses…" oninput="renderExpenses()" value="${esc(search)}"></div>
+    <div class="card" style="padding:0 16px">
+      <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">EXPENSE LOG (${list.length})</div>
+      ${rows}
+    </div>`;
+  ['home','parties','bills','invoices','detail','notes','bank','cash','loans','trash'].forEach(p=>{const el=document.getElementById('pg-'+p);if(el)el.style.display='none';});
+  document.getElementById('pg-expenses').style.display='block';
+}
+
+function fillExpCats(selected){
+  const sel=document.getElementById('exp-cat');if(!sel)return;
+  sel.innerHTML=EXPENSE_CATS.map(c=>`<option value="${c}" ${c===selected?'selected':''}>${c}</option>`).join('')+`<option value="__custom__" ${selected&&!EXPENSE_CATS.includes(selected)?'selected':''}>➕ Custom category…</option>`;
+}
+function onExpCatChange(){
+  const v=document.getElementById('exp-cat').value;
+  document.getElementById('exp-custom-wrap').style.display=v==='__custom__'?'block':'none';
+}
+
+function openExpenseModal(){
+  editExpId=null;
+  document.getElementById('exp-mo-title').textContent='Record Expense';
+  fillExpCats(EXPENSE_CATS[0]);
+  document.getElementById('exp-custom-wrap').style.display='none';
+  document.getElementById('exp-custom').value='';
+  document.getElementById('exp-date').value=td();
+  document.getElementById('exp-amt').value='';
+  document.getElementById('exp-mode').value='cash';
+  document.getElementById('exp-desc').value='';
+  document.getElementById('exp-payee').value='';
+  openModal('expense');
+}
+
+function editExpense(id){
+  const d=D();const e=(d.expenses||[]).find(x=>x.id===id);if(!e)return;
+  editExpId=id;
+  document.getElementById('exp-mo-title').textContent='Edit Expense';
+  const isStd=EXPENSE_CATS.includes(e.cat);
+  fillExpCats(isStd?e.cat:'__custom__');
+  document.getElementById('exp-custom-wrap').style.display=isStd?'none':'block';
+  document.getElementById('exp-custom').value=isStd?'':(e.cat||'');
+  document.getElementById('exp-date').value=e.date||td();
+  document.getElementById('exp-amt').value=e.amount||'';
+  document.getElementById('exp-mode').value=e.mode||'cash';
+  document.getElementById('exp-desc').value=e.desc||'';
+  document.getElementById('exp-payee').value=e.payee||'';
+  openModal('expense');
+}
+
+function saveExpense(){
+  const d=D();if(!d.expenses)d.expenses=[];
+  const date=document.getElementById('exp-date').value||td();
+  const amount=parseFloat(document.getElementById('exp-amt').value)||0;
+  if(amount<=0){alert('Enter a valid amount');return;}
+  let cat=document.getElementById('exp-cat').value;
+  if(cat==='__custom__'){cat=(document.getElementById('exp-custom').value||'').trim();if(!cat){alert('Enter a custom category name');return;}}
+  const mode=document.getElementById('exp-mode').value||'cash';
+  const desc=(document.getElementById('exp-desc').value||'').trim();
+  const payee=(document.getElementById('exp-payee').value||'').trim();
+  if(editExpId){
+    const e=d.expenses.find(x=>x.id===editExpId);
+    if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir='out';}
+  } else {
+    d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out'});
+  }
+  editExpId=null;
+  saveToCloud();closeModal('expense');renderExpenses();
+}
+
+function delExpense(id){
+  const d=D();const idx=(d.expenses||[]).findIndex(x=>x.id===id);if(idx<0)return;
+  const e=d.expenses[idx];
+  if(!confirm('Move this expense to Recycle Bin?\n\n'+(e.cat||'')+' · '+fmt(e.amount)+' · '+fmtD(e.date)))return;
+  if(!d.trash)d.trash=[];
+  d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
+  d.expenses.splice(idx,1);
+  saveToCloud();renderExpenses();updateTrashBadge();
+}
+
+// ═══════════════════════════════
+//  INVENTORY  (auto-derived from bills & invoices)
+// ═══════════════════════════════
+// No new data entry. Purchases add stock, sales remove it.
+// Items are grouped by normalized description. Job-work bills are excluded (services, not goods).
+// Optional per-item low-stock level stored in d.invMeta[key]={low:n}.
+let invFilter='all';   // all | instock | low | out | dead | slow | fast
+let invSort='value';   // value | name | stock | profit
+let invDim='item';     // item | hsn | design | color
+const INV_LOW_DEFAULT=10;
+
+function normItem(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').trim();}
+
+// Collect every stock movement (purchase=in, sale=out) with its textile attributes.
+function collectMoves(){
+  const d=D();const moves=[];
+  (d.bills||[]).filter(b=>!b.jw).forEach(b=>{(b.items||[]).forEach(it=>{
+    const key=normItem(it.desc);if(!key)return;
+    moves.push({kind:'in',date:b.date,num:b.num,desc:it.desc,key,hsn:it.hsn||'',unit:it.unit||'',
+      qty:parseFloat(it.qty)||0,pcs:parseFloat(it.pcs)||0,rate:parseFloat(it.rate)||0,amt:parseFloat(it.amt)||((parseFloat(it.qty)||0)*(parseFloat(it.rate)||0)),
+      design:it.design||'',color:it.color||'',size:it.size||'',lot:it.lot||'',batch:it.batch||''});
+  });});
+  (d.invoices||[]).forEach(inv=>{(inv.items||[]).forEach(it=>{
+    const key=normItem(it.desc);if(!key)return;
+    moves.push({kind:'out',date:inv.date,num:inv.num,desc:it.desc,key,hsn:it.hsn||'',unit:it.unit||'',
+      qty:parseFloat(it.qty)||0,pcs:parseFloat(it.pcs)||0,rate:parseFloat(it.rate)||0,amt:parseFloat(it.amt)||((parseFloat(it.qty)||0)*(parseFloat(it.rate)||0)),
+      design:it.design||'',color:it.color||'',size:it.size||'',lot:it.lot||'',batch:it.batch||''});
+  });});
+  return moves;
+}
+
+function buildInventory(){
+  const moves=collectMoves();const d=D();const meta=d.invMeta||{};
+  const map={};
+  function acc(key){return map[key]||(map[key]={key,names:{},hsn:'',units:{},inQty:0,inAmt:0,outQty:0,outAmt:0,inPcs:0,outPcs:0,recentOut:0,lastIn:'',lastOut:'',moves:[],
+    vColor:{},vSize:{},vDesign:{},vLot:{},vBatch:{}});}
+  const now=new Date(td());
+  moves.forEach(m=>{
+    const a=acc(m.key);
+    a.names[m.desc]=(a.names[m.desc]||0)+1;
+    if(m.hsn&&!a.hsn)a.hsn=m.hsn;
+    if(m.unit)a.units[m.unit]=(a.units[m.unit]||0)+1;
+    const signed=m.kind==='in'?m.qty:-m.qty;
+    if(m.kind==='in'){a.inQty+=m.qty;a.inAmt+=m.amt;a.inPcs+=m.pcs;if(!a.lastIn||m.date>a.lastIn)a.lastIn=m.date;}
+    else{a.outQty+=m.qty;a.outAmt+=m.amt;a.outPcs+=m.pcs;if(!a.lastOut||m.date>a.lastOut)a.lastOut=m.date;
+      const days=Math.round((now-new Date(m.date))/864e5);if(days<=90)a.recentOut+=m.qty;}
+    // variant net-stock buckets
+    if(m.color)a.vColor[m.color]=(a.vColor[m.color]||0)+signed;
+    if(m.size)a.vSize[m.size]=(a.vSize[m.size]||0)+signed;
+    if(m.design)a.vDesign[m.design]=(a.vDesign[m.design]||0)+signed;
+    if(m.lot)a.vLot[m.lot]=(a.vLot[m.lot]||0)+signed;
+    if(m.batch)a.vBatch[m.batch]=(a.vBatch[m.batch]||0)+signed;
+    a.moves.push(m);
+  });
+  return Object.values(map).map(a=>{
+    const name=Object.entries(a.names).sort((x,y)=>y[1]-x[1])[0][0];
+    const unit=Object.entries(a.units).sort((x,y)=>y[1]-x[1])[0]?.[0]||'';
+    const stock=a.inQty-a.outQty;
+    const rolls=a.inPcs-a.outPcs;
+    const avgBuy=a.inQty>0?a.inAmt/a.inQty:0;
+    const avgSell=a.outQty>0?a.outAmt/a.outQty:0;
+    const value=stock>0?stock*avgBuy:0;
+    const profitPU=(avgSell&&avgBuy)?avgSell-avgBuy:0;
+    const realized=avgBuy?a.outQty*(avgSell-avgBuy):0;
+    const low=(meta[a.key]&&meta[a.key].low!=null)?meta[a.key].low:INV_LOW_DEFAULT;
+    let status='ok';if(stock<=0.001)status='out';else if(stock<=low)status='low';
+    const daysSinceSale=a.lastOut?Math.round((new Date(td())-new Date(a.lastOut))/864e5):9999;
+    const neverSold=a.outQty<=0.001;
+    const inStock=stock>0.001;
+    const dead=inStock&&neverSold;                       // sitting, never sold
+    const slow=inStock&&!neverSold&&a.recentOut<=0.001;  // sold before, stalled 90d+
+    const fast=a.recentOut>0.001;                        // moving in last 90d
+    a.moves.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+    return {key:a.key,name,hsn:a.hsn,unit,inQty:a.inQty,outQty:a.outQty,stock,rolls,inPcs:a.inPcs,outPcs:a.outPcs,
+      avgBuy,avgSell,value,profitPU,realized,low,status,dead,slow,fast,neverSold,recentOut:a.recentOut,
+      lastIn:a.lastIn,lastOut:a.lastOut,daysSinceSale,moves:a.moves,
+      vColor:a.vColor,vSize:a.vSize,vDesign:a.vDesign,vLot:a.vLot,vBatch:a.vBatch};
+  });
+}
+
+// Roll-up stock by an attribute dimension (hsn|design|color) for the grouped views.
+function buildGroupStock(dim){
+  const moves=collectMoves();const map={};
+  moves.forEach(m=>{
+    let k=dim==='hsn'?(m.hsn||''):dim==='design'?(m.design||''):(m.color||'');
+    k=k.trim()||'— (unspecified)';
+    const a=map[k]||(map[k]={key:k,inQty:0,outQty:0,inAmt:0,outAmt:0,items:{}});
+    if(m.kind==='in'){a.inQty+=m.qty;a.inAmt+=m.amt;}else{a.outQty+=m.qty;a.outAmt+=m.amt;}
+    a.items[m.key]=1;
+  });
+  return Object.values(map).map(a=>{
+    const stock=a.inQty-a.outQty;const avgBuy=a.inQty>0?a.inAmt/a.inQty:0;
+    return {key:a.key,inQty:a.inQty,outQty:a.outQty,stock,value:stock>0?stock*avgBuy:0,items:Object.keys(a.items).length};
+  }).sort((x,y)=>y.value-x.value);
+}
+
+function renderInventory(){
+  const d=D();
+  const search=(document.getElementById('inv-srch')||{}).value||'';
+  const allItems=buildInventory();
+  const totalValue=allItems.reduce((s,i)=>s+i.value,0);
+  const inStock=allItems.filter(i=>i.status==='ok'||i.status==='low').length;
+  const lowCount=allItems.filter(i=>i.status==='low').length;
+  const outCount=allItems.filter(i=>i.status==='out').length;
+  const deadCount=allItems.filter(i=>i.dead).length;
+  const slowCount=allItems.filter(i=>i.slow).length;
+  const fastCount=allItems.filter(i=>i.fast).length;
+
+  const dimSel=`<select onchange="invDim=this.value;renderInventory()" style="padding:9px 11px;border:1.5px solid var(--bdr);border-radius:10px;font-size:12px;background:#fff;font-family:inherit">
+    <option value="item" ${invDim==='item'?'selected':''}>📦 By Item</option>
+    <option value="hsn" ${invDim==='hsn'?'selected':''}>🔢 By HSN</option>
+    <option value="design" ${invDim==='design'?'selected':''}>🎨 By Design No.</option>
+    <option value="color" ${invDim==='color'?'selected':''}>🌈 By Colour</option>
+  </select>`;
+
+  const header=`
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <button class="btn sm" onclick="goTab('home')">← Back</button>
+    </div>
+    <div style="background:var(--pri);color:#fff;border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="font-size:12px;opacity:.75;font-weight:700">📦 STOCK VALUE ON HAND</div>
+      <div style="font-size:30px;font-weight:800;margin-top:4px">${fmt(totalValue)}</div>
+      <div style="font-size:12px;opacity:.8;margin-top:2px">${allItems.length} item(s) tracked · ${BIZ[curBiz].name}</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="sl">✅ In Stock</div><div class="sv grn" style="font-size:18px">${inStock}</div></div>
+      <div class="stat"><div class="sl">⚠️ Low</div><div class="sv ora" style="font-size:18px">${lowCount}</div></div>
+      <div class="stat"><div class="sl">⛔ Out</div><div class="sv red" style="font-size:18px">${outCount}</div></div>
+      <div class="stat"><div class="sl">🐌 Dead</div><div class="sv" style="font-size:18px;color:#6B7280">${deadCount}</div></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--sub)">View:</div>${dimSel}
+    </div>`;
+
+  // ---- GROUPED VIEWS (HSN / Design / Colour) ----
+  if(invDim!=='item'){
+    let groups=buildGroupStock(invDim);
+    if(search){const q=search.toLowerCase();groups=groups.filter(g=>g.key.toLowerCase().includes(q));}
+    const dimLabel=invDim==='hsn'?'HSN Code':invDim==='design'?'Design No.':'Colour';
+    const rows=groups.length?groups.map(g=>`<div class="prow" style="cursor:default">
+      <div class="pav" style="background:#1E40AF;font-size:13px">${invDim==='hsn'?'#':invDim==='design'?'🎨':'🌈'}</div>
+      <div class="pi"><div class="pn">${esc(g.key)}</div><div class="ps">${g.items} item(s) · In ${fmtR(g.inQty)} · Out ${fmtR(g.outQty)}</div></div>
+      <div style="text-align:right"><div class="pb" style="color:${g.stock>0?'var(--g)':'var(--sub)'}">${fmtR(g.stock)}</div><div style="font-size:11px;color:var(--sub)">${fmt(g.value)}</div></div>
+    </div>`).join(''):'<div class="empty"><div class="ei">📦</div><p>No '+dimLabel+' data yet.<br><span style="font-size:12px;color:#999">Fill the Textile details on bills/invoices to use this view.</span></p></div>';
+    document.getElementById('pg-inventory').innerHTML=header+`
+      <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search ${esc(dimLabel)}…" oninput="renderInventory()" value="${esc(search)}"></div>
+      <div class="card" style="padding:0 16px">
+        <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">${esc(dimLabel.toUpperCase())}-WISE STOCK (${groups.length})</div>
+        ${rows}
+      </div>`;
+    ['home','parties','bills','invoices','detail','notes','bank','cash','expenses','loans','trash'].forEach(p=>{const el=document.getElementById('pg-'+p);if(el)el.style.display='none';});
+    document.getElementById('pg-inventory').style.display='block';
+    return;
+  }
+
+  // ---- ITEM VIEW ----
+  let list=allItems.slice();
+  if(invFilter==='instock')list=list.filter(i=>i.stock>0.001);
+  else if(invFilter==='low')list=list.filter(i=>i.status==='low');
+  else if(invFilter==='out')list=list.filter(i=>i.status==='out');
+  else if(invFilter==='dead')list=list.filter(i=>i.dead);
+  else if(invFilter==='slow')list=list.filter(i=>i.slow);
+  else if(invFilter==='fast')list=list.filter(i=>i.fast);
+  if(search){const q=search.toLowerCase();list=list.filter(i=>(i.name+' '+i.hsn).toLowerCase().includes(q));}
+  if(invFilter==='fast')list.sort((a,b)=>b.recentOut-a.recentOut);
+  else if(invSort==='value')list.sort((a,b)=>b.value-a.value);
+  else if(invSort==='name')list.sort((a,b)=>a.name.localeCompare(b.name));
+  else if(invSort==='stock')list.sort((a,b)=>b.stock-a.stock);
+  else if(invSort==='profit')list.sort((a,b)=>b.realized-a.realized);
+
+  const chip=(id,label,n,active)=>`<button onclick="invFilter='${id}';renderInventory()" style="padding:6px 12px;border-radius:20px;border:1.5px solid ${active?'var(--pri2)':'var(--bdr)'};background:${active?'var(--pri3)':'#fff'};color:${active?'var(--pri2)':'var(--sub)'};font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">${label}${n!=null?' ('+n+')':''}</button>`;
+  const statusBadge=i=>{
+    if(i.status==='out')return '<span style="background:#FEE2E2;color:#991B1B;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">OUT</span>';
+    if(i.status==='low')return '<span style="background:#FEF3C7;color:#92400E;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">LOW</span>';
+    if(i.fast)return '<span style="background:#DCFCE7;color:#166534;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">⚡ FAST</span>';
+    if(i.dead)return '<span style="background:#F3F4F6;color:#6B7280;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">DEAD</span>';
+    if(i.slow)return '<span style="background:#FEF9C3;color:#854D0E;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px">🐌 SLOW</span>';
+    return '';
+  };
+  const isFabric=i=>i.unit==='MTR'||i.unit==='KG';
+
+  const rows=list.length?list.map(i=>{
+    const stockColor=i.status==='out'?'var(--r)':i.status==='low'?'var(--o)':'var(--g)';
+    const rollLine=isFabric(i)&&(i.inPcs>0||i.outPcs>0)?`<span style="color:var(--sub)"> · 🧵 ${fmtR(i.rolls)} roll(s)</span>`:'';
+    return`<div class="brow" style="cursor:pointer" onclick="openItemDetail('${esc(i.key).replace(/'/g,"\\'")}')">
+      <div class="bh">
+        <div style="flex:1;min-width:0">
+          <div class="bn" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(i.name)}</div>
+          <div class="bm">${i.hsn?'HSN '+esc(i.hsn)+' · ':''}${statusBadge(i)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:17px;font-weight:800;color:${stockColor}">${fmtR(i.stock)} <span style="font-size:11px;color:var(--sub);font-weight:600">${esc(i.unit)}</span></div>
+          <div style="font-size:11px;color:var(--sub)">Value ${fmt(i.value)}${rollLine}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px">
+        <div style="background:#F8FAFC;border-radius:7px;padding:6px;text-align:center"><div style="font-size:10px;color:var(--sub)">In</div><div style="font-size:12px;font-weight:700;color:var(--g)">${fmtR(i.inQty)}</div></div>
+        <div style="background:#F8FAFC;border-radius:7px;padding:6px;text-align:center"><div style="font-size:10px;color:var(--sub)">Out</div><div style="font-size:12px;font-weight:700;color:var(--r)">${fmtR(i.outQty)}</div></div>
+        <div style="background:#F8FAFC;border-radius:7px;padding:6px;text-align:center"><div style="font-size:10px;color:var(--sub)">Buy</div><div style="font-size:12px;font-weight:700">${i.avgBuy?fmt(i.avgBuy):'—'}</div></div>
+        <div style="background:#F8FAFC;border-radius:7px;padding:6px;text-align:center"><div style="font-size:10px;color:var(--sub)">Sell</div><div style="font-size:12px;font-weight:700">${i.avgSell?fmt(i.avgSell):'—'}</div></div>
+      </div>
+      ${i.profitPU?`<div style="font-size:11px;color:${i.profitPU>=0?'var(--g)':'var(--r)'};margin-top:6px;text-align:right">Margin ${fmt(i.profitPU)}/${esc(i.unit||'unit')} · Realized profit ${fmt(i.realized)}</div>`:''}
+    </div>`;
+  }).join(''):'<div class="empty"><div class="ei">📦</div><p>No items'+(search?' match your search':invFilter!=='all'?' in this filter':' yet')+'.<br><span style="font-size:12px;color:#999">Stock builds automatically from your purchase bills & sales invoices.</span></p></div>';
+
+  document.getElementById('pg-inventory').innerHTML=header+`
+    <div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px">
+      ${chip('all','All',allItems.length,invFilter==='all')}
+      ${chip('instock','In Stock',null,invFilter==='instock')}
+      ${chip('fast','⚡ Fast',fastCount,invFilter==='fast')}
+      ${chip('slow','🐌 Slow',slowCount,invFilter==='slow')}
+      ${chip('low','Low',lowCount,invFilter==='low')}
+      ${chip('out','Out',outCount,invFilter==='out')}
+      ${chip('dead','Dead',deadCount,invFilter==='dead')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <div class="srch-wrap" style="flex:1;margin-bottom:0"><input class="srch" id="inv-srch" placeholder="Search items…" oninput="renderInventory()" value="${esc(search)}" style="margin-bottom:0"></div>
+      <select onchange="invSort=this.value;renderInventory()" style="padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:12px;background:#fff;font-family:inherit">
+        <option value="value" ${invSort==='value'?'selected':''}>By value</option>
+        <option value="stock" ${invSort==='stock'?'selected':''}>By stock</option>
+        <option value="profit" ${invSort==='profit'?'selected':''}>By profit</option>
+        <option value="name" ${invSort==='name'?'selected':''}>By name</option>
+      </select>
+    </div>
+    <div class="card" style="padding:0 16px">
+      <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">ITEMS (${list.length})</div>
+      ${rows}
+    </div>`;
+  ['home','parties','bills','invoices','detail','notes','bank','cash','expenses','loans','trash'].forEach(p=>{const el=document.getElementById('pg-'+p);if(el)el.style.display='none';});
+  document.getElementById('pg-inventory').style.display='block';
+}
+
+function variantBlock(title,obj,unit){
+  const entries=Object.entries(obj||{}).filter(([k,v])=>k);
+  if(!entries.length)return'';
+  entries.sort((a,b)=>b[1]-a[1]);
+  return `<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:var(--sub);margin-bottom:4px">${title}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${entries.map(([k,v])=>`<span style="background:#F1F5F9;border:1px solid var(--bdr);border-radius:8px;padding:4px 9px;font-size:12px"><strong>${esc(k)}</strong>: <span style="color:${v>0?'var(--g)':'var(--sub)'}">${fmtR(v)} ${esc(unit||'')}</span></span>`).join('')}</div></div>`;
+}
+
+function openItemDetail(key){
+  const items=buildInventory();
+  const i=items.find(x=>x.key===key);if(!i)return;
+  document.getElementById('item-mo-title').textContent=i.name;
+  document.getElementById('item-mo-sub').textContent=(i.hsn?'HSN '+i.hsn+' · ':'')+(i.unit||'');
+  const stockColor=i.status==='out'?'var(--r)':i.status==='low'?'var(--o)':'var(--g)';
+  const isFabric=i.unit==='MTR'||i.unit==='KG';
+  const moveRows=i.moves.map(m=>{
+    const tags=[m.design&&('🎨 '+m.design),m.color&&('🌈 '+m.color),m.size&&('📏 '+m.size),m.lot&&('Lot '+m.lot),m.batch&&('Batch '+m.batch)].filter(Boolean).join(' · ');
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--bdr)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="width:26px;height:26px;border-radius:50%;background:${m.kind==='in'?'#ECFDF5':'#FEF2F2'};color:${m.kind==='in'?'#059669':'#DC2626'};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">${m.kind==='in'?'↙':'↗'}</span>
+      <div><div style="font-size:12px;font-weight:600">${m.kind==='in'?'Purchase':'Sale'} · ${esc(m.num||'')}</div><div style="font-size:11px;color:var(--sub)">${fmtD(m.date)} · @${fmt(m.rate)}${tags?' · '+esc(tags):''}</div></div>
+    </div>
+    <div style="text-align:right"><div style="font-size:13px;font-weight:700;color:${m.kind==='in'?'var(--g)':'var(--r)'}">${m.kind==='in'?'+':'−'}${fmtR(m.qty)} ${esc(i.unit)}</div><div style="font-size:11px;color:var(--sub)">${fmt(m.amt)}</div></div>
+  </div>`;}).join('');
+  const variants=variantBlock('By Colour',i.vColor,i.unit)+variantBlock('By Size',i.vSize,i.unit)+variantBlock('By Design No.',i.vDesign,i.unit)+variantBlock('By Lot No.',i.vLot,i.unit)+variantBlock('By Batch No.',i.vBatch,i.unit);
+  document.getElementById('item-mo-body').innerHTML=`
+    <div style="background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:12px;text-align:center">
+      <div style="font-size:12px;color:var(--sub);font-weight:700">CURRENT STOCK</div>
+      <div style="font-size:28px;font-weight:800;color:${stockColor}">${fmtR(i.stock)} <span style="font-size:14px;color:var(--sub)">${esc(i.unit)}</span></div>
+      <div style="font-size:12px;color:var(--sub)">Stock value ${fmt(i.value)}${isFabric&&(i.inPcs>0||i.outPcs>0)?' · 🧵 '+fmtR(i.rolls)+' roll(s) on hand':''}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div class="stat"><div class="sl">Purchased</div><div class="sv grn" style="font-size:15px">${fmtR(i.inQty)} ${esc(i.unit)}</div></div>
+      <div class="stat"><div class="sl">Sold</div><div class="sv red" style="font-size:15px">${fmtR(i.outQty)} ${esc(i.unit)}</div></div>
+      <div class="stat"><div class="sl">Avg Buy Rate</div><div class="sv" style="font-size:15px">${i.avgBuy?fmt(i.avgBuy):'—'}</div></div>
+      <div class="stat"><div class="sl">Avg Sell Rate</div><div class="sv" style="font-size:15px">${i.avgSell?fmt(i.avgSell):'—'}</div></div>
+    </div>
+    ${i.profitPU?`<div class="ibox ${i.profitPU>=0?'grn':'red'}" style="margin-bottom:12px">Margin <strong>${fmt(i.profitPU)}</strong> per ${esc(i.unit||'unit')} · Realized profit on sold qty: <strong>${fmt(i.realized)}</strong></div>`:''}
+    ${i.fast?`<div class="ibox grn" style="margin-bottom:12px">⚡ Fast-moving — ${fmtR(i.recentOut)} ${esc(i.unit)} sold in last 90 days.</div>`:''}
+    ${i.slow?`<div class="ibox ora" style="margin-bottom:12px">🐌 Slow-moving — no sales in 90+ days (last sold ${i.lastOut?fmtD(i.lastOut):'never'}).</div>`:''}
+    ${i.dead?`<div class="ibox ora" style="margin-bottom:12px">🪦 Dead stock — purchased but never sold. Consider a clearance.</div>`:''}
+    ${variants?`<div style="background:#fff;border:1px solid var(--bdr);border-radius:10px;padding:12px;margin-bottom:12px">${variants}</div>`:''}
+    <div class="fl" style="margin-bottom:12px">
+      <label>Low-stock alert level (${esc(i.unit||'units')})</label>
+      <div style="display:flex;gap:8px">
+        <input id="item-low-input" type="number" min="0" step="0.01" value="${i.low}" style="flex:1;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px">
+        <button class="btn pri sm" onclick="setItemLow('${esc(i.key).replace(/'/g,"\\'")}')">Save</button>
+      </div>
+    </div>
+    <div style="font-size:13px;font-weight:700;color:var(--sub);margin-bottom:4px">Movement history (${i.moves.length})</div>
+    <div>${moveRows||'<div style="color:var(--sub);font-size:13px;padding:10px">No movements</div>'}</div>`;
+  openModal('item');
+}
+
+function setItemLow(key){
+  const d=D();if(!d.invMeta)d.invMeta={};
+  const v=parseFloat(document.getElementById('item-low-input').value);
+  if(isNaN(v)||v<0){alert('Enter a valid number');return;}
+  d.invMeta[key]={low:v};
+  saveToCloud();closeModal('item');renderInventory();
 }
 
 // ═══════════════════════════════
@@ -2113,6 +2633,27 @@ function openBillModal(pid){
   addBillItem();
   openModal('bill');
 }
+// ── Textile variant fields (optional) shared by bill & invoice item rows ──
+function textileRowHTML(pfx,idx,v){v=v||{};
+  return `<details style="margin:2px 0 8px" ${(v.design||v.color||v.size||v.lot||v.batch)?'open':''}>
+    <summary style="font-size:11px;font-weight:700;color:var(--pri2);cursor:pointer;list-style:none;padding:4px 0">🧵 Textile details — design, colour, size, lot, batch</summary>
+    <div class="fr3" style="margin-top:6px">
+      <div class="fl" style="margin-bottom:8px"><label style="font-size:10px">Design No.</label><input id="${pfx}-design-${idx}" value="${esc(v.design||'')}" placeholder="e.g. 4471"></div>
+      <div class="fl" style="margin-bottom:8px"><label style="font-size:10px">Colour</label><input id="${pfx}-color-${idx}" value="${esc(v.color||'')}" placeholder="e.g. Navy"></div>
+      <div class="fl" style="margin-bottom:8px"><label style="font-size:10px">Size</label><input id="${pfx}-size-${idx}" value="${esc(v.size||'')}" placeholder="e.g. XL"></div>
+    </div>
+    <div class="fr" style="margin-bottom:0">
+      <div class="fl" style="margin-bottom:0"><label style="font-size:10px">Lot No.</label><input id="${pfx}-lot-${idx}" value="${esc(v.lot||'')}" placeholder="optional"></div>
+      <div class="fl" style="margin-bottom:0"><label style="font-size:10px">Batch No.</label><input id="${pfx}-batch-${idx}" value="${esc(v.batch||'')}" placeholder="optional"></div>
+    </div>
+  </details>`;
+}
+function readTextile(pfx,idx){
+  const g=id=>(document.getElementById(pfx+'-'+id+'-'+idx)?.value||'').trim();
+  const o={};const design=g('design'),color=g('color'),size=g('size'),lot=g('lot'),batch=g('batch');
+  if(design)o.design=design;if(color)o.color=color;if(size)o.size=size;if(lot)o.lot=lot;if(batch)o.batch=batch;
+  return o;
+}
 function addBillItem(){
   billItemCount++;
   const idx=billItemCount;
@@ -2143,7 +2684,7 @@ function addBillItem(){
       <div class="fl"><label>Quantity (KG) *</label><input id="bi-qty-${idx}" type="number" placeholder="0" min="0" step="0.01" oninput="calcBillTotal()"></div>
       <div class="fl"><label>Rate (₹) *</label><input id="bi-rate-${idx}" type="number" placeholder="0" min="0" step="0.01" oninput="calcBillTotal()"></div>
     </div>
-    <div class="fl"><label>Amount</label><input id="bi-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700"></div>`;
+    <div class="fl"><label>Amount</label><input id="bi-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700"></div>`+textileRowHTML('bi',idx,{});
   document.getElementById('b-items-list').appendChild(div);
 }
 function removeBillItem(idx){
@@ -2160,7 +2701,7 @@ function getBillItems(){
     if(!desc)return;
     const qty=parseFloat(document.getElementById('bi-qty-'+idx)?.value)||0;
     const rate=parseFloat(document.getElementById('bi-rate-'+idx)?.value)||0;
-    items.push({
+    items.push(Object.assign({
       desc,
       hsn:document.getElementById('bi-hsn-'+idx)?.value.trim()||'',
       unit:document.getElementById('bi-unit-'+idx)?.value||'KG',
@@ -2168,7 +2709,7 @@ function getBillItems(){
       pcs:parseFloat(document.getElementById('bi-pcs-'+idx)?.value)||0,
       cut:parseFloat(document.getElementById('bi-cut-'+idx)?.value)||0,
       qty,rate,amt:qty*rate
-    });
+    },readTextile('bi',idx)));
     const amtEl=document.getElementById('bi-amt-'+idx);
     if(amtEl)amtEl.value=fmt(qty*rate);
   });
@@ -2317,7 +2858,7 @@ function editBill(bid){
       <div class="fl"><label>Cut</label><input id="bi-cut-${idx}" type="number" value="${it.cut||0}"></div></div>
       <div class="fr"><div class="fl"><label>Qty *</label><input id="bi-qty-${idx}" type="number" value="${it.qty||0}" oninput="calcBillTotal()"></div>
       <div class="fl"><label>Rate *</label><input id="bi-rate-${idx}" type="number" value="${it.rate||0}" oninput="calcBillTotal()"></div></div>
-      <div class="fl"><label>Amount</label><input id="bi-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700" value="${fmt(it.amt||it.amount||(it.qty*it.rate)||0)}"></div>`;
+      <div class="fl"><label>Amount</label><input id="bi-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700" value="${fmt(it.amt||it.amount||(it.qty*it.rate)||0)}"></div>`+textileRowHTML('bi',idx,it);
     document.getElementById('b-items-list').appendChild(div);});
   calcBillTotal();openModal('bill');
 }
@@ -2364,7 +2905,7 @@ function editInvoice(iid){
       <div class="fl"><label>Unit</label><select id="ii-unit-${idx}"><option value="PCS"${it.unit==='PCS'?' selected':''}>Pieces</option><option value="KG"${it.unit==='KG'?' selected':''}>KG</option><option value="MTR"${it.unit==='MTR'?' selected':''}>Metres</option></select></div></div>
       <div class="fr"><div class="fl"><label>Qty *</label><input id="ii-qty-${idx}" type="number" value="${it.qty||0}" oninput="calcInvTotal()"></div>
       <div class="fl"><label>Rate *</label><input id="ii-rate-${idx}" type="number" value="${it.rate||0}" oninput="calcInvTotal()"></div></div>
-      <div class="fl"><label>Amount</label><input id="ii-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700" value="${fmt(it.amt||it.amount||(it.qty*it.rate)||0)}"></div>`;
+      <div class="fl"><label>Amount</label><input id="ii-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700" value="${fmt(it.amt||it.amount||(it.qty*it.rate)||0)}"></div>`+textileRowHTML('ii',idx,it);
     document.getElementById('i-items-list').appendChild(div);});
   calcInvTotal();
   // Reset invoice modal title and open
@@ -2509,7 +3050,7 @@ function addInvItem(){
       <div class="fl"><label>Quantity *</label><input id="ii-qty-${idx}" type="number" placeholder="0" min="0" step="0.01" oninput="calcInvTotal()"></div>
       <div class="fl"><label>Rate (₹) *</label><input id="ii-rate-${idx}" type="number" placeholder="0" min="0" step="0.01" oninput="calcInvTotal()"></div>
     </div>
-    <div class="fl"><label>Amount</label><input id="ii-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700"></div>`;
+    <div class="fl"><label>Amount</label><input id="ii-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700"></div>`+textileRowHTML('ii',idx,{});
   document.getElementById('i-items-list').appendChild(div);
 }
 function removeInvItem(idx){document.getElementById('ii-'+idx)?.remove();calcInvTotal();}
@@ -2520,7 +3061,7 @@ function getInvItems(){
     const desc=el.value.trim();if(!desc)return;
     const qty=parseFloat(document.getElementById('ii-qty-'+idx)?.value)||0;
     const rate=parseFloat(document.getElementById('ii-rate-'+idx)?.value)||0;
-    items.push({desc,hsn:document.getElementById('ii-hsn-'+idx)?.value.trim()||'',unit:document.getElementById('ii-unit-'+idx)?.value||'PCS',qty,rate,amt:qty*rate});
+    items.push(Object.assign({desc,hsn:document.getElementById('ii-hsn-'+idx)?.value.trim()||'',unit:document.getElementById('ii-unit-'+idx)?.value||'PCS',qty,rate,amt:qty*rate},readTextile('ii',idx)));
     const amtEl=document.getElementById('ii-amt-'+idx);if(amtEl)amtEl.value=fmt(qty*rate);
   });
   return items;
@@ -4007,6 +4548,24 @@ function renderTrash(){
           </div>
         </div>`;
       }
+      if(t.type==='expense'){
+        const e=t.expense;
+        return`<div style="${base}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span style="background:#FFF7ED;color:#9A3412;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🧾 ${esc(e.cat||'Expense')}</span>
+              <span style="font-size:11px;color:#666">${fmtD(e.date)}</span>
+            </div>
+            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+          </div>
+          <div style="font-size:13px;margin-bottom:4px"><strong>${fmt(e.amount)}</strong> · ${esc((e.mode||'cash').toUpperCase())}${e.payee?' · '+esc(e.payee):''}</div>
+          <div style="font-size:11px;color:#888;margin-bottom:10px">${e.desc?esc(e.desc)+' · ':''}Deleted ${age===0?'today':age+'d ago'}</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm pri" onclick="restoreTrashItem(${i})" style="flex:1;justify-content:center">↩ Restore</button>
+            <button class="btn sm red" onclick="permDeleteItem(${i})" style="flex:1;justify-content:center;background:#FFF1F2">🗑 Delete Forever</button>
+          </div>
+        </div>`;
+      }
       if(t.type==='party'){
         const p=t.party;
         return`<div style="${base}">
@@ -4046,6 +4605,10 @@ function restoreTrashItem(idx){
     d.invoices.push(t.invoice);
     (t.payments||[]).forEach(p=>d.payments.push(p));
     alert('✅ Invoice '+t.invoice.num+' restored!');
+  } else if(t.type==='expense'){
+    if(!d.expenses)d.expenses=[];
+    d.expenses.push(t.expense);
+    alert('✅ Expense restored!');
   } else if(t.type==='party'){
     d.parties.push(t.party);
     (t.bills||[]).forEach(b=>d.bills.push(b));
@@ -4060,7 +4623,7 @@ function restoreTrashItem(idx){
 function permDeleteItem(idx){
   const d=D();if(!d.trash||!d.trash[idx])return;
   const t=d.trash[idx];
-  const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:'party "'+t.party?.name+'"';
+  const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:t.type==='expense'?'expense '+(t.expense?.cat||''):'party "'+t.party?.name+'"';
   if(!confirm('Permanently delete '+label+'? This CANNOT be undone.'))return;
   d.trash.splice(idx,1);
   saveToCloud().then(function(){renderTrash();});
@@ -4955,6 +5518,21 @@ function renderReports(){
   if(repView==='daybook')return renderRepDaybook(pg);
   if(repView==='outstanding')return renderOutstanding(pg);
   if(repView==='gst')return renderGSTSummary(pg);
+  if(repView==='preg')return renderPurchaseReg(pg);
+  if(repView==='sreg')return renderSalesReg(pg);
+  if(repView==='gstr1')return renderGSTR1(pg);
+  if(repView==='gstr3b')return renderGSTR3B(pg);
+  if(repView==='profit')return renderProfitReport(pg);
+  if(repView==='salesrep')return renderSalesReport(pg);
+  if(repView==='purchrep')return renderPurchaseReport(pg);
+  if(repView==='stockrep')return renderStockReport(pg);
+  if(repView==='exprep')return renderExpenseReport(pg);
+  if(repView==='partyrep')return renderPartyReport(pg);
+  if(repView==='cashrep')return renderCashReport(pg);
+  if(repView==='bankrep')return renderBankReport(pg);
+  if(repView==='trial')return renderTrialBalance(pg);
+  if(repView==='balsheet')return renderBalanceSheetReport(pg);
+  if(repView==='package')return renderAccountantPackage(pg);
   // MENU
   pg.innerHTML=`
   <div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">📊 Reports</h3><div style="font-size:12px;color:var(--sub)">Tally-style books of accounts for ${curBiz==='MI'?'Modrobe Impex':'Kavita Fashion Wear'}</div></div>
@@ -4963,6 +5541,33 @@ function renderReports(){
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='daybook';repDate=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📋</div><div style="font-weight:700;font-size:14px">Daybook</div><div style="font-size:11px;color:var(--sub);margin-top:3px">All vouchers of a day</div></div>
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='outstanding';renderReports()"><div style="font-size:28px;margin-bottom:6px">⏰</div><div style="font-weight:700;font-size:14px">Outstanding</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Receivables & payables with aging</div></div>
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gst';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🧾</div><div style="font-weight:700;font-size:14px">GST Summary</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Output vs input tax by month</div></div>
+  </div>
+  <div style="font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">GST Returns & Registers</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='preg';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📥</div><div style="font-weight:700;font-size:14px">Purchase Register</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Input GST · all bills by month</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='sreg';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📤</div><div style="font-weight:700;font-size:14px">Sales Register</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Output GST · all invoices by month</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gstr1';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📋</div><div style="font-weight:700;font-size:14px">GSTR-1</div><div style="font-size:11px;color:var(--sub);margin-top:3px">B2B, B2C & HSN summary</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gstr3b';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🧮</div><div style="font-weight:700;font-size:14px">GSTR-3B</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Monthly return summary</div></div>
+  </div>
+  <div style="font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Business Reports</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='profit';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">💹</div><div style="font-weight:700;font-size:14px">Profit Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">P&amp;L · gross & net profit</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='salesrep';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📈</div><div style="font-weight:700;font-size:14px">Sales Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Totals & top customers</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='purchrep';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📉</div><div style="font-weight:700;font-size:14px">Purchase Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Totals & top suppliers</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='stockrep';renderReports()"><div style="font-size:28px;margin-bottom:6px">📦</div><div style="font-weight:700;font-size:14px">Stock Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Item-wise stock & value</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='exprep';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🧾</div><div style="font-weight:700;font-size:14px">Expense Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">By category & detail</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='partyrep';renderReports()"><div style="font-size:28px;margin-bottom:6px">👥</div><div style="font-weight:700;font-size:14px">Party Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Sales, purchases & dues</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='outstanding';renderReports()"><div style="font-size:28px;margin-bottom:6px">⏰</div><div style="font-weight:700;font-size:14px">Outstanding Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Receivables & payables aging</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='cashrep';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">💵</div><div style="font-weight:700;font-size:14px">Cash Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Opening, in/out, closing</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='bankrep';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🏦</div><div style="font-weight:700;font-size:14px">Bank Report</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Money in, out & net</div></div>
+  </div>
+  <div style="font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">Month-End / Accountant</div>
+  <div class="card" style="cursor:pointer;padding:18px;background:linear-gradient(135deg,#1E3A8A,#3730A3);color:#fff;margin-bottom:10px" onclick="repView='package';repMonth=null;renderReports()">
+    <div style="display:flex;align-items:center;gap:14px"><div style="font-size:34px">📦</div><div><div style="font-weight:800;font-size:16px">Generate Accountant Package</div><div style="font-size:12px;opacity:.85;margin-top:2px">All registers, GST, P&amp;L, Trial Balance, Balance Sheet & ledgers in one PDF</div></div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='trial';renderReports()"><div style="font-size:28px;margin-bottom:6px">⚖️</div><div style="font-weight:700;font-size:14px">Trial Balance</div><div style="font-size:11px;color:var(--sub);margin-top:3px">All account balances, tallied</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='balsheet';renderReports()"><div style="font-size:28px;margin-bottom:6px">🏛️</div><div style="font-weight:700;font-size:14px">Balance Sheet</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Assets, liabilities & capital</div></div>
   </div>`;
 }
 
@@ -5088,6 +5693,625 @@ function renderGSTSummary(pg){
     <div style="font-size:20px;font-weight:700;color:${net>=0?'#B91C1C':'#059669'}">${fmt(Math.abs(net))}</div>
   </div>
   <div style="font-size:11px;color:var(--sub);margin-top:8px">Payable = Output tax − Input tax credit. Cash-mode bills included. Job-work bills excluded.</div></div>`;
+}
+
+/* ════════════════════════════════════════
+   GST AUTOMATION — Registers & Returns
+   Shared tax engine. Uses stored gstAmt when present (accurate),
+   else back-calculates from grand. 's' suffix in gstStr = intra-state (CGST+SGST).
+════════════════════════════════════════ */
+function gstSplit(doc){
+  const grand=doc.grand||0;
+  let tax;
+  if(doc.gstAmt!=null&&!isNaN(doc.gstAmt))tax=doc.gstAmt;
+  else if(doc.gstPct>0)tax=grand-grand/(1+doc.gstPct/100);
+  else tax=0;
+  const taxable=grand-tax;
+  const intra=(doc.gstStr||'').includes('s');
+  return{taxable,tax,igst:intra?0:tax,cgst:intra?tax/2:0,sgst:intra?tax/2:0,rate:doc.gstPct||0,intra};
+}
+function gstinOf(inv){const d=D();const p=d.parties.find(x=>x.id===inv.pid);return (inv.custGstin||(p&&p.gstin)||'').toUpperCase();}
+function repMonthInput(){if(!repMonth)repMonth=td().slice(0,7);return `<input type="month" value="${repMonth}" onchange="repMonth=this.value;renderReports()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit">`;}
+function monthLabel(ym){return new Date(ym+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'});}
+
+function printReport(title,bodyHtml){
+  const biz=BIZ[curBiz];
+  document.getElementById('print-body').innerHTML=`<div style="font-family:Arial,Helvetica,sans-serif;color:#111">
+    <div style="text-align:center;margin-bottom:14px;border-bottom:2px solid #333;padding-bottom:10px">
+      <div style="font-size:18px;font-weight:800">${esc(biz.name)}</div>
+      <div style="font-size:11px;color:#555">${esc(biz.addr||'')}</div>
+      <div style="font-size:11px;color:#555">GSTIN: ${esc(biz.gstin||'')}</div>
+    </div>
+    <h2 style="font-size:15px;text-align:center;margin:8px 0 14px">${esc(title)}</h2>
+    ${bodyHtml}
+    <div style="margin-top:24px;font-size:10px;color:#888;text-align:center">Generated by Business Manager · ${new Date().toLocaleString('en-IN')} · Computer-generated statement</div>
+  </div>`;
+  document.getElementById('print-overlay').style.display='block';
+  document.body.style.overflow='hidden';
+}
+function downloadCSV(filename,header,rows){
+  const q=s=>{s=String(s==null?'':s);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const lines=[header.map(q).join(',')].concat(rows.map(r=>r.map(q).join(',')));
+  const blob=new Blob(['\ufeff'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},100);
+}
+function repActionBar(printFn,csvFn){
+  return `<div style="display:flex;gap:8px;margin:12px 0 4px;flex-wrap:wrap">
+    <button class="btn sm" onclick="${printFn}">🖨️ Print / PDF</button>
+    ${csvFn?`<button class="btn sm grn" onclick="${csvFn}">📊 Export Excel (CSV)</button>`:''}
+  </div>`;
+}
+// money for tables (no rupee symbol, 2-dp) for register cells
+function m2(n){return new Intl.NumberFormat('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n||0);}
+
+/* ── PURCHASE REGISTER ── */
+function purchaseRegRows(){
+  const d=D();
+  return d.bills.filter(b=>b.date.slice(0,7)===repMonth&&!b.jw).sort((a,b)=>a.date.localeCompare(b.date)).map(b=>{
+    const p=d.parties.find(x=>x.id===b.pid);const g=gstSplit(b);
+    return{date:b.date,num:b.num,party:p?p.name:'?',gstin:(p&&p.gstin)||'',rate:g.rate,taxable:g.taxable,igst:g.igst,cgst:g.cgst,sgst:g.sgst,total:b.grand};
+  });
+}
+function renderPurchaseReg(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const rows=purchaseRegRows();
+  const T=rows.reduce((s,r)=>({taxable:s.taxable+r.taxable,igst:s.igst+r.igst,cgst:s.cgst+r.cgst,sgst:s.sgst+r.sgst,total:s.total+r.total}),{taxable:0,igst:0,cgst:0,sgst:0,total:0});
+  const body=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:680px">
+    <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Date</th><th style="padding:7px;text-align:left">Bill No</th><th style="padding:7px;text-align:left">Supplier</th><th style="padding:7px;text-align:left">GSTIN</th><th style="padding:7px;text-align:right">Taxable</th><th style="padding:7px;text-align:right">IGST</th><th style="padding:7px;text-align:right">CGST</th><th style="padding:7px;text-align:right">SGST</th><th style="padding:7px;text-align:right">Total</th></tr></thead>
+    <tbody>${rows.length?rows.map((r,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${fmtD(r.date)}</td><td style="padding:7px;font-weight:600">${esc(r.num)}</td><td style="padding:7px">${esc(r.party)}</td><td style="padding:7px;font-size:11px">${esc(r.gstin)}</td><td style="padding:7px;text-align:right">${m2(r.taxable)}</td><td style="padding:7px;text-align:right">${m2(r.igst)}</td><td style="padding:7px;text-align:right">${m2(r.cgst)}</td><td style="padding:7px;text-align:right">${m2(r.sgst)}</td><td style="padding:7px;text-align:right;font-weight:700">${m2(r.total)}</td></tr>`).join(''):'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--sub)">No purchases this month</td></tr>'}</tbody>
+    <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="4" style="padding:8px">TOTAL (${rows.length})</td><td style="padding:8px;text-align:right">${m2(T.taxable)}</td><td style="padding:8px;text-align:right">${m2(T.igst)}</td><td style="padding:8px;text-align:right">${m2(T.cgst)}</td><td style="padding:8px;text-align:right">${m2(T.sgst)}</td><td style="padding:8px;text-align:right">${m2(T.total)}</td></tr></tfoot>
+  </table></div>`;
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📥 Purchase Register</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${rows.length} bill(s) · Input GST (ITC). Job-work excluded.</div>
+    ${repActionBar("printPurchaseReg()","csvPurchaseReg()")}${body}
+    <div class="ibox blu" style="margin-top:12px;font-size:12px">Total Input GST (ITC) this month: <strong>${fmt(T.igst+T.cgst+T.sgst)}</strong></div></div>`;
+}
+function printPurchaseReg(){
+  const rows=purchaseRegRows();
+  const T=rows.reduce((s,r)=>({taxable:s.taxable+r.taxable,igst:s.igst+r.igst,cgst:s.cgst+r.cgst,sgst:s.sgst+r.sgst,total:s.total+r.total}),{taxable:0,igst:0,cgst:0,sgst:0,total:0});
+  const body=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:6px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:6px;border:1px solid #ccc;text-align:left">Bill No</th><th style="padding:6px;border:1px solid #ccc;text-align:left">Supplier</th><th style="padding:6px;border:1px solid #ccc;text-align:left">GSTIN</th><th style="padding:6px;border:1px solid #ccc;text-align:right">Taxable</th><th style="padding:6px;border:1px solid #ccc;text-align:right">IGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">CGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">SGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">Total</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="padding:5px;border:1px solid #ccc">${fmtD(r.date)}</td><td style="padding:5px;border:1px solid #ccc">${esc(r.num)}</td><td style="padding:5px;border:1px solid #ccc">${esc(r.party)}</td><td style="padding:5px;border:1px solid #ccc">${esc(r.gstin)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.taxable)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.igst)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.cgst)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.sgst)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.total)}</td></tr>`).join('')}</tbody><tfoot><tr style="background:#eee;font-weight:700"><td colspan="4" style="padding:6px;border:1px solid #ccc">TOTAL</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.taxable)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.igst)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.cgst)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.sgst)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.total)}</td></tr></tfoot></table>`;
+  printReport('Purchase Register — '+monthLabel(repMonth),body);
+}
+function csvPurchaseReg(){
+  const rows=purchaseRegRows();
+  downloadCSV('Purchase_Register_'+repMonth+'_'+curBiz+'.csv',['Date','Bill No','Supplier','GSTIN','GST %','Taxable','IGST','CGST','SGST','Total'],
+    rows.map(r=>[r.date,r.num,r.party,r.gstin,r.rate,r.taxable.toFixed(2),r.igst.toFixed(2),r.cgst.toFixed(2),r.sgst.toFixed(2),r.total.toFixed(2)]));
+}
+
+/* ── SALES REGISTER ── */
+function salesRegRows(){
+  const d=D();
+  return d.invoices.filter(i=>i.date.slice(0,7)===repMonth).sort((a,b)=>a.date.localeCompare(b.date)).map(i=>{
+    const p=d.parties.find(x=>x.id===i.pid);const g=gstSplit(i);
+    return{date:i.date,num:i.num,party:p?p.name:'?',gstin:gstinOf(i),rate:g.rate,taxable:g.taxable,igst:g.igst,cgst:g.cgst,sgst:g.sgst,total:i.grand};
+  });
+}
+function renderSalesReg(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const rows=salesRegRows();
+  const T=rows.reduce((s,r)=>({taxable:s.taxable+r.taxable,igst:s.igst+r.igst,cgst:s.cgst+r.cgst,sgst:s.sgst+r.sgst,total:s.total+r.total}),{taxable:0,igst:0,cgst:0,sgst:0,total:0});
+  const body=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:680px">
+    <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Date</th><th style="padding:7px;text-align:left">Inv No</th><th style="padding:7px;text-align:left">Customer</th><th style="padding:7px;text-align:left">GSTIN</th><th style="padding:7px;text-align:right">Taxable</th><th style="padding:7px;text-align:right">IGST</th><th style="padding:7px;text-align:right">CGST</th><th style="padding:7px;text-align:right">SGST</th><th style="padding:7px;text-align:right">Total</th></tr></thead>
+    <tbody>${rows.length?rows.map((r,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${fmtD(r.date)}</td><td style="padding:7px;font-weight:600">${esc(r.num)}</td><td style="padding:7px">${esc(r.party)}</td><td style="padding:7px;font-size:11px">${esc(r.gstin)||'<span style="color:#999">B2C</span>'}</td><td style="padding:7px;text-align:right">${m2(r.taxable)}</td><td style="padding:7px;text-align:right">${m2(r.igst)}</td><td style="padding:7px;text-align:right">${m2(r.cgst)}</td><td style="padding:7px;text-align:right">${m2(r.sgst)}</td><td style="padding:7px;text-align:right;font-weight:700">${m2(r.total)}</td></tr>`).join(''):'<tr><td colspan="9" style="padding:16px;text-align:center;color:var(--sub)">No sales this month</td></tr>'}</tbody>
+    <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="4" style="padding:8px">TOTAL (${rows.length})</td><td style="padding:8px;text-align:right">${m2(T.taxable)}</td><td style="padding:8px;text-align:right">${m2(T.igst)}</td><td style="padding:8px;text-align:right">${m2(T.cgst)}</td><td style="padding:8px;text-align:right">${m2(T.sgst)}</td><td style="padding:8px;text-align:right">${m2(T.total)}</td></tr></tfoot>
+  </table></div>`;
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📤 Sales Register</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${rows.length} invoice(s) · Output GST.</div>
+    ${repActionBar("printSalesReg()","csvSalesReg()")}${body}
+    <div class="ibox grn" style="margin-top:12px;font-size:12px">Total Output GST this month: <strong>${fmt(T.igst+T.cgst+T.sgst)}</strong></div></div>`;
+}
+function printSalesReg(){
+  const rows=salesRegRows();
+  const T=rows.reduce((s,r)=>({taxable:s.taxable+r.taxable,igst:s.igst+r.igst,cgst:s.cgst+r.cgst,sgst:s.sgst+r.sgst,total:s.total+r.total}),{taxable:0,igst:0,cgst:0,sgst:0,total:0});
+  const body=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:6px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:6px;border:1px solid #ccc;text-align:left">Inv No</th><th style="padding:6px;border:1px solid #ccc;text-align:left">Customer</th><th style="padding:6px;border:1px solid #ccc;text-align:left">GSTIN</th><th style="padding:6px;border:1px solid #ccc;text-align:right">Taxable</th><th style="padding:6px;border:1px solid #ccc;text-align:right">IGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">CGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">SGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">Total</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="padding:5px;border:1px solid #ccc">${fmtD(r.date)}</td><td style="padding:5px;border:1px solid #ccc">${esc(r.num)}</td><td style="padding:5px;border:1px solid #ccc">${esc(r.party)}</td><td style="padding:5px;border:1px solid #ccc">${esc(r.gstin)||'B2C'}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.taxable)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.igst)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.cgst)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.sgst)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.total)}</td></tr>`).join('')}</tbody><tfoot><tr style="background:#eee;font-weight:700"><td colspan="4" style="padding:6px;border:1px solid #ccc">TOTAL</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.taxable)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.igst)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.cgst)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.sgst)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(T.total)}</td></tr></tfoot></table>`;
+  printReport('Sales Register — '+monthLabel(repMonth),body);
+}
+function csvSalesReg(){
+  const rows=salesRegRows();
+  downloadCSV('Sales_Register_'+repMonth+'_'+curBiz+'.csv',['Date','Inv No','Customer','GSTIN','GST %','Taxable','IGST','CGST','SGST','Total'],
+    rows.map(r=>[r.date,r.num,r.party,r.gstin||'B2C',r.rate,r.taxable.toFixed(2),r.igst.toFixed(2),r.cgst.toFixed(2),r.sgst.toFixed(2),r.total.toFixed(2)]));
+}
+
+/* ── GSTR-1 (outward supplies) ── */
+function gstr1Data(){
+  const d=D();
+  const invs=d.invoices.filter(i=>i.date.slice(0,7)===repMonth);
+  const b2b=[],b2c=[];const hsn={};
+  invs.forEach(i=>{
+    const g=gstSplit(i);const p=d.parties.find(x=>x.id===i.pid);const gstin=gstinOf(i);
+    const row={date:i.date,num:i.num,party:p?p.name:'?',gstin,rate:g.rate,taxable:g.taxable,igst:g.igst,cgst:g.cgst,sgst:g.sgst,total:i.grand};
+    if(gstin)b2b.push(row);else b2c.push(row);
+    // HSN summary — allocate invoice taxable across line items by amount share
+    const sub=(i.items||[]).reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
+    (i.items||[]).forEach(it=>{
+      const hs=(it.hsn||'—').trim()||'—';const share=sub>0?(parseFloat(it.amt)||0)/sub:0;
+      const tax=g.taxable*share;const taxAmt=tax*(g.rate/100);
+      const h=hsn[hs]||(hsn[hs]={hsn:hs,qty:0,unit:it.unit||'',taxable:0,igst:0,cgst:0,sgst:0});
+      h.qty+=parseFloat(it.qty)||0;h.taxable+=tax;
+      if(g.intra){h.cgst+=taxAmt/2;h.sgst+=taxAmt/2;}else{h.igst+=taxAmt;}
+    });
+  });
+  return{b2b,b2c,hsn:Object.values(hsn).sort((a,b)=>b.taxable-a.taxable)};
+}
+function renderGSTR1(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const {b2b,b2c,hsn}=gstr1Data();
+  const sumOf=arr=>arr.reduce((s,r)=>({taxable:s.taxable+r.taxable,tax:s.tax+r.igst+r.cgst+r.sgst,total:s.total+r.total}),{taxable:0,tax:0,total:0});
+  const sb=sumOf(b2b),sc=sumOf(b2c);
+  const tbl=(arr,b2bMode)=>arr.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:560px"><thead><tr style="background:var(--pri);color:#fff">${b2bMode?'<th style="padding:6px;text-align:left">GSTIN</th>':''}<th style="padding:6px;text-align:left">Inv No</th><th style="padding:6px;text-align:left">Date</th><th style="padding:6px;text-align:left">Party</th><th style="padding:6px;text-align:right">Rate</th><th style="padding:6px;text-align:right">Taxable</th><th style="padding:6px;text-align:right">IGST</th><th style="padding:6px;text-align:right">CGST</th><th style="padding:6px;text-align:right">SGST</th></tr></thead><tbody>${arr.map((r,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}">${b2bMode?`<td style="padding:6px;font-size:10px">${esc(r.gstin)}</td>`:''}<td style="padding:6px;font-weight:600">${esc(r.num)}</td><td style="padding:6px">${fmtD(r.date)}</td><td style="padding:6px">${esc(r.party)}</td><td style="padding:6px;text-align:right">${r.rate}%</td><td style="padding:6px;text-align:right">${m2(r.taxable)}</td><td style="padding:6px;text-align:right">${m2(r.igst)}</td><td style="padding:6px;text-align:right">${m2(r.cgst)}</td><td style="padding:6px;text-align:right">${m2(r.sgst)}</td></tr>`).join('')}</tbody></table></div>`:'<div style="padding:10px;color:var(--sub);font-size:12px;text-align:center">None</div>';
+  const hsnTbl=hsn.length?`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:520px"><thead><tr style="background:var(--pri);color:#fff"><th style="padding:6px;text-align:left">HSN</th><th style="padding:6px;text-align:right">Qty</th><th style="padding:6px;text-align:left">Unit</th><th style="padding:6px;text-align:right">Taxable</th><th style="padding:6px;text-align:right">IGST</th><th style="padding:6px;text-align:right">CGST</th><th style="padding:6px;text-align:right">SGST</th></tr></thead><tbody>${hsn.map((h,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:6px;font-weight:600">${esc(h.hsn)}</td><td style="padding:6px;text-align:right">${fmtR(h.qty)}</td><td style="padding:6px">${esc(h.unit)}</td><td style="padding:6px;text-align:right">${m2(h.taxable)}</td><td style="padding:6px;text-align:right">${m2(h.igst)}</td><td style="padding:6px;text-align:right">${m2(h.cgst)}</td><td style="padding:6px;text-align:right">${m2(h.sgst)}</td></tr>`).join('')}</tbody></table></div>`:'<div style="padding:10px;color:var(--sub);font-size:12px;text-align:center">No HSN data</div>';
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📋 GSTR-1 — Outward Supplies</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)}</div>
+    ${repActionBar("printGSTR1()",null)}
+    <div class="stats" style="margin-bottom:14px">
+      <div class="stat"><div class="sl">B2B Invoices</div><div class="sv blu" style="font-size:16px">${b2b.length}</div><div style="font-size:10px;color:var(--sub)">Taxable ${fmt(sb.taxable)}</div></div>
+      <div class="stat"><div class="sl">B2C Invoices</div><div class="sv ora" style="font-size:16px">${b2c.length}</div><div style="font-size:10px;color:var(--sub)">Taxable ${fmt(sc.taxable)}</div></div>
+    </div>
+    <h4 style="font-size:13px;margin:6px 0 6px">🏢 B2B (Registered — with GSTIN)</h4>${tbl(b2b,true)}
+    <h4 style="font-size:13px;margin:16px 0 6px">🛒 B2C (Unregistered)</h4>${tbl(b2c,false)}
+    <h4 style="font-size:13px;margin:16px 0 6px">🔢 HSN-wise Summary</h4>${hsnTbl}
+    </div>`;
+}
+function printGSTR1(){
+  const {b2b,b2c,hsn}=gstr1Data();
+  const sec=(title,arr,b2bMode)=>`<h3 style="font-size:13px;margin:14px 0 6px">${title}</h3>`+(arr.length?`<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#eee">${b2bMode?'<th style="padding:5px;border:1px solid #ccc">GSTIN</th>':''}<th style="padding:5px;border:1px solid #ccc">Inv</th><th style="padding:5px;border:1px solid #ccc">Date</th><th style="padding:5px;border:1px solid #ccc">Party</th><th style="padding:5px;border:1px solid #ccc">Rate</th><th style="padding:5px;border:1px solid #ccc">Taxable</th><th style="padding:5px;border:1px solid #ccc">IGST</th><th style="padding:5px;border:1px solid #ccc">CGST</th><th style="padding:5px;border:1px solid #ccc">SGST</th></tr></thead><tbody>${arr.map(r=>`<tr>${b2bMode?`<td style="padding:4px;border:1px solid #ccc">${esc(r.gstin)}</td>`:''}<td style="padding:4px;border:1px solid #ccc">${esc(r.num)}</td><td style="padding:4px;border:1px solid #ccc">${fmtD(r.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.party)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${r.rate}%</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.taxable)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.sgst)}</td></tr>`).join('')}</tbody></table>`:'<div style="font-size:11px;color:#777">None</div>');
+  const hsnSec=`<h3 style="font-size:13px;margin:14px 0 6px">HSN-wise Summary</h3>`+(hsn.length?`<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc">HSN</th><th style="padding:5px;border:1px solid #ccc">Qty</th><th style="padding:5px;border:1px solid #ccc">Unit</th><th style="padding:5px;border:1px solid #ccc">Taxable</th><th style="padding:5px;border:1px solid #ccc">IGST</th><th style="padding:5px;border:1px solid #ccc">CGST</th><th style="padding:5px;border:1px solid #ccc">SGST</th></tr></thead><tbody>${hsn.map(h=>`<tr><td style="padding:4px;border:1px solid #ccc">${esc(h.hsn)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${fmtR(h.qty)}</td><td style="padding:4px;border:1px solid #ccc">${esc(h.unit)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(h.taxable)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(h.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(h.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(h.sgst)}</td></tr>`).join('')}</tbody></table>`:'<div style="font-size:11px;color:#777">None</div>');
+  printReport('GSTR-1 Outward Supplies — '+monthLabel(repMonth),sec('B2B (Registered)',b2b,true)+sec('B2C (Unregistered)',b2c,false)+hsnSec);
+}
+
+/* ── GSTR-3B (monthly return summary) ── */
+function gstr3bData(){
+  const d=D();
+  const out=d.invoices.filter(i=>i.date.slice(0,7)===repMonth);
+  const inp=d.bills.filter(b=>b.date.slice(0,7)===repMonth&&!b.jw);
+  const O={taxable:0,igst:0,cgst:0,sgst:0},I={igst:0,cgst:0,sgst:0};
+  out.forEach(i=>{const g=gstSplit(i);O.taxable+=g.taxable;O.igst+=g.igst;O.cgst+=g.cgst;O.sgst+=g.sgst;});
+  inp.forEach(b=>{const g=gstSplit(b);I.igst+=g.igst;I.cgst+=g.cgst;I.sgst+=g.sgst;});
+  const net={igst:Math.max(0,O.igst-I.igst),cgst:Math.max(0,O.cgst-I.cgst),sgst:Math.max(0,O.sgst-I.sgst)};
+  return{O,I,net,outN:out.length,inN:inp.length};
+}
+function renderGSTR3B(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const {O,I,net,outN,inN}=gstr3bData();
+  const netTotal=net.igst+net.cgst+net.sgst;
+  const box=(label,a,b,c,d2,strong)=>`<tr style="${strong?'background:var(--pri3);font-weight:700':''}"><td style="padding:8px;border:1px solid var(--bdr)">${label}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${a==null?'':m2(a)}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${m2(b)}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${m2(c)}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${m2(d2)}</td></tr>`;
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🧮 GSTR-3B Summary</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${outN} sale(s), ${inN} purchase(s). Job-work excluded.</div>
+    ${repActionBar("printGSTR3B()",null)}
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:480px">
+      <thead><tr style="background:var(--pri);color:#fff"><th style="padding:8px;text-align:left">Particulars</th><th style="padding:8px;text-align:right">Taxable</th><th style="padding:8px;text-align:right">IGST</th><th style="padding:8px;text-align:right">CGST</th><th style="padding:8px;text-align:right">SGST</th></tr></thead>
+      <tbody>
+        ${box('3.1(a) Outward taxable supplies',O.taxable,O.igst,O.cgst,O.sgst)}
+        ${box('4(A)(5) ITC — All other ITC',null,I.igst,I.cgst,I.sgst)}
+        ${box('5.1 Net tax payable (cash)',null,net.igst,net.cgst,net.sgst,true)}
+      </tbody>
+    </table></div>
+    <div style="border:2px solid ${netTotal>0?'#B91C1C':'#065F46'};border-radius:10px;padding:14px 16px;margin-top:14px;background:${netTotal>0?'#FEF2F2':'#ECFDF5'};display:flex;justify-content:space-between;align-items:center">
+      <div style="font-weight:700;color:${netTotal>0?'#991B1B':'#065F46'}">NET GST PAYABLE IN CASH</div>
+      <div style="font-size:22px;font-weight:800;color:${netTotal>0?'#B91C1C':'#059669'}">${fmt(netTotal)}</div>
+    </div>
+    <div style="font-size:11px;color:var(--sub);margin-top:8px">Net payable per head = Output − ITC (floored at 0). Hand this to your accountant for the actual 3B filing.</div></div>`;
+}
+function printGSTR3B(){
+  const {O,I,net,outN,inN}=gstr3bData();
+  const netTotal=net.igst+net.cgst+net.sgst;
+  const row=(l,a,b,c,d2)=>`<tr><td style="padding:6px;border:1px solid #ccc">${l}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${a==null?'':m2(a)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(b)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(c)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(d2)}</td></tr>`;
+  const body=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:6px;border:1px solid #ccc;text-align:left">Particulars</th><th style="padding:6px;border:1px solid #ccc;text-align:right">Taxable</th><th style="padding:6px;border:1px solid #ccc;text-align:right">IGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">CGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">SGST</th></tr></thead><tbody>${row('3.1(a) Outward taxable supplies',O.taxable,O.igst,O.cgst,O.sgst)}${row('4(A)(5) ITC — All other ITC',null,I.igst,I.cgst,I.sgst)}${row('5.1 Net tax payable (cash)',null,net.igst,net.cgst,net.sgst)}</tbody></table><div style="margin-top:14px;font-size:14px;font-weight:700;text-align:right">Net GST Payable in Cash: ₹${m2(netTotal)}</div>`;
+  printReport('GSTR-3B Summary — '+monthLabel(repMonth),body);
+}
+
+/* ════════════════════════════════════════
+   PHASE 5 — BUSINESS REPORTS
+   One-click summaries from existing data. All reuse gstSplit/buildInventory/
+   cashLedger/partyBalance + printReport/downloadCSV/repActionBar helpers.
+════════════════════════════════════════ */
+function inMonth(dt,ym){return (dt||'').slice(0,7)===ym;}
+function last6Months(){const out=[];const d=new Date(td()+'T00:00:00');for(let k=0;k<6;k++){const x=new Date(d.getFullYear(),d.getMonth()-k,1);out.push(x.toISOString().slice(0,7));}return out;}
+
+/* ── PROFIT REPORT (P&L) ── */
+function profitData(ym){
+  const d=D();
+  let sales=0,purch=0;
+  d.invoices.filter(i=>inMonth(i.date,ym)).forEach(i=>{sales+=gstSplit(i).taxable;});
+  d.bills.filter(b=>inMonth(b.date,ym)&&!b.jw).forEach(b=>{purch+=gstSplit(b).taxable;});
+  const exp=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment'&&inMonth(e.date,ym)).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const tradingGP=sales-purch;
+  const net=tradingGP-exp;
+  // Item-level realized gross profit on goods actually sold this month
+  let realizedGP=0;
+  d.invoices.filter(i=>inMonth(i.date,ym)).forEach(i=>{
+    const inv=buildInvUnitCost();
+    (i.items||[]).forEach(it=>{
+      const key=normItem(it.desc);const cost=inv[key];if(cost==null)return;
+      const q=parseFloat(it.qty)||0;const rate=parseFloat(it.rate)||0;
+      realizedGP+=q*(rate-cost);
+    });
+  });
+  return{sales,purch,exp,tradingGP,net,realizedGP};
+}
+// avg purchase unit cost per normalized item (for realized-profit calc)
+function buildInvUnitCost(){
+  const items=buildInventory();const map={};items.forEach(i=>{map[i.key]=i.avgBuy;});return map;
+}
+function renderProfitReport(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const p=profitData(repMonth);
+  const months=last6Months();
+  const comp=months.map(m=>({m,...profitData(m)}));
+  const compRows=comp.map(c=>`<tr style="background:${c.m===repMonth?'var(--pri3)':'#fff'}"><td style="padding:7px;font-weight:${c.m===repMonth?'700':'400'}">${monthLabel(c.m)}</td><td style="padding:7px;text-align:right">${fmt(c.sales)}</td><td style="padding:7px;text-align:right">${fmt(c.purch)}</td><td style="padding:7px;text-align:right">${fmt(c.exp)}</td><td style="padding:7px;text-align:right;font-weight:700;color:${c.net>=0?'var(--g)':'var(--r)'}">${fmt(c.net)}</td></tr>`).join('');
+  const line=(label,val,opt)=>`<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--bdr);${opt&&opt.bold?'font-weight:700':''}"><span style="${opt&&opt.indent?'padding-left:14px;color:var(--sub)':''}">${label}</span><span style="color:${opt&&opt.color||'inherit'}">${(opt&&opt.minus?'− ':'')}${fmt(Math.abs(val))}</span></div>`;
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">💹 Profit Report (P&L)</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · figures ex-GST</div>
+    ${repActionBar("printProfit()",null)}
+    <div style="background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:14px">
+      ${line('Sales (revenue)',p.sales,{color:'var(--g)'})}
+      ${line('Purchases',p.purch,{minus:true,color:'var(--r)'})}
+      ${line('Gross Profit (trading)',p.tradingGP,{bold:true,color:p.tradingGP>=0?'var(--g)':'var(--r)'})}
+      ${line('Expenses',p.exp,{minus:true,color:'var(--r)'})}
+      <div style="display:flex;justify-content:space-between;padding:12px 0 2px;font-size:17px;font-weight:800"><span>Net Profit</span><span style="color:${p.net>=0?'var(--g)':'var(--r)'}">${fmt(p.net)}</span></div>
+    </div>
+    <div class="ibox blu" style="margin-bottom:14px">💡 <strong>Gross profit on goods actually sold</strong> (item-wise, sell − avg cost): <strong>${fmt(p.realizedGP)}</strong>. This ignores unsold stock and is the cleaner trading-margin figure.</div>
+    <h4 style="font-size:13px;margin:6px 0 8px">📊 Last 6 Months</h4>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:460px">
+      <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Month</th><th style="padding:7px;text-align:right">Sales</th><th style="padding:7px;text-align:right">Purchases</th><th style="padding:7px;text-align:right">Expenses</th><th style="padding:7px;text-align:right">Net Profit</th></tr></thead>
+      <tbody>${compRows}</tbody></table></div>
+    <div style="font-size:11px;color:var(--sub);margin-top:8px">Simplified trading P&L. Gross Profit = Sales − Purchases (does not adjust for opening/closing stock — your accountant finalizes that with stock valuation).</div></div>`;
+}
+function printProfit(){
+  const p=profitData(repMonth);const comp=last6Months().map(m=>({m,...profitData(m)}));
+  const body=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+    <tr><td style="padding:6px;border:1px solid #ccc">Sales (revenue)</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(p.sales)}</td></tr>
+    <tr><td style="padding:6px;border:1px solid #ccc">Less: Purchases</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(p.purch)}</td></tr>
+    <tr style="font-weight:700"><td style="padding:6px;border:1px solid #ccc">Gross Profit</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(p.tradingGP)}</td></tr>
+    <tr><td style="padding:6px;border:1px solid #ccc">Less: Expenses</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(p.exp)}</td></tr>
+    <tr style="font-weight:700;background:#eee"><td style="padding:6px;border:1px solid #ccc">Net Profit</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(p.net)}</td></tr>
+  </table>
+  <h3 style="font-size:13px;margin:10px 0 6px">Last 6 Months</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Month</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Sales</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Purchases</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Expenses</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Net</th></tr></thead><tbody>${comp.map(c=>`<tr><td style="padding:5px;border:1px solid #ccc">${monthLabel(c.m)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(c.sales)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(c.purch)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(c.exp)}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(c.net)}</td></tr>`).join('')}</tbody></table>`;
+  printReport('Profit & Loss — '+monthLabel(repMonth),body);
+}
+
+/* ── SALES REPORT ── */
+function salesReportData(ym){
+  const d=D();const list=d.invoices.filter(i=>inMonth(i.date,ym));
+  let grand=0,taxable=0;const byCust={};
+  list.forEach(i=>{grand+=i.grand;taxable+=gstSplit(i).taxable;const p=d.parties.find(x=>x.id===i.pid);const nm=p?p.name:'?';byCust[nm]=(byCust[nm]||0)+i.grand;});
+  const top=Object.entries(byCust).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  return{list,grand,taxable,top,count:list.length};
+}
+function renderSalesReport(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const r=salesReportData(repMonth);
+  const topRows=r.top.map((t,i)=>`<div class="prow" style="cursor:default"><div class="pav" style="background:${avc(i)}">${ini(t[0])}</div><div class="pi"><div class="pn">${esc(t[0])}</div></div><div class="pb grn" style="color:var(--g)">${fmt(t[1])}</div></div>`).join('')||'<div style="padding:10px;color:var(--sub);font-size:13px;text-align:center">No sales</div>';
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📈 Sales Report</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)}</div>
+    ${repActionBar("printSalesReport()","csvSalesReport()")}
+    <div class="stats"><div class="stat"><div class="sl">Total Sales</div><div class="sv grn" style="font-size:18px">${fmt(r.grand)}</div></div><div class="stat"><div class="sl">Invoices</div><div class="sv blu" style="font-size:18px">${r.count}</div></div><div class="stat"><div class="sl">Taxable (ex-GST)</div><div class="sv" style="font-size:15px">${fmt(r.taxable)}</div></div><div class="stat"><div class="sl">Avg / Invoice</div><div class="sv" style="font-size:15px">${fmt(r.count?r.grand/r.count:0)}</div></div></div>
+    <h4 style="font-size:13px;margin:6px 0 4px">🏆 Top Customers</h4><div class="card" style="padding:0 14px">${topRows}</div></div>`;
+}
+function printSalesReport(){const r=salesReportData(repMonth);const d=D();const body=`<div style="margin-bottom:10px"><strong>Total Sales:</strong> ₹${m2(r.grand)} · <strong>Invoices:</strong> ${r.count} · <strong>Taxable:</strong> ₹${m2(r.taxable)}</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Inv No</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Customer</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${r.list.map(i=>{const p=d.parties.find(x=>x.id===i.pid);return `<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(i.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(i.num)}</td><td style="padding:4px;border:1px solid #ccc">${esc(p?p.name:'?')}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(i.grand)}</td></tr>`;}).join('')}</tbody></table>`;printReport('Sales Report — '+monthLabel(repMonth),body);}
+function csvSalesReport(){const r=salesReportData(repMonth);const d=D();downloadCSV('Sales_Report_'+repMonth+'_'+curBiz+'.csv',['Date','Inv No','Customer','Taxable','Total'],r.list.map(i=>{const p=d.parties.find(x=>x.id===i.pid);return [i.date,i.num,p?p.name:'?',gstSplit(i).taxable.toFixed(2),i.grand.toFixed(2)];}));}
+
+/* ── PURCHASE REPORT ── */
+function purchReportData(ym){
+  const d=D();const list=d.bills.filter(b=>inMonth(b.date,ym)&&!b.jw);
+  let grand=0,taxable=0;const bySup={};
+  list.forEach(b=>{grand+=b.grand;taxable+=gstSplit(b).taxable;const p=d.parties.find(x=>x.id===b.pid);const nm=p?p.name:'?';bySup[nm]=(bySup[nm]||0)+b.grand;});
+  const top=Object.entries(bySup).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  return{list,grand,taxable,top,count:list.length};
+}
+function renderPurchaseReport(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const r=purchReportData(repMonth);
+  const topRows=r.top.map((t,i)=>`<div class="prow" style="cursor:default"><div class="pav" style="background:${avc(i)}">${ini(t[0])}</div><div class="pi"><div class="pn">${esc(t[0])}</div></div><div class="pb" style="color:var(--r)">${fmt(t[1])}</div></div>`).join('')||'<div style="padding:10px;color:var(--sub);font-size:13px;text-align:center">No purchases</div>';
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📉 Purchase Report</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · job-work excluded</div>
+    ${repActionBar("printPurchaseReport()","csvPurchaseReport()")}
+    <div class="stats"><div class="stat"><div class="sl">Total Purchases</div><div class="sv" style="font-size:18px;color:var(--r)">${fmt(r.grand)}</div></div><div class="stat"><div class="sl">Bills</div><div class="sv blu" style="font-size:18px">${r.count}</div></div><div class="stat"><div class="sl">Taxable (ex-GST)</div><div class="sv" style="font-size:15px">${fmt(r.taxable)}</div></div><div class="stat"><div class="sl">Avg / Bill</div><div class="sv" style="font-size:15px">${fmt(r.count?r.grand/r.count:0)}</div></div></div>
+    <h4 style="font-size:13px;margin:6px 0 4px">🏆 Top Suppliers</h4><div class="card" style="padding:0 14px">${topRows}</div></div>`;
+}
+function printPurchaseReport(){const r=purchReportData(repMonth);const d=D();const body=`<div style="margin-bottom:10px"><strong>Total Purchases:</strong> ₹${m2(r.grand)} · <strong>Bills:</strong> ${r.count} · <strong>Taxable:</strong> ₹${m2(r.taxable)}</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Bill No</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Supplier</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${r.list.map(b=>{const p=d.parties.find(x=>x.id===b.pid);return `<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(b.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(b.num)}</td><td style="padding:4px;border:1px solid #ccc">${esc(p?p.name:'?')}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(b.grand)}</td></tr>`;}).join('')}</tbody></table>`;printReport('Purchase Report — '+monthLabel(repMonth),body);}
+function csvPurchaseReport(){const r=purchReportData(repMonth);const d=D();downloadCSV('Purchase_Report_'+repMonth+'_'+curBiz+'.csv',['Date','Bill No','Supplier','Taxable','Total'],r.list.map(b=>{const p=d.parties.find(x=>x.id===b.pid);return [b.date,b.num,p?p.name:'?',gstSplit(b).taxable.toFixed(2),b.grand.toFixed(2)];}));}
+
+/* ── STOCK REPORT ── */
+function renderStockReport(pg){
+  const items=buildInventory().slice().sort((a,b)=>b.value-a.value);
+  const totVal=items.reduce((s,i)=>s+i.value,0);
+  const rows=items.map((i,k)=>`<tr style="background:${k%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${esc(i.name)}</td><td style="padding:7px;font-size:11px">${esc(i.hsn)}</td><td style="padding:7px;text-align:right">${fmtR(i.stock)} ${esc(i.unit)}</td><td style="padding:7px;text-align:right">${i.avgBuy?fmt(i.avgBuy):'—'}</td><td style="padding:7px;text-align:right;font-weight:600">${fmt(i.value)}</td><td style="padding:7px;text-align:center"><span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${i.status==='out'?'#FEE2E2':i.status==='low'?'#FEF3C7':'#D1FAE5'};color:${i.status==='out'?'#991B1B':i.status==='low'?'#92400E':'#065F46'}">${i.status==='out'?'OUT':i.status==='low'?'LOW':'OK'}</span></td></tr>`).join('');
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📦 Stock Report</h3>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${items.length} item(s)</div>
+    ${repActionBar("printStockReport()","csvStockReport()")}
+    <div class="ibox blu" style="margin-bottom:12px">Total stock value: <strong>${fmt(totVal)}</strong></div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px">
+      <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Item</th><th style="padding:7px;text-align:left">HSN</th><th style="padding:7px;text-align:right">Stock</th><th style="padding:7px;text-align:right">Avg Cost</th><th style="padding:7px;text-align:right">Value</th><th style="padding:7px;text-align:center">Status</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--sub)">No items</td></tr>'}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="4" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totVal)}</td><td></td></tr></tfoot>
+    </table></div></div>`;
+}
+function printStockReport(){const items=buildInventory().slice().sort((a,b)=>b.value-a.value);const totVal=items.reduce((s,i)=>s+i.value,0);const body=`<div style="margin-bottom:10px"><strong>Total Stock Value:</strong> ₹${m2(totVal)} · <strong>Items:</strong> ${items.length} · As on ${fmtD(td())}</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Item</th><th style="padding:5px;border:1px solid #ccc;text-align:left">HSN</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Stock</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Avg Cost</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Value</th></tr></thead><tbody>${items.map(i=>`<tr><td style="padding:4px;border:1px solid #ccc">${esc(i.name)}</td><td style="padding:4px;border:1px solid #ccc">${esc(i.hsn)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${fmtR(i.stock)} ${esc(i.unit)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${i.avgBuy?m2(i.avgBuy):'—'}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(i.value)}</td></tr>`).join('')}</tbody><tfoot><tr style="background:#eee;font-weight:700"><td colspan="4" style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(totVal)}</td></tr></tfoot></table>`;printReport('Stock Report',body);}
+function csvStockReport(){const items=buildInventory().slice().sort((a,b)=>b.value-a.value);downloadCSV('Stock_Report_'+curBiz+'.csv',['Item','HSN','Unit','Stock','Purchased','Sold','Avg Cost','Avg Sell','Value','Status'],items.map(i=>[i.name,i.hsn,i.unit,i.stock.toFixed(2),i.inQty.toFixed(2),i.outQty.toFixed(2),i.avgBuy.toFixed(2),i.avgSell.toFixed(2),i.value.toFixed(2),i.status]));}
+
+/* ── EXPENSE REPORT ── */
+function expReportData(ym){
+  const d=D();const list=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment'&&inMonth(e.date,ym)).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const total=list.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const byCat={};list.forEach(e=>{byCat[e.cat||'Other']=(byCat[e.cat||'Other']||0)+(parseFloat(e.amount)||0);});
+  return{list,total,cats:Object.entries(byCat).sort((a,b)=>b[1]-a[1])};
+}
+function renderExpenseReport(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const r=expReportData(repMonth);const maxc=r.cats.length?r.cats[0][1]:1;
+  const catRows=r.cats.map(([c,v])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600">${esc(c)}</span><span style="font-weight:700;color:var(--r)">${fmt(v)}</span></div><div style="height:6px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(4,Math.round(v/maxc*100))}%;background:#D97706"></div></div></div>`).join('')||'<div style="padding:10px;color:var(--sub);font-size:13px;text-align:center">No expenses</div>';
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🧾 Expense Report</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${r.list.length} entry(s)</div>
+    ${repActionBar("printExpenseReport()","csvExpenseReport()")}
+    <div class="ibox ora" style="margin-bottom:12px;background:#FFF7ED;border-color:#FED7AA;color:#9A3412">Total expenses: <strong>${fmt(r.total)}</strong></div>
+    <h4 style="font-size:13px;margin:6px 0 8px">By Category</h4>${catRows}</div>`;
+}
+function printExpenseReport(){const r=expReportData(repMonth);const body=`<div style="margin-bottom:10px"><strong>Total Expenses:</strong> ₹${m2(r.total)} · ${r.list.length} entries</div><h3 style="font-size:13px;margin:8px 0 4px">By Category</h3><table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px"><tbody>${r.cats.map(c=>`<tr><td style="padding:5px;border:1px solid #ccc">${esc(c[0])}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(c[1])}</td></tr>`).join('')}<tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.total)}</td></tr></tbody></table><h3 style="font-size:13px;margin:8px 0 4px">Detail</h3><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Category</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Mode</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Notes</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${r.list.map(e=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(e.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(e.cat||'')}</td><td style="padding:4px;border:1px solid #ccc">${esc((e.mode||'').toUpperCase())}</td><td style="padding:4px;border:1px solid #ccc">${esc(e.desc||'')}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(e.amount)}</td></tr>`).join('')}</tbody></table>`;printReport('Expense Report — '+monthLabel(repMonth),body);}
+function csvExpenseReport(){const r=expReportData(repMonth);downloadCSV('Expense_Report_'+repMonth+'_'+curBiz+'.csv',['Date','Category','Mode','Payee','Notes','Amount'],r.list.map(e=>[e.date,e.cat||'',e.mode||'',e.payee||'',e.desc||'',(parseFloat(e.amount)||0).toFixed(2)]));}
+
+/* ── PARTY REPORT ── */
+function partyReportData(){
+  const d=D();
+  return d.parties.filter(p=>!p.deleted).map(p=>{
+    const sales=d.invoices.filter(i=>i.pid===p.id).reduce((s,i)=>s+i.grand,0);
+    const purch=d.bills.filter(b=>b.pid===p.id&&!b.jw).reduce((s,b)=>s+b.grand,0);
+    const bal=partyBalance(p.id);
+    const dates=[...d.invoices.filter(i=>i.pid===p.id).map(i=>i.date),...d.bills.filter(b=>b.pid===p.id).map(b=>b.date)].sort();
+    return{name:p.name,type:p.type==='S'?'Supplier':p.type==='C'?'Customer':'Both',gstin:p.gstin||'',phone:p.phone||'',sales,purch,bal,last:dates.length?dates[dates.length-1]:''};
+  }).sort((a,b)=>Math.abs(b.bal)-Math.abs(a.bal));
+}
+function renderPartyReport(pg){
+  const rows=partyReportData();
+  const totRecv=rows.reduce((s,r)=>s+(r.bal>0?r.bal:0),0),totPay=rows.reduce((s,r)=>s+(r.bal<0?-r.bal:0),0);
+  const tr=rows.map((r,k)=>`<tr style="background:${k%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${esc(r.name)}<div style="font-size:10px;color:var(--sub)">${r.type}</div></td><td style="padding:7px;text-align:right">${fmt(r.sales)}</td><td style="padding:7px;text-align:right">${fmt(r.purch)}</td><td style="padding:7px;text-align:right;font-weight:700;color:${Math.abs(r.bal)<1?'var(--sub)':r.bal>0?'var(--g)':'var(--r)'}">${Math.abs(r.bal)<1?'—':fmt(Math.abs(r.bal))}<div style="font-size:9px;color:var(--sub)">${r.bal>1?'Recv':r.bal<-1?'Pay':''}</div></td><td style="padding:7px;font-size:11px;color:var(--sub)">${r.last?fmtD(r.last):'—'}</td></tr>`).join('');
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">👥 Party Report</h3>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${rows.length} parties · As on ${fmtD(td())}</div>
+    ${repActionBar("printPartyReport()","csvPartyReport()")}
+    <div class="stats"><div class="stat"><div class="sl">To Receive</div><div class="sv grn" style="font-size:16px">${fmt(totRecv)}</div></div><div class="stat"><div class="sl">To Pay</div><div class="sv red" style="font-size:16px">${fmt(totPay)}</div></div></div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px">
+      <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Party</th><th style="padding:7px;text-align:right">Sales</th><th style="padding:7px;text-align:right">Purchases</th><th style="padding:7px;text-align:right">Balance</th><th style="padding:7px;text-align:left">Last Txn</th></tr></thead>
+      <tbody>${tr||'<tr><td colspan="5" style="padding:16px;text-align:center;color:var(--sub)">No parties</td></tr>'}</tbody></table></div></div>`;
+}
+function printPartyReport(){const rows=partyReportData();const body=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Party</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Type</th><th style="padding:5px;border:1px solid #ccc;text-align:left">GSTIN</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Sales</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Purchases</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Balance</th></tr></thead><tbody>${rows.map(r=>`<tr><td style="padding:4px;border:1px solid #ccc">${esc(r.name)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.type)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.gstin)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.sales)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.purch)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(Math.abs(r.bal))} ${r.bal>1?'Dr':r.bal<-1?'Cr':''}</td></tr>`).join('')}</tbody></table>`;printReport('Party Report',body);}
+function csvPartyReport(){const rows=partyReportData();downloadCSV('Party_Report_'+curBiz+'.csv',['Party','Type','GSTIN','Phone','Total Sales','Total Purchases','Balance','Recv/Pay','Last Txn'],rows.map(r=>[r.name,r.type,r.gstin,r.phone,r.sales.toFixed(2),r.purch.toFixed(2),Math.abs(r.bal).toFixed(2),r.bal>1?'Receivable':r.bal<-1?'Payable':'Clear',r.last]));}
+
+/* ── CASH REPORT ── */
+function renderCashReport(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const all=cashLedger();
+  const before=all.filter(r=>(r.date||'')<repMonth+'-01');
+  const opening=before.reduce((s,r)=>s+(r.dir==='in'?r.amt:-r.amt),0);
+  const month=all.filter(r=>inMonth(r.date,repMonth));
+  const inT=month.filter(r=>r.dir==='in').reduce((s,r)=>s+r.amt,0);
+  const outT=month.filter(r=>r.dir==='out').reduce((s,r)=>s+r.amt,0);
+  const closing=opening+inT-outT;
+  const rows=month.slice().reverse().map(r=>`<div class="prow" style="cursor:default"><div class="pav" style="background:${r.dir==='in'?'#059669':'#DC2626'};font-size:15px">${r.dir==='in'?'↙':'↗'}</div><div class="pi"><div class="pn" style="font-size:13px">${esc(r.desc)}</div><div class="ps">${fmtD(r.date)}</div></div><div class="pb" style="color:${r.dir==='in'?'var(--g)':'var(--r)'}">${r.dir==='in'?'+':'−'}${fmt(r.amt)}</div></div>`).join('')||'<div style="padding:10px;color:var(--sub);font-size:13px;text-align:center">No cash movement</div>';
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">💵 Cash Report</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)}</div>
+    ${repActionBar("printCashReport()",null)}
+    <div style="background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;padding:6px 0"><span>Opening Cash</span><span style="font-weight:600">${fmt(opening)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0"><span>Cash Received</span><span style="color:var(--g);font-weight:600">+ ${fmt(inT)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--bdr)"><span>Cash Paid</span><span style="color:var(--r);font-weight:600">− ${fmt(outT)}</span></div>
+      <div style="display:flex;justify-content:space-between;padding:9px 0 2px;font-weight:800;font-size:16px"><span>Closing Cash</span><span style="color:${closing>=0?'var(--g)':'var(--r)'}">${fmt(closing)}</span></div>
+    </div>
+    <div class="card" style="padding:0 14px">${rows}</div></div>`;
+}
+function printCashReport(){const all=cashLedger();const opening=all.filter(r=>(r.date||'')<repMonth+'-01').reduce((s,r)=>s+(r.dir==='in'?r.amt:-r.amt),0);const month=all.filter(r=>inMonth(r.date,repMonth));const inT=month.filter(r=>r.dir==='in').reduce((s,r)=>s+r.amt,0);const outT=month.filter(r=>r.dir==='out').reduce((s,r)=>s+r.amt,0);const closing=opening+inT-outT;const body=`<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px"><tr><td style="padding:5px;border:1px solid #ccc">Opening Cash</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(opening)}</td></tr><tr><td style="padding:5px;border:1px solid #ccc">Cash Received</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(inT)}</td></tr><tr><td style="padding:5px;border:1px solid #ccc">Cash Paid</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(outT)}</td></tr><tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">Closing Cash</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(closing)}</td></tr></table><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Particulars</th><th style="padding:5px;border:1px solid #ccc;text-align:right">In</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Out</th></tr></thead><tbody>${month.map(r=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(r.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.desc)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${r.dir==='in'?m2(r.amt):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${r.dir==='out'?m2(r.amt):''}</td></tr>`).join('')}</tbody></table>`;printReport('Cash Report — '+monthLabel(repMonth),body);}
+
+/* ── BANK REPORT ── */
+function bankReportData(ym){
+  const d=D();const all=(d.bankTxns||[]);
+  const month=all.filter(t=>inMonth(t.date,ym)).slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const inT=month.filter(t=>t.type==='CR').reduce((s,t)=>s+t.amount,0);
+  const outT=month.filter(t=>t.type==='DR').reduce((s,t)=>s+t.amount,0);
+  return{month,inT,outT,net:inT-outT};
+}
+function renderBankReport(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const r=bankReportData(repMonth);
+  const rows=r.month.slice().reverse().map(t=>`<div class="prow" style="cursor:default"><div class="pav" style="background:${t.type==='CR'?'#059669':'#DC2626'};font-size:15px">${t.type==='CR'?'↙':'↗'}</div><div class="pi"><div class="pn" style="font-size:13px">${esc((t.desc||'').slice(0,60))}</div><div class="ps">${fmtD(t.date)}</div></div><div class="pb" style="color:${t.type==='CR'?'var(--g)':'var(--r)'}">${t.type==='CR'?'+':'−'}${fmt(t.amount)}</div></div>`).join('')||'<div style="padding:10px;color:var(--sub);font-size:13px;text-align:center">No bank transactions this month.<br><span style="font-size:11px">Import a statement in the Bank tab.</span></div>';
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🏦 Bank Report</h3>${repMonthInput()}
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${r.month.length} txn(s)</div>
+    ${repActionBar("printBankReport()",null)}
+    <div class="stats"><div class="stat"><div class="sl">Money In</div><div class="sv grn" style="font-size:16px">${fmt(r.inT)}</div></div><div class="stat"><div class="sl">Money Out</div><div class="sv red" style="font-size:16px">${fmt(r.outT)}</div></div><div class="stat" style="grid-column:1/-1"><div class="sl">Net Movement</div><div class="sv" style="color:${r.net>=0?'var(--g)':'var(--r)'}">${fmt(r.net)}</div></div></div>
+    <div class="card" style="padding:0 14px">${rows}</div></div>`;
+}
+function printBankReport(){const r=bankReportData(repMonth);const body=`<div style="margin-bottom:10px"><strong>Money In:</strong> ₹${m2(r.inT)} · <strong>Money Out:</strong> ₹${m2(r.outT)} · <strong>Net:</strong> ₹${m2(r.net)}</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Description</th><th style="padding:5px;border:1px solid #ccc;text-align:right">In</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Out</th></tr></thead><tbody>${r.month.map(t=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(t.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc((t.desc||'').slice(0,80))}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${t.type==='CR'?m2(t.amount):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${t.type==='DR'?m2(t.amount):''}</td></tr>`).join('')}</tbody></table>`;printReport('Bank Report — '+monthLabel(repMonth),body);}
+
+/* ════════════════════════════════════════
+   PHASE 6 — TRIAL BALANCE, BALANCE SHEET & ACCOUNTANT PACKAGE
+   Reuses balanceSheet() components + buildInventory cost-based closing stock.
+════════════════════════════════════════ */
+function bankNet(){return (D().bankTxns||[]).reduce((s,t)=>s+(t.type==='CR'?t.amount:-t.amount),0);}
+function pkgClosingStock(){return buildInventory().reduce((s,i)=>s+i.value,0)+(D().cfStock||0);}
+function pkgFinancials(){
+  const d=D();
+  let debtors=0,creditors=0;
+  d.parties.filter(p=>!p.deleted).forEach(p=>{const b=partyBalance(p.id);if(b>0.5)debtors+=b;else if(b<-0.5)creditors+=-b;});
+  const stockRaw=pkgClosingStock();
+  return{
+    cash:Math.max(0,cashInHand()),
+    bank:bankNet(),
+    debtors,creditors,
+    stock:stockRaw>0?stockRaw:0,
+    fixed:totalFixedAssets(),
+    loans:totalLoanOutstanding(),
+    od:odUsed(),
+    reserves:totalReserves()
+  };
+}
+// Closing (post-closing) trial balance — real accounts; Capital is the balancing figure.
+function trialBalanceData(){
+  const f=pkgFinancials();
+  const dr=[],cr=[];
+  dr.push(['Cash in Hand',f.cash]);
+  if(f.bank>=0)dr.push(['Bank Balance',f.bank]);else cr.push(['Bank (overdrawn)',-f.bank]);
+  dr.push(['Sundry Debtors',f.debtors]);
+  dr.push(['Closing Stock (at cost)',f.stock]);
+  if(f.fixed)dr.push(['Fixed Assets',f.fixed]);
+  if(f.creditors)cr.push(['Sundry Creditors',f.creditors]);
+  if(f.loans)cr.push(['Loans (Unsecured)',f.loans]);
+  if(f.od)cr.push(['Bank Overdraft',f.od]);
+  if(f.reserves)cr.push(['Reserves & Surplus',f.reserves]);
+  const drTot=dr.reduce((s,r)=>s+r[1],0);
+  const crKnown=cr.reduce((s,r)=>s+r[1],0);
+  const capital=drTot-crKnown; // balancing figure (Capital Account / Net Worth)
+  cr.push(['Capital Account (balancing)',capital]);
+  const crTot=cr.reduce((s,r)=>s+r[1],0);
+  return{dr,cr,drTot,crTot,capital};
+}
+function renderTrialBalance(pg){
+  const t=trialBalanceData();
+  const maxLen=Math.max(t.dr.length,t.cr.length);
+  let body='';
+  for(let i=0;i<maxLen;i++){
+    body+=`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${t.dr[i]?esc(t.dr[i][0]):''}</td><td style="padding:7px;text-align:right">${t.dr[i]?fmt(t.dr[i][1]):''}</td><td style="padding:7px;border-left:2px solid var(--bdr)">${t.cr[i]?esc(t.cr[i][0]):''}</td><td style="padding:7px;text-align:right">${t.cr[i]?fmt(t.cr[i][1]):''}</td></tr>`;
+  }
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">⚖️ Trial Balance</h3>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${BIZ[curBiz].name}</div>
+    ${repActionBar("printTrialBalance()",null)}
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
+      <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Debit (Dr)</th><th style="padding:7px;text-align:right">Amount</th><th style="padding:7px;text-align:left;border-left:2px solid #fff">Credit (Cr)</th><th style="padding:7px;text-align:right">Amount</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(t.drTot)}</td><td style="padding:8px;border-left:2px solid var(--bdr)">TOTAL</td><td style="padding:8px;text-align:right">${fmt(t.crTot)}</td></tr></tfoot>
+    </table></div>
+    <div class="ibox ${Math.abs(t.drTot-t.crTot)<1?'grn':'red'}" style="margin-top:12px">${Math.abs(t.drTot-t.crTot)<1?'✅ Trial Balance tallies':'⚠️ Difference '+fmt(Math.abs(t.drTot-t.crTot))}. Capital Account is the balancing figure — your accountant reconciles opening capital and current-year profit.</div></div>`;
+}
+function printTrialBalance(){
+  const t=trialBalanceData();const maxLen=Math.max(t.dr.length,t.cr.length);let body='';
+  for(let i=0;i<maxLen;i++){body+=`<tr><td style="padding:5px;border:1px solid #ccc">${t.dr[i]?esc(t.dr[i][0]):''}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${t.dr[i]?m2(t.dr[i][1]):''}</td><td style="padding:5px;border:1px solid #ccc">${t.cr[i]?esc(t.cr[i][0]):''}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${t.cr[i]?m2(t.cr[i][1]):''}</td></tr>`;}
+  const html=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Debit</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Credit</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${body}</tbody><tfoot><tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(t.drTot)}</td><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(t.crTot)}</td></tr></tfoot></table>`;
+  printReport('Trial Balance (as on '+fmtD(td())+')',html);
+}
+
+/* ── BALANCE SHEET ── */
+function balanceSheetData(){
+  const f=pkgFinancials();
+  const liab=[],asset=[];
+  // Assets
+  if(f.fixed)asset.push(['Fixed Assets',f.fixed]);
+  asset.push(['Closing Stock (at cost)',f.stock]);
+  asset.push(['Sundry Debtors',f.debtors]);
+  asset.push(['Cash in Hand',f.cash]);
+  if(f.bank>=0)asset.push(['Bank Balance',f.bank]);
+  const assetTot=asset.reduce((s,r)=>s+r[1],0);
+  // Liabilities (known)
+  if(f.creditors)liab.push(['Sundry Creditors',f.creditors]);
+  if(f.loans)liab.push(['Loans (Unsecured)',f.loans]);
+  if(f.od)liab.push(['Bank Overdraft',f.od]);
+  if(f.bank<0)liab.push(['Bank (overdrawn)',-f.bank]);
+  if(f.reserves)liab.push(['Reserves & Surplus',f.reserves]);
+  const liabKnown=liab.reduce((s,r)=>s+r[1],0);
+  const capital=assetTot-liabKnown; // balancing
+  liab.unshift(['Capital Account',capital]);
+  const liabTot=liab.reduce((s,r)=>s+r[1],0);
+  return{liab,asset,liabTot,assetTot,capital};
+}
+function renderBalanceSheetReport(pg){
+  const b=balanceSheetData();const maxLen=Math.max(b.liab.length,b.asset.length);
+  let body='';
+  for(let i=0;i<maxLen;i++){
+    body+=`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${b.liab[i]?esc(b.liab[i][0]):''}</td><td style="padding:7px;text-align:right">${b.liab[i]?fmt(b.liab[i][1]):''}</td><td style="padding:7px;border-left:2px solid var(--bdr)">${b.asset[i]?esc(b.asset[i][0]):''}</td><td style="padding:7px;text-align:right">${b.asset[i]?fmt(b.asset[i][1]):''}</td></tr>`;
+  }
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🏛️ Balance Sheet</h3>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${BIZ[curBiz].name}</div>
+    ${repActionBar("printBalanceSheet()",null)}
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
+      <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Liabilities</th><th style="padding:7px;text-align:right">Amount</th><th style="padding:7px;text-align:left;border-left:2px solid #fff">Assets</th><th style="padding:7px;text-align:right">Amount</th></tr></thead>
+      <tbody>${body}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(b.liabTot)}</td><td style="padding:8px;border-left:2px solid var(--bdr)">TOTAL</td><td style="padding:8px;text-align:right">${fmt(b.assetTot)}</td></tr></tfoot>
+    </table></div>
+    <div class="ibox blu" style="margin-top:12px">Capital Account (net worth) = <strong>${fmt(b.capital)}</strong>, derived as Assets − outside liabilities. Closing stock valued at cost. Bank from imported statements.</div></div>`;
+}
+function printBalanceSheet(){
+  const b=balanceSheetData();const maxLen=Math.max(b.liab.length,b.asset.length);let body='';
+  for(let i=0;i<maxLen;i++){body+=`<tr><td style="padding:5px;border:1px solid #ccc">${b.liab[i]?esc(b.liab[i][0]):''}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${b.liab[i]?m2(b.liab[i][1]):''}</td><td style="padding:5px;border:1px solid #ccc">${b.asset[i]?esc(b.asset[i][0]):''}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${b.asset[i]?m2(b.asset[i][1]):''}</td></tr>`;}
+  const html=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Liabilities</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Assets</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${body}</tbody><tfoot><tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(b.liabTot)}</td><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(b.assetTot)}</td></tr></tfoot></table>`;
+  printReport('Balance Sheet (as on '+fmtD(td())+')',html);
+}
+
+/* ── ACCOUNTANT PACKAGE ── */
+function renderAccountantPackage(pg){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const items=['Purchase Register','Sales Register','GST Summary (GSTR-3B basis)','Profit & Loss','Trial Balance','Balance Sheet','Party Ledger Summary','Stock Summary'];
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📦 Accountant Package</h3>
+    <div style="font-size:12px;color:var(--sub);margin-bottom:12px">Generates a single document with everything your accountant needs for month-end. Open it, then Print → Save as PDF, or share on WhatsApp.</div>
+    <label style="font-size:13px;font-weight:700">Month</label>${repMonthInput()}
+    <div style="background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--sub);margin-bottom:8px">INCLUDED IN THIS PACKAGE</div>
+      ${items.map(x=>`<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><span style="color:#059669">✓</span> ${x}</div>`).join('')}
+    </div>
+    <button class="btn pri" style="width:100%;justify-content:center;padding:14px;font-size:15px" onclick="generateAccountantPackage()">📦 Generate Package for ${monthLabel(repMonth)}</button>
+    <div style="font-size:11px;color:var(--sub);margin-top:10px">Registers, GST & P&L cover ${monthLabel(repMonth)}. Trial Balance, Balance Sheet, Party & Stock show current position (as on ${fmtD(td())}).</div></div>`;
+}
+function generateAccountantPackage(){
+  if(!repMonth)repMonth=td().slice(0,7);
+  const biz=BIZ[curBiz];const ml=monthLabel(repMonth);
+  const sec=(title,inner)=>`<div style="margin:0 0 26px;page-break-inside:auto"><h2 style="font-size:14px;background:#1E3A8A;color:#fff;padding:7px 10px;margin:0 0 8px;border-radius:4px">${title}</h2>${inner}</div>`;
+  const tbl=(head,rows,foot)=>`<table style="width:100%;border-collapse:collapse;font-size:10.5px"><thead><tr style="background:#e8e8e8">${head.map(h=>`<th style="padding:5px;border:1px solid #bbb;text-align:${h.r?'right':'left'}">${h.t}</th>`).join('')}</tr></thead><tbody>${rows}</tbody>${foot||''}</table>`;
+  const d=D();
+
+  // 1. Purchase Register
+  const pr=purchaseRegRows();const prT=pr.reduce((s,r)=>({taxable:s.taxable+r.taxable,igst:s.igst+r.igst,cgst:s.cgst+r.cgst,sgst:s.sgst+r.sgst,total:s.total+r.total}),{taxable:0,igst:0,cgst:0,sgst:0,total:0});
+  const prRows=pr.length?pr.map(r=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(r.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.num)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.party)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.gstin)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.taxable)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.sgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.total)}</td></tr>`).join(''):'<tr><td colspan="9" style="padding:6px;border:1px solid #ccc;text-align:center">No purchases</td></tr>';
+  const prFoot=`<tfoot><tr style="font-weight:700;background:#eee"><td colspan="4" style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(prT.taxable)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(prT.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(prT.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(prT.sgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(prT.total)}</td></tr></tfoot>`;
+  const purchaseReg=sec('1. Purchase Register — '+ml,tbl([{t:'Date'},{t:'Bill'},{t:'Supplier'},{t:'GSTIN'},{t:'Taxable',r:1},{t:'IGST',r:1},{t:'CGST',r:1},{t:'SGST',r:1},{t:'Total',r:1}],prRows,prFoot));
+
+  // 2. Sales Register
+  const sr=salesRegRows();const srT=sr.reduce((s,r)=>({taxable:s.taxable+r.taxable,igst:s.igst+r.igst,cgst:s.cgst+r.cgst,sgst:s.sgst+r.sgst,total:s.total+r.total}),{taxable:0,igst:0,cgst:0,sgst:0,total:0});
+  const srRows=sr.length?sr.map(r=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(r.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.num)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.party)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.gstin)||'B2C'}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.taxable)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.sgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.total)}</td></tr>`).join(''):'<tr><td colspan="9" style="padding:6px;border:1px solid #ccc;text-align:center">No sales</td></tr>';
+  const srFoot=`<tfoot><tr style="font-weight:700;background:#eee"><td colspan="4" style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(srT.taxable)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(srT.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(srT.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(srT.sgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(srT.total)}</td></tr></tfoot>`;
+  const salesReg=sec('2. Sales Register — '+ml,tbl([{t:'Date'},{t:'Inv'},{t:'Customer'},{t:'GSTIN'},{t:'Taxable',r:1},{t:'IGST',r:1},{t:'CGST',r:1},{t:'SGST',r:1},{t:'Total',r:1}],srRows,srFoot));
+
+  // 3. GST Summary (3B basis)
+  const g=gstr3bData();const netTotal=g.net.igst+g.net.cgst+g.net.sgst;
+  const gstRows=`<tr><td style="padding:4px;border:1px solid #ccc">Output Tax (Sales)</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.O.taxable)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.O.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.O.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.O.sgst)}</td></tr><tr><td style="padding:4px;border:1px solid #ccc">Input Tax Credit (Purchases)</td><td style="padding:4px;border:1px solid #ccc;text-align:right">—</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.I.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.I.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.I.sgst)}</td></tr><tr style="font-weight:700;background:#eee"><td style="padding:4px;border:1px solid #ccc">Net Payable (cash)</td><td style="padding:4px;border:1px solid #ccc;text-align:right">—</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.net.igst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.net.cgst)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(g.net.sgst)}</td></tr>`;
+  const gstSec=sec('3. GST Summary — '+ml,tbl([{t:'Particulars'},{t:'Taxable',r:1},{t:'IGST',r:1},{t:'CGST',r:1},{t:'SGST',r:1}],gstRows)+`<div style="margin-top:6px;font-size:12px;font-weight:700;text-align:right">Net GST Payable in Cash: ₹${m2(netTotal)}</div>`);
+
+  // 4. P&L
+  const p=profitData(repMonth);
+  const plSec=sec('4. Profit & Loss — '+ml,`<table style="width:100%;border-collapse:collapse;font-size:11px"><tr><td style="padding:5px;border:1px solid #ccc">Sales (revenue, ex-GST)</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(p.sales)}</td></tr><tr><td style="padding:5px;border:1px solid #ccc">Less: Purchases (ex-GST)</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(p.purch)}</td></tr><tr style="font-weight:700"><td style="padding:5px;border:1px solid #ccc">Gross Profit</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(p.tradingGP)}</td></tr><tr><td style="padding:5px;border:1px solid #ccc">Less: Expenses</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(p.exp)}</td></tr><tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">Net Profit</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(p.net)}</td></tr></table>`);
+
+  // 5. Trial Balance
+  const t=trialBalanceData();const tbMax=Math.max(t.dr.length,t.cr.length);let tbRows='';
+  for(let i=0;i<tbMax;i++)tbRows+=`<tr><td style="padding:4px;border:1px solid #ccc">${t.dr[i]?esc(t.dr[i][0]):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${t.dr[i]?m2(t.dr[i][1]):''}</td><td style="padding:4px;border:1px solid #ccc">${t.cr[i]?esc(t.cr[i][0]):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${t.cr[i]?m2(t.cr[i][1]):''}</td></tr>`;
+  tbRows+=`<tr style="font-weight:700;background:#eee"><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(t.drTot)}</td><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(t.crTot)}</td></tr>`;
+  const tbSec=sec('5. Trial Balance (as on '+fmtD(td())+')',tbl([{t:'Debit'},{t:'Amount',r:1},{t:'Credit'},{t:'Amount',r:1}],tbRows));
+
+  // 6. Balance Sheet
+  const bs=balanceSheetData();const bsMax=Math.max(bs.liab.length,bs.asset.length);let bsRows='';
+  for(let i=0;i<bsMax;i++)bsRows+=`<tr><td style="padding:4px;border:1px solid #ccc">${bs.liab[i]?esc(bs.liab[i][0]):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${bs.liab[i]?m2(bs.liab[i][1]):''}</td><td style="padding:4px;border:1px solid #ccc">${bs.asset[i]?esc(bs.asset[i][0]):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${bs.asset[i]?m2(bs.asset[i][1]):''}</td></tr>`;
+  bsRows+=`<tr style="font-weight:700;background:#eee"><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bs.liabTot)}</td><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bs.assetTot)}</td></tr>`;
+  const bsSec=sec('6. Balance Sheet (as on '+fmtD(td())+')',tbl([{t:'Liabilities'},{t:'Amount',r:1},{t:'Assets'},{t:'Amount',r:1}],bsRows));
+
+  // 7. Party Ledger Summary
+  const parties=partyReportData().filter(r=>r.sales||r.purch||Math.abs(r.bal)>0.5);
+  const plRows=parties.length?parties.map(r=>`<tr><td style="padding:4px;border:1px solid #ccc">${esc(r.name)}</td><td style="padding:4px;border:1px solid #ccc">${esc(r.type)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.sales)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.purch)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(Math.abs(r.bal))} ${r.bal>1?'Dr':r.bal<-1?'Cr':''}</td></tr>`).join(''):'<tr><td colspan="5" style="padding:6px;border:1px solid #ccc;text-align:center">No parties</td></tr>';
+  const partySec=sec('7. Party Ledger Summary (as on '+fmtD(td())+')',tbl([{t:'Party'},{t:'Type'},{t:'Total Sales',r:1},{t:'Total Purchases',r:1},{t:'Balance',r:1}],plRows));
+
+  // 8. Stock Summary
+  const items=buildInventory().slice().sort((a,b)=>b.value-a.value);const stockTot=items.reduce((s,i)=>s+i.value,0);
+  const stRows=items.length?items.map(i=>`<tr><td style="padding:4px;border:1px solid #ccc">${esc(i.name)}</td><td style="padding:4px;border:1px solid #ccc">${esc(i.hsn)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${fmtR(i.stock)} ${esc(i.unit)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${i.avgBuy?m2(i.avgBuy):'—'}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(i.value)}</td></tr>`).join(''):'<tr><td colspan="5" style="padding:6px;border:1px solid #ccc;text-align:center">No items</td></tr>';
+  const stFoot=`<tfoot><tr style="font-weight:700;background:#eee"><td colspan="4" style="padding:4px;border:1px solid #ccc">TOTAL STOCK VALUE</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(stockTot)}</td></tr></tfoot>`;
+  const stockSec=sec('8. Stock Summary (as on '+fmtD(td())+')',tbl([{t:'Item'},{t:'HSN'},{t:'Stock',r:1},{t:'Avg Cost',r:1},{t:'Value',r:1}],stRows,stFoot));
+
+  const cover=`<div style="text-align:center;border:2px solid #1E3A8A;border-radius:8px;padding:24px;margin-bottom:24px">
+    <div style="font-size:22px;font-weight:800;color:#1E3A8A">${esc(biz.name)}</div>
+    <div style="font-size:12px;color:#555;margin:4px 0">${esc(biz.addr||'')}</div>
+    <div style="font-size:12px;color:#555">GSTIN: ${esc(biz.gstin||'')}</div>
+    <div style="font-size:18px;font-weight:700;margin-top:16px">ACCOUNTANT PACKAGE</div>
+    <div style="font-size:14px;color:#1E3A8A;font-weight:600">${ml}</div>
+    <div style="font-size:11px;color:#888;margin-top:10px">Generated ${new Date().toLocaleString('en-IN')}</div>
+  </div>`;
+
+  document.getElementById('print-body').innerHTML=`<div style="font-family:Arial,Helvetica,sans-serif;color:#111">${cover}${purchaseReg}${salesReg}${gstSec}${plSec}${tbSec}${bsSec}${partySec}${stockSec}
+    <div style="margin-top:20px;font-size:10px;color:#888;border-top:1px solid #ccc;padding-top:8px">Computer-generated from Business Manager. Registers, GST & P&L are for ${ml}; Trial Balance, Balance Sheet, Party & Stock reflect position as on ${fmtD(td())}. Closing stock valued at cost; Capital Account is the balancing figure. To be verified and finalized by the accountant.</div></div>`;
+  document.getElementById('print-overlay').style.display='block';
+  document.body.style.overflow='hidden';
 }
 </script>
 
