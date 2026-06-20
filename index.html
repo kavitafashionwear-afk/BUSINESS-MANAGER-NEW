@@ -170,6 +170,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .empty{text-align:center;padding:40px 20px;color:var(--sub)}
 .empty .ei{font-size:48px;margin-bottom:8px}
 .sync-dot{width:8px;height:8px;border-radius:50%;background:#6EE7B7;margin-left:6px;flex-shrink:0}
+.sync-dot.offline{background:#9CA3AF}
 .sync-dot.busy{background:#FDE68A;animation:pulse 1s infinite}
 .sync-dot.err{background:#FCA5A5}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
@@ -838,6 +839,12 @@ firebase.initializeApp({
   projectId:"challan-manager-85768"
 });
 const auth=firebase.auth(),db=firebase.firestore();
+/* ── OFFLINE-FIRST: local cache so writes queue offline and auto-flush online ── */
+try{ db.enablePersistence({synchronizeTabs:true}).catch(function(err){console.warn('Offline persistence not enabled:',err&&err.code);}); }catch(e){console.warn('Persistence setup skipped',e);}
+let isOnline=(typeof navigator!=='undefined')?navigator.onLine:true;
+let loadedOnce=false; // true after a successful cloud read; guards against blank overwrites
+window.addEventListener('online',function(){isOnline=true;if(typeof updateSyncUI==='function')updateSyncUI();if(typeof flushPendingSave==='function')flushPendingSave();});
+window.addEventListener('offline',function(){isOnline=false;if(typeof updateSyncUI==='function')updateSyncUI();});
 let uid=null,ready=false,curBiz='MI',curTab='home',curParty=null,curDoc=null;
 let editPartyId=null,editBillId=null,editInvId=null,payTargetId=null,payTargetType=null;
 let billItemCount=0,invItemCount=0;
@@ -888,7 +895,7 @@ const uid4=()=>Math.random().toString(36).slice(2,10);
 const colors=['#1E40AF','#065F46','#7C3AED','#B45309','#BE123C','#0369A1','#4D7C0F'];
 const avc=i=>colors[i%colors.length];
 
-function setSyncDot(s){const d=document.getElementById('sync-dot');if(!d)return;d.className='sync-dot'+(s==='busy'?' busy':s==='err'?' err':'');}
+function setSyncDot(s){const d=document.getElementById('sync-dot');if(!d)return;d.className='sync-dot'+(s==='busy'?' busy':s==='offline'?' offline':s==='err'?' err':'');d.title=s==='busy'?'Saving…':s==='offline'?'Offline — saved on this device, will sync when back online':s==='err'?'Sync issue — saved locally, will retry':'Synced ✓';}
 
 // ═══ AUTH ═══
 let appIsReady=false;
@@ -914,6 +921,8 @@ function showApp(user){
   document.getElementById('pg-app').style.display='flex';
   const n=user.displayName||user.email||'U';
   document.getElementById('av').textContent=n[0].toUpperCase();
+  if(typeof loadLocal==='function'&&loadLocal())renderAll();
+  if(typeof updateSyncUI==='function')updateSyncUI();
   subscribeData();
 }
 
@@ -955,7 +964,7 @@ function doLogin(){
 
 function doLogout(){
   if(confirm('Sign out?')){
-    appIsReady=false;_authResolved=false;uid=null;
+    appIsReady=false;_authResolved=false;uid=null;loadedOnce=false;
     auth.signOut().then(function(){showLogin();});
   }
 }
@@ -966,15 +975,29 @@ auth.getRedirectResult()
 
 auth.onAuthStateChanged(function(user){_resolveAuth(user||null);});
 
-// ═══ FIRESTORE ═══
+// ═══ FIRESTORE (offline-first) ═══
 let unsubscribe=null;
 let _saving=false;
+const LS_KEY=function(){return 'bizmgr_backup_'+(uid||'anon');};
+function saveLocal(){ try{ localStorage.setItem(LS_KEY(), JSON.stringify({MI:S.MI,KF:S.KF})); }catch(e){} }
+function loadLocal(){
+  try{ var raw=localStorage.getItem(LS_KEY()); if(!raw)return false;
+    var d=JSON.parse(raw);
+    if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF;
+    return !!(d.MI||d.KF);
+  }catch(e){ return false; }
+}
+function updateSyncUI(){ setSyncDot(isOnline?'ok':'offline'); }
+function flushPendingSave(){ if(uid&&isOnline&&loadedOnce)saveToCloud(); }
+
 function subscribeData(){
   if(unsubscribe)unsubscribe();
   setSyncDot('busy');
   unsubscribe=db.collection('users').doc(uid).collection('bizdata').doc('main')
-    .onSnapshot(snap=>{
-      if(_saving)return; // Don't overwrite local state while saving
+    .onSnapshot({includeMetadataChanges:true},snap=>{
+      if(_saving)return; // don't overwrite local state mid-save
+      // A successful snapshot (even empty/new) means reads work — safe to save later.
+      loadedOnce=true;
       if(snap.exists){
         const d=snap.data();
         S.MI=d.MI||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
@@ -983,14 +1006,20 @@ function subscribeData(){
         S.KF=d.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
         if(!S.KF.trash)S.KF.trash=[];
         if(!S.KF.notes)S.KF.notes=[];
-        // One-time-safe normalization: align party state + invoice GST split with GSTIN.
-        // Never changes any amount — only the CGST+SGST vs IGST classification.
         normalizeGstData(S.MI);
         normalizeGstData(S.KF);
+        saveLocal();
       }
-      setSyncDot('ok');
+      const fromCache=snap.metadata&&snap.metadata.fromCache;
+      setSyncDot(fromCache?(isOnline?'busy':'offline'):'ok');
       renderAll();
-    },()=>setSyncDot('err'));
+    },err=>{
+      // Read failed (rules/permission or offline). DON'T mark loaded — keeps save()
+      // from overwriting good cloud data with our empty in-memory state.
+      console.warn('Read blocked:',err&&err.code);
+      if(loadLocal())renderAll();
+      setSyncDot(isOnline?'err':'offline');
+    });
 }
 // Align stored party.state and invoice gstStr with the authoritative GSTIN.
 // Returns number of fixes. Pure reclassification — totals (gstAmt, grand) are untouched.
@@ -1016,20 +1045,21 @@ function normalizeGstData(store){
   });
   return fixes;
 }
-async function saveToCloud(){
+function saveToCloud(){
   if(!uid)return;
-  setSyncDot('busy');
+  // SAFETY: never write until a successful read confirms we have the real data.
+  if(!loadedOnce){ console.warn('Save skipped — initial read not confirmed; data left untouched.'); setSyncDot(isOnline?'err':'offline'); return; }
+  saveLocal(); // instant on-device backup, never fails
+  setSyncDot(isOnline?'busy':'offline');
   _saving=true;
+  const mi=JSON.parse(JSON.stringify(S.MI||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
+  const kf=JSON.parse(JSON.stringify(S.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
   try{
-    // Sanitize: JSON round-trip removes undefined/null (Firestore rejects them)
-    const mi=JSON.parse(JSON.stringify(S.MI||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
-    const kf=JSON.parse(JSON.stringify(S.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
-    await db.collection('users').doc(uid).collection('bizdata').doc('main').set({
-      MI:mi, KF:kf, updated:new Date().toISOString()
-    });
-    setSyncDot('ok');
-  }catch(e){setSyncDot('err');alert('Sync error: '+e.message);}
-  finally{_saving=false;}
+    db.collection('users').doc(uid).collection('bizdata').doc('main').set({MI:mi,KF:kf,updated:new Date().toISOString()})
+      .then(function(){ setSyncDot(isOnline?'ok':'offline'); })
+      .catch(function(err){ console.warn('Cloud write deferred:',err&&err.code); setSyncDot(isOnline?'err':'offline'); })
+      .then(function(){ _saving=false; });
+  }catch(e){ console.warn('Cloud write threw:',e); setSyncDot(isOnline?'err':'offline'); _saving=false; }
 }
 
 // ═══ BUSINESS TOGGLE ═══
