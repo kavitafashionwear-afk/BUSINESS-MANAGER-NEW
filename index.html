@@ -437,21 +437,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         ✨ <strong id="i-new-party-name"></strong> not found — will be <strong>auto-created as a new Customer</strong> when you save this invoice.
       </div>
     </div>
-    <div class="fl"><label>Consignee / Ship To (if different)</label><input id="i-ship" placeholder="Consignee name (optional)"></div>
+    <!-- CUSTOMER (BILL TO) DETAILS -->
+    <div class="fl"><label>Customer Address</label><input id="i-cust-addr" placeholder="Billing address (street, area, city)"></div>
     <div class="fr">
-      <div class="fl"><label>Consignee GSTIN</label><input id="i-ship-gstin" placeholder="e.g. 29ABCDE1234F1Z5" oninput="this.value=this.value.toUpperCase()"></div>
-      <div class="fl"><label>Consignee Address</label><input id="i-ship-addr" placeholder="Delivery address"></div>
+      <div class="fl"><label>PIN Code</label><input id="i-cust-pin" placeholder="e.g. 110031" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
+      <div class="fl"><label>State (Place of Supply)</label><input id="i-cust-state" placeholder="e.g. Delhi" autocomplete="off"></div>
     </div>
+    <div class="fr">
+      <div class="fl"><label>Customer GSTIN</label><input id="i-cust-gstin" placeholder="e.g. 07ABCDE1234F1Z5" oninput="this.value=this.value.toUpperCase();autoFillCustState()"></div>
+      <div class="fl"><label>Phone</label><input id="i-cust-phone" type="tel" inputmode="numeric" placeholder="e.g. 9810012345"></div>
+    </div>
+    <div class="fl"><label>Aadhaar No.</label><input id="i-cust-aadhaar" placeholder="e.g. XXXX-XXXX-1234" maxlength="20"></div>
+    <!-- CONSIGNEE (SHIP TO) — placed under the party details -->
+    <details style="margin:4px 0 8px">
+      <summary style="font-size:12px;font-weight:700;color:var(--pri2);cursor:pointer;padding:4px 0">🚚 Consignee / Ship To details (if different from customer)</summary>
+      <div class="fl" style="margin-top:6px"><label style="font-size:11px">Consignee Name</label><input id="i-ship" placeholder="Consignee name (optional)"></div>
+      <div class="fl"><label style="font-size:11px">Consignee Address</label><input id="i-ship-addr" placeholder="Delivery address"></div>
+      <div class="fr">
+        <div class="fl"><label style="font-size:11px">Consignee GSTIN</label><input id="i-ship-gstin" placeholder="e.g. 29ABCDE1234F1Z5" oninput="this.value=this.value.toUpperCase()"></div>
+        <div class="fl"><label style="font-size:11px">Consignee State</label><input id="i-ship-state" placeholder="e.g. Karnataka"></div>
+      </div>
+      <div class="fl"><label style="font-size:11px">Consignee Phone</label><input id="i-ship-phone" type="tel" inputmode="numeric" placeholder="Optional"></div>
+    </details>
     <div class="fr">
       <div class="fl"><label>🚚 Transport / Carrier</label><input id="i-transport" placeholder="e.g. VRL Logistics"></div>
       <div class="fl"><label>🚛 Vehicle No.</label><input id="i-vehicle" placeholder="e.g. DL01AB1234" oninput="this.value=this.value.toUpperCase()"></div>
     </div>
-    <div class="fl"><label>Customer Address</label><input id="i-cust-addr" placeholder="Billing address (street, area, city)"></div>
-    <div class="fr">
-      <div class="fl"><label>PIN Code</label><input id="i-cust-pin" placeholder="e.g. 110031" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
-      <div class="fl"><label>Customer GSTIN</label><input id="i-cust-gstin" placeholder="e.g. 07ABCDE1234F1Z5" oninput="this.value=this.value.toUpperCase()"></div>
-    </div>
-    <div class="fl"><label>Aadhaar No.</label><input id="i-cust-aadhaar" placeholder="e.g. XXXX-XXXX-1234" maxlength="20"></div>
     <!-- ITEMS -->
     <div class="card-hd" style="margin-top:8px">Items</div>
     <div id="i-items-list"></div>
@@ -514,13 +525,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="fl"><label>Date *</label><input id="pay-date" type="date"></div>
     </div>
     <div class="fl"><label>Mode</label>
-      <select id="pay-mode">
+      <select id="pay-mode" onchange="togglePaySplit()">
         <option value="NEFT">NEFT/RTGS</option>
         <option value="UPI">UPI</option>
         <option value="Cheque">Cheque</option>
         <option value="Cash">Cash</option>
+        <option value="Split">Split (Cash + Bank)</option>
         <option value="Other">Other</option>
       </select>
+    </div>
+    <div id="pay-split-wrap" style="display:none;background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:10px;padding:10px;margin-bottom:10px">
+      <div class="fr">
+        <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">By Cash (₹)</label><input id="pay-cash" type="number" placeholder="0" min="0" step="0.01" oninput="calcPaySplit()"></div>
+        <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">By Bank / UPI (₹)</label><input id="pay-bank" type="number" placeholder="0" min="0" step="0.01" oninput="calcPaySplit()"></div>
+      </div>
+      <div id="pay-split-calc" style="font-size:11px;color:var(--sub)"></div>
     </div>
     <div class="fl"><label>Reference / UTR No.</label><input id="pay-ref" placeholder="Optional"></div>
     <div class="fl"><label>Remarks</label><input id="pay-rem" placeholder="Optional"></div>
@@ -714,9 +733,28 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
           <option>Machinery</option><option>Vehicle</option><option>Furniture</option><option>Property</option><option>Investment / FD</option><option>Other</option>
         </select>
       </div>
-      <div class="fl"><label>Value (₹) *</label><input id="as-value" type="number" placeholder="0" min="0" step="0.01"></div>
+      <div class="fl"><label>Taxable Value (₹) * <span style="font-weight:400;color:var(--sub)">before GST</span></label><input id="as-value" type="number" placeholder="0" min="0" step="0.01" oninput="calcAssetTotal()"></div>
     </div>
     <div class="fl"><label>Date of Purchase</label><input id="as-date" type="date"></div>
+    <div style="background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:10px;padding:10px;margin-bottom:10px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 How was it paid? <span style="font-weight:400;color:var(--sub)">(split allowed)</span></div>
+      <div class="fr">
+        <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">Paid by Cash (₹)</label><input id="as-cash" type="number" placeholder="0" min="0" step="0.01" oninput="calcAssetTotal()"></div>
+        <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">Paid by Bank (₹)</label><input id="as-bank" type="number" placeholder="0" min="0" step="0.01" oninput="calcAssetTotal()"></div>
+      </div>
+      <div id="as-pay-calc" style="font-size:11px;color:var(--sub)"></div>
+    </div>
+    <details id="as-gst-wrap" style="margin:2px 0 8px">
+      <summary style="font-size:12px;font-weight:700;color:var(--pri2);cursor:pointer;padding:4px 0">🧾 GST / claim Input Credit (for TV, phone, machinery…)</summary>
+      <div class="fl" style="margin-top:6px"><label style="font-size:11px">GST %</label>
+        <select id="as-gst" onchange="calcAssetTotal()"><option value="0">No GST</option><option value="5">5%</option><option value="12">12%</option><option value="18">18%</option><option value="28">28%</option></select>
+      </div>
+      <div class="fl"><label style="font-size:11px">Supplier (optional)</label><input id="as-supplier" list="as-sup-list" placeholder="e.g. Sharma Enterprises, Croma"><datalist id="as-sup-list"></datalist></div>
+      <div class="fl"><label style="font-size:11px">Supplier GSTIN (optional)</label><input id="as-gstin" placeholder="for IGST vs CGST/SGST" style="text-transform:uppercase"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-top:4px"><input type="checkbox" id="as-itc" checked style="width:16px;height:16px"> Claim Input GST credit (ITC)</label>
+      <div style="font-size:11px;color:var(--sub);margin-top:6px">💡 If you leave an <strong>unpaid balance</strong> and name a supplier, that amount is recorded as a <strong>payable in their ledger</strong> (credit purchase). Pay it later via that supplier's Payment button.</div>
+      <div id="as-gst-calc" class="ibox blu" style="font-size:12px;margin-top:8px;display:none"></div>
+    </details>
     <div class="fl"><label>Note</label><input id="as-note" placeholder="Optional"></div>
   </div>
   <div class="mft">
@@ -780,12 +818,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     </div>
     <div class="fl" id="exp-custom-wrap" style="display:none"><label>Custom Category Name *</label><input id="exp-custom" placeholder="e.g. Diwali Gifts"></div>
     <div class="fl"><label>Paid Via *</label>
-      <select id="exp-mode">
+      <select id="exp-mode" onchange="toggleExpSplit()">
         <option value="cash">💵 Cash (reduces Cash in Hand)</option>
         <option value="bank">🏦 Bank / NEFT / Cheque</option>
         <option value="upi">📲 UPI</option>
+        <option value="split">🔀 Split (Cash + Bank)</option>
       </select>
     </div>
+    <div id="exp-split-wrap" style="display:none;background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:10px;padding:10px;margin-bottom:6px">
+      <div class="fr">
+        <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">By Cash (₹)</label><input id="exp-cash" type="number" placeholder="0" min="0" step="0.01" oninput="calcExpSplit()"></div>
+        <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">By Bank / UPI (₹)</label><input id="exp-bank" type="number" placeholder="0" min="0" step="0.01" oninput="calcExpSplit()"></div>
+      </div>
+      <div id="exp-split-calc" style="font-size:11px;color:var(--sub)"></div>
     <div class="fl"><label>Description / Notes</label><input id="exp-desc" placeholder="e.g. June shop rent, Blue Dart courier #4471"></div>
     <div class="fl"><label>Paid To (optional)</label><input id="exp-payee" placeholder="e.g. Landlord, electricity board, staff name"></div>
     <div class="ibox blu" style="font-size:12px">💡 Cash expenses automatically appear in your Cash in Hand ledger. All expenses flow into the Profit report.</div>
@@ -1220,8 +1265,10 @@ function partyBalance(pid){
   const notes=d.notes||[];
   const creditNotes=notes.filter(x=>x.pid===pid&&x.type==='credit').reduce((s,x)=>s+x.amount,0);
   const debitNotes=notes.filter(x=>x.pid===pid&&x.type==='debit').reduce((s,x)=>s+x.amount,0);
+  // Capital assets bought on credit from this supplier (unpaid portion = payable)
+  const assetPay=(d.assets||[]).filter(a=>a.supplierPid===pid).reduce((s,a)=>s+(a.unpaid||0),0);
   const obVal=(obType==='CR'?ob:-ob);
-  return obVal + salesTotal - purchTotal - received + paid - creditNotes + debitNotes;
+  return obVal + salesTotal - purchTotal - received + paid - creditNotes + debitNotes - assetPay;
 }
 function billBalance(bid){
   const d=D();
@@ -1243,14 +1290,29 @@ function cashLedger(){
   const d=D();const rows=[];
   // Opening cash carried forward (optional)
   if(d.cashOpening)rows.push({date:d.cashOpeningDate||'',desc:'Opening cash balance',ref:'Opening',dir:'in',amt:d.cashOpening,kind:'opening'});
-  // Cash payments & receipts (mode === 'Cash')
-  (d.payments||[]).filter(p=>(p.mode||'').toLowerCase()==='cash').forEach(p=>{
+  // Cash payments & receipts — full amount if mode Cash, or the cash portion of a Split
+  (d.payments||[]).forEach(p=>{
+    const m=(p.mode||'').toLowerCase();
+    let cash=0;
+    if(m==='cash')cash=p.amt;
+    else if(m==='split'&&p.cashPart!=null)cash=p.cashPart;
+    if(cash<=0)return;
     const party=d.parties.find(x=>x.id===p.pid);
-    rows.push({date:p.date,desc:(p.dir==='in'?'Cash received — ':'Cash paid — ')+(party?party.name:'—')+(p.rem?' ('+p.rem+')':''),ref:p.ref||'Cash',dir:p.dir,amt:p.amt,kind:'pay',id:p.id});
+    rows.push({date:p.date,desc:(p.dir==='in'?'Cash received — ':'Cash paid — ')+(party?party.name:'—')+(p.rem?' ('+p.rem+')':''),ref:p.ref||'Cash',dir:p.dir,amt:cash,kind:'pay',id:p.id});
   });
-  // Cash expenses recorded from bank/misc as cash (if any) — expenses with mode cash
-  (d.expenses||[]).filter(e=>(e.mode||'').toLowerCase()==='cash').forEach(e=>{
-    rows.push({date:e.date,desc:'Cash expense — '+(e.cat||'')+(e.desc?' ('+e.desc+')':''),ref:'Expense',dir:e.dir==='in'?'in':'out',amt:e.amount,kind:'exp'});
+  // Cash expenses — full if mode cash, or the cash portion of a Split
+  (d.expenses||[]).forEach(e=>{
+    const m=(e.mode||'').toLowerCase();
+    let cash=0;
+    if(m==='cash')cash=e.amount;
+    else if(m==='split'&&e.cashPart!=null)cash=e.cashPart;
+    if(cash<=0)return;
+    rows.push({date:e.date,desc:'Cash expense — '+(e.cat||'')+(e.desc?' ('+e.desc+')':''),ref:'Expense',dir:e.dir==='in'?'in':'out',amt:cash,kind:'exp'});
+  });
+  // Capital assets: only the CASH portion reduces cash in hand
+  (d.assets||[]).forEach(a=>{
+    const cp=(a.cashPaid!=null)?a.cashPaid:((a.payMode==='cash')?(a.grand||a.value||0):0);
+    if(cp>0)rows.push({date:a.date,desc:'Asset purchase — '+(a.name||''),ref:'Asset',dir:'out',amt:cp,kind:'asset'});
   });
   return rows.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 }
@@ -1436,8 +1498,8 @@ function renderExpenses(){
   list=list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   const total=list.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
-  const cashTot=list.filter(e=>(e.mode||'cash')==='cash').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
-  const bankTot=list.filter(e=>(e.mode||'')==='bank').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const cashTot=list.reduce((s,e)=>s+((e.mode==='split')?(parseFloat(e.cashPart)||0):((e.mode||'cash')==='cash'?(parseFloat(e.amount)||0):0)),0);
+  const bankTot=list.reduce((s,e)=>s+((e.mode==='split')?(parseFloat(e.bankPart)||0):((e.mode||'')==='bank'?(parseFloat(e.amount)||0):0)),0);
   const upiTot=list.filter(e=>(e.mode||'')==='upi').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
 
   // Category breakdown
@@ -1526,7 +1588,27 @@ function openExpenseModal(){
   document.getElementById('exp-mode').value='cash';
   document.getElementById('exp-desc').value='';
   document.getElementById('exp-payee').value='';
+  document.getElementById('exp-cash').value='';document.getElementById('exp-bank').value='';
+  toggleExpSplit();
   openModal('expense');
+}
+function toggleExpSplit(){
+  const el=document.getElementById('exp-mode');if(!el)return;
+  const sp=el.value==='split';
+  const w=document.getElementById('exp-split-wrap');if(w)w.style.display=sp?'block':'none';
+  if(sp)calcExpSplit();
+}
+function calcExpSplit(){
+  const amt=parseFloat(document.getElementById('exp-amt').value)||0;
+  const cash=parseFloat(document.getElementById('exp-cash').value)||0;
+  const bank=parseFloat(document.getElementById('exp-bank').value)||0;
+  const el=document.getElementById('exp-split-calc');if(!el)return;
+  const diff=Math.round((amt-cash-bank)*100)/100;
+  let m='Total <strong>'+fmt(amt)+'</strong> = Cash '+fmt(cash)+' + Bank/UPI '+fmt(bank);
+  if(Math.abs(diff)<0.5)m+=' ✅';
+  else if(diff>0)m+=' · <span style="color:#B45309">'+fmt(diff)+' unallocated</span>';
+  else m+=' · <span style="color:#B91C1C">over by '+fmt(-diff)+'</span>';
+  el.innerHTML=m;
 }
 
 function editExpense(id){
@@ -1542,6 +1624,9 @@ function editExpense(id){
   document.getElementById('exp-mode').value=e.mode||'cash';
   document.getElementById('exp-desc').value=e.desc||'';
   document.getElementById('exp-payee').value=e.payee||'';
+  document.getElementById('exp-cash').value=e.cashPart!=null?e.cashPart:'';
+  document.getElementById('exp-bank').value=e.bankPart!=null?e.bankPart:'';
+  toggleExpSplit();
   openModal('expense');
 }
 
@@ -1555,11 +1640,17 @@ function saveExpense(){
   const mode=document.getElementById('exp-mode').value||'cash';
   const desc=(document.getElementById('exp-desc').value||'').trim();
   const payee=(document.getElementById('exp-payee').value||'').trim();
+  let cashPart=null,bankPart=null;
+  if(mode==='split'){
+    cashPart=parseFloat(document.getElementById('exp-cash').value)||0;
+    bankPart=parseFloat(document.getElementById('exp-bank').value)||0;
+    if(Math.abs(amount-cashPart-bankPart)>0.5){alert('Cash + Bank must add up to the total ('+fmt(amount)+').');return;}
+  }
   if(editExpId){
     const e=d.expenses.find(x=>x.id===editExpId);
-    if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir='out';}
+    if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir='out';e.cashPart=cashPart;e.bankPart=bankPart;}
   } else {
-    d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out'});
+    d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out',cashPart,bankPart});
   }
   editExpId=null;
   saveToCloud();closeModal('expense');renderExpenses();
@@ -2078,20 +2169,77 @@ function openAssetModal(aid){
   document.getElementById('asset-mo-title').textContent=aid?'Edit Asset':'Add Asset';
   document.getElementById('as-name').value=a?a.name||'':'';
   document.getElementById('as-cat').value=a?a.cat||'Machinery':'Machinery';
-  document.getElementById('as-value').value=a?(a.value||''):'';
+  document.getElementById('as-value').value=a?((a.taxable!=null?a.taxable:a.value)||''):'';
   document.getElementById('as-date').value=a?(a.date||td()):td();
   document.getElementById('as-note').value=a?a.note||'':'';
+  document.getElementById('as-gst').value=a?(a.gstPct||0):0;
+  let cp=a?(a.cashPaid!=null?a.cashPaid:(a.payMode==='cash'?(a.grand||a.value||0):0)):0;
+  let bp=a?(a.bankPaid!=null?a.bankPaid:(a.payMode==='bank'?(a.grand||a.value||0):0)):0;
+  document.getElementById('as-cash').value=cp||'';
+  document.getElementById('as-bank').value=bp||'';
+  document.getElementById('as-supplier').value=a?(a.supplier||''):'';
+  document.getElementById('as-gstin').value=a?(a.gstin||''):'';
+  document.getElementById('as-itc').checked=a?(a.claimItc!==false):true;
+  const supList=document.getElementById('as-sup-list');if(supList)supList.innerHTML=d.parties.filter(p=>p.type==='S'||p.type==='B').map(p=>`<option value="${esc(p.name)}">`).join('');
+  document.getElementById('as-gst-wrap').open=!!(a&&(a.gstPct||a.gstin));
+  calcAssetTotal();
   openModal('asset');
+}
+function calcAssetTotal(){
+  const taxable=parseFloat(document.getElementById('as-value').value)||0;
+  const pct=parseFloat(document.getElementById('as-gst').value)||0;
+  const itc=document.getElementById('as-itc').checked;
+  const gst=pct>0?Math.round(taxable*pct/100*100)/100:0;
+  const total=taxable+gst;
+  const box=document.getElementById('as-gst-calc');
+  if(box){
+    if(pct>0&&taxable>0){box.style.display='block';
+      box.innerHTML='GST @ '+pct+'%: <strong>'+fmt(gst)+'</strong> · Total payable: <strong>'+fmt(total)+'</strong><br>'+
+        (itc?'✅ ITC <strong>'+fmt(gst)+'</strong> will be claimed; asset capitalised at '+fmt(taxable):'Asset capitalised at full '+fmt(total)+' (no ITC)');
+    } else box.style.display='none';
+  }
+  const cash=parseFloat(document.getElementById('as-cash').value)||0;
+  const bank=parseFloat(document.getElementById('as-bank').value)||0;
+  const alloc=cash+bank;const unpaid=Math.round((total-alloc)*100)/100;
+  const pc=document.getElementById('as-pay-calc');
+  if(pc){
+    if(total>0){
+      let msg='Total payable <strong>'+fmt(total)+'</strong> = Cash '+fmt(cash)+' + Bank '+fmt(bank);
+      if(Math.abs(unpaid)<0.5)msg+=' ✅ fully paid';
+      else if(unpaid>0)msg+=' · <span style="color:#B45309">Unpaid (credit) '+fmt(unpaid)+'</span>';
+      else msg+=' · <span style="color:#B91C1C">Over-allocated by '+fmt(-unpaid)+'</span>';
+      pc.innerHTML=msg;
+    } else pc.innerHTML='Enter the value above, then how much was paid by cash / bank.';
+  }
 }
 function saveAsset(){
   const d=D();ensureAssets();
   const name=document.getElementById('as-name').value.trim();
   if(!name){alert('Enter asset name');return;}
+  const taxable=parseFloat(document.getElementById('as-value').value)||0;
+  const gstPct=parseFloat(document.getElementById('as-gst').value)||0;
+  const gstin=document.getElementById('as-gstin').value.trim().toUpperCase();
+  const supplier=document.getElementById('as-supplier').value.trim();
+  const claimItc=document.getElementById('as-itc').checked&&gstPct>0;
+  const gstAmt=gstPct>0?Math.round(taxable*gstPct/100*100)/100:0;
+  const code=gstin?stateFromGstin(gstin):'';
+  const intra=code?(code===HOME_STATE):true;
+  const gstStr=gstPct>0?(gstPct+(intra?'s':'i')):'';
+  const grand=taxable+gstAmt;
+  const value=claimItc?taxable:grand;
+  const cashPaid=parseFloat(document.getElementById('as-cash').value)||0;
+  const bankPaid=parseFloat(document.getElementById('as-bank').value)||0;
+  const unpaid=Math.round((grand-cashPaid-bankPaid)*100)/100;
+  const payMode=cashPaid&&bankPaid?'split':cashPaid?'cash':bankPaid?'bank':'credit';
+  // If bought (partly) on credit from a named supplier, link them so the unpaid shows as a payable in their ledger
+  let supplierPid=null;
+  if(supplier&&unpaid>0.5){const sp=getOrCreateParty(supplier,'S',gstin);if(sp)supplierPid=sp.id;}
   const obj={
     id:editAssetId||('AS'+String(d.assetC||1).padStart(3,'0')),
     name,
     cat:document.getElementById('as-cat').value,
-    value:parseFloat(document.getElementById('as-value').value)||0,
+    value,taxable,gstPct,gstAmt,gstStr,grand,gstin,supplier,supplierPid,
+    cashPaid,bankPaid,unpaid,payMode,claimItc,
     date:document.getElementById('as-date').value||td(),
     note:document.getElementById('as-note').value.trim()
   };
@@ -2289,6 +2437,7 @@ function openPartyDetail(pid){
   const pbills=d.bills.filter(b=>b.pid===pid&&b.mode!=='cash');
   const pinvs=d.invoices.filter(i=>i.pid===pid&&i.mode!=='cash');
   const ppays=d.payments.filter(p=>p.pid===pid);
+  const passets=(d.assets||[]).filter(a=>a.supplierPid===pid);
 
   const billRows=pbills.map((b,i)=>{
     const bbal=billBalance(b.id);
@@ -2327,6 +2476,17 @@ function openPartyDetail(pid){
     <button class="btn sm red" onclick="delPayment('${p.id}')">🗑</button>
   </div>`).join('');
 
+  const assetRows=passets.map(a=>`<div class="brow" style="cursor:pointer" onclick="goTab('loans')">
+    <div class="bh">
+      <div><span class="bdg ora">ASSET</span> <span style="font-size:12px;color:var(--sub)">${fmtD(a.date)}</span></div>
+      <div>
+        <div class="ba">${fmt(a.grand||a.value||0)}</div>
+        <div style="font-size:11px;text-align:right;color:${(a.unpaid||0)<1?'var(--g)':'var(--r)'}">${(a.unpaid||0)<1?'Settled':'Credit: '+fmt(a.unpaid)}</div>
+      </div>
+    </div>
+    <div class="bm">${esc(a.name)} (capital asset on credit)</div>
+  </div>`).join('');
+
   document.getElementById('pg-detail').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <button class="btn sm" onclick="goTab('parties')">← Back</button>
@@ -2358,6 +2518,7 @@ function openPartyDetail(pid){
       <button class="btn sm red" onclick="confirmDelParty('${pid}')">🗑</button>
     </div>
     ${pbills.length?`<div class="card" style="padding:0 16px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">PURCHASE BILLS</div>${billRows}</div>`:''}
+    ${passets.length?`<div class="card" style="padding:0 16px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">ASSET PURCHASES (ON CREDIT)</div>${assetRows}</div>`:''}
     ${pinvs.length?`<div class="card" style="padding:0 16px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">SALES INVOICES</div>${invRows}</div>`:''}
     ${ppays.length?`<div class="card" style="padding:0 16px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">PAYMENT HISTORY</div>${payRows}</div>`:''}` ;
 
@@ -2921,6 +3082,11 @@ function editInvoice(iid){
   const _ep=d.parties.find(p=>p.id===inv.pid);
   document.getElementById('i-cust-addr').value=inv.custAddr||(_ep&&_ep.addr)||'';
   document.getElementById('i-cust-pin').value=inv.custPin||(_ep&&_ep.pin)||'';
+  const _epStc=(_ep&&_ep.gstin)?stateFromGstin(_ep.gstin):stateFromGstin(inv.custGstin);
+  document.getElementById('i-cust-state').value=inv.custState||(_ep&&_ep.stateName)||stateName(_epStc)||'';
+  document.getElementById('i-cust-phone').value=inv.custPhone||(_ep&&_ep.phone)||'';
+  document.getElementById('i-ship-state').value=inv.shipState||'';
+  document.getElementById('i-ship-phone').value=inv.shipPhone||'';
   document.getElementById('i-trans').value=inv.trans||'';document.getElementById('i-gst').value=inv.gstStr||'5i';
   document.getElementById('i-mode').value=inv.mode||'credit';document.getElementById('i-rem').value=inv.rem||'';
   const iincl2=document.getElementById('i-incl-gst');if(iincl2)iincl2.checked=!!inv.inclGst;
@@ -2977,6 +3143,10 @@ function openInvModal(pid){
   document.getElementById('i-cust-aadhaar').value='';
   document.getElementById('i-cust-addr').value='';
   document.getElementById('i-cust-pin').value='';
+  document.getElementById('i-cust-state').value='';
+  document.getElementById('i-cust-phone').value='';
+  document.getElementById('i-ship-state').value='';
+  document.getElementById('i-ship-phone').value='';
   document.getElementById('i-disc').value='';
   document.getElementById('i-trans').value='';
   document.getElementById('i-gst').value='5i';
@@ -2990,7 +3160,7 @@ function openInvModal(pid){
   // Populate customer list
   const custs=d.parties.filter(p=>p.type==='C'||p.type==='B');
   document.getElementById('cus-list').innerHTML=custs.map(p=>`<option value="${esc(p.name)}">`).join('');
-  if(pid){const p=d.parties.find(x=>x.id===pid);if(p){document.getElementById('i-cust').value=p.name;if(p.gstin)document.getElementById('i-cust-gstin').value=p.gstin;if(p.addr)document.getElementById('i-cust-addr').value=p.addr;if(p.pin)document.getElementById('i-cust-pin').value=p.pin;autoSetGST(p);}}
+  if(pid){const p=d.parties.find(x=>x.id===pid);if(p){document.getElementById('i-cust').value=p.name;if(p.gstin)document.getElementById('i-cust-gstin').value=p.gstin;if(p.addr)document.getElementById('i-cust-addr').value=p.addr;if(p.pin)document.getElementById('i-cust-pin').value=p.pin;if(p.phone)document.getElementById('i-cust-phone').value=p.phone;const stc=p.gstin?stateFromGstin(p.gstin):'';document.getElementById('i-cust-state').value=p.stateName||stateName(stc)||(stc?'State '+stc:'');autoSetGST(p);}}
   addInvItem();
   openModal('inv');
 }
@@ -3002,6 +3172,13 @@ function onInvModeChange(){
 }
 // Home state for both firms is Delhi (07). Inter-state ⇒ IGST; intra-state ⇒ CGST+SGST.
 const HOME_STATE='07';
+const STATE_CODES={'01':'Jammu & Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh','05':'Uttarakhand','06':'Haryana','07':'Delhi','08':'Rajasthan','09':'Uttar Pradesh','10':'Bihar','11':'Sikkim','12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur','15':'Mizoram','16':'Tripura','17':'Meghalaya','18':'Assam','19':'West Bengal','20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh','24':'Gujarat','25':'Daman & Diu','26':'Dadra & Nagar Haveli','27':'Maharashtra','29':'Karnataka','30':'Goa','31':'Lakshadweep','32':'Kerala','33':'Tamil Nadu','34':'Puducherry','35':'Andaman & Nicobar','36':'Telangana','37':'Andhra Pradesh','38':'Ladakh','97':'Other Territory'};
+function stateName(code){return STATE_CODES[code]||'';}
+function autoFillCustState(){
+  const g=(document.getElementById('i-cust-gstin')?.value||'').trim();
+  const code=stateFromGstin(g);const stEl=document.getElementById('i-cust-state');
+  if(code&&stEl&&!stEl.value.trim())stEl.value=stateName(code)||('State '+code);
+}
 function stateFromGstin(g){
   if(!g)return '';
   const m=String(g).trim().match(/^(\d{2})/);
@@ -3171,8 +3348,12 @@ function saveInvoice(){
   // Capture customer address + PIN; persist onto the party record so they're remembered
   const custAddrEntered=(document.getElementById('i-cust-addr')?.value||'').trim();
   const custPinEntered=(document.getElementById('i-cust-pin')?.value||'').trim();
+  const custPhoneEntered=(document.getElementById('i-cust-phone')?.value||'').trim();
+  const custStateEntered=(document.getElementById('i-cust-state')?.value||'').trim();
   if(custAddrEntered)customer.addr=custAddrEntered;
   if(custPinEntered)customer.pin=custPinEntered;
+  if(custPhoneEntered)customer.phone=custPhoneEntered;
+  if(custStateEntered)customer.stateName=custStateEntered;
   const items=getInvItems();
   if(!items.length){alert('Add at least one item');return;}
   const sub=items.reduce((s,i)=>s+i.amt,0);
@@ -3209,11 +3390,15 @@ function saveInvoice(){
     ship:document.getElementById('i-ship').value.trim(),
     shipGstin:(document.getElementById('i-ship-gstin')?.value||'').trim().toUpperCase(),
     shipAddr:(document.getElementById('i-ship-addr')?.value||'').trim(),
+    shipState:(document.getElementById('i-ship-state')?.value||'').trim(),
+    shipPhone:(document.getElementById('i-ship-phone')?.value||'').trim(),
     transport:(document.getElementById('i-transport')?.value||'').trim(),
     vehicle:(document.getElementById('i-vehicle')?.value||'').trim().toUpperCase(),
     custGstin:custGstinEntered,
     custAddr:custAddrEntered,
     custPin:custPinEntered,
+    custPhone:custPhoneEntered,
+    custState:custStateEntered,
     custAadhaar:document.getElementById('i-cust-aadhaar').value.trim(),
     items,sub,disc,discAmt,trans,gstStr,gstPct,gstAmt,roundAdj,grand,inclGst:!!inclGst,taxable,
     mode:storeMode,
@@ -3268,7 +3453,27 @@ function openPayModal(pid,docId,docType){
   document.getElementById('pay-mode').value='NEFT';
   document.getElementById('pay-ref').value='';
   document.getElementById('pay-rem').value='';
+  const pc=document.getElementById('pay-cash'),pb=document.getElementById('pay-bank');if(pc)pc.value='';if(pb)pb.value='';
+  togglePaySplit();
   openModal('pay');
+}
+function togglePaySplit(){
+  const el=document.getElementById('pay-mode');if(!el)return;
+  const sp=el.value==='Split';
+  const w=document.getElementById('pay-split-wrap');if(w)w.style.display=sp?'block':'none';
+  if(sp)calcPaySplit();
+}
+function calcPaySplit(){
+  const amt=parseFloat(document.getElementById('pay-amt').value)||0;
+  const cash=parseFloat(document.getElementById('pay-cash').value)||0;
+  const bank=parseFloat(document.getElementById('pay-bank').value)||0;
+  const el=document.getElementById('pay-split-calc');if(!el)return;
+  const diff=Math.round((amt-cash-bank)*100)/100;
+  let m='Total <strong>'+fmt(amt)+'</strong> = Cash '+fmt(cash)+' + Bank/UPI '+fmt(bank);
+  if(Math.abs(diff)<0.5)m+=' ✅';
+  else if(diff>0)m+=' · <span style="color:#B45309">'+fmt(diff)+' unallocated</span>';
+  else m+=' · <span style="color:#B91C1C">over by '+fmt(-diff)+'</span>';
+  el.innerHTML=m;
 }
 function savePayment(){
   const d=D();
@@ -3276,16 +3481,23 @@ function savePayment(){
   if(amt<=0){alert('Enter valid amount');return;}
   const party=d.parties.find(p=>p.id===payTargetId);
   const dir=party&&party.type==='C'?'in':party&&party.type==='S'?'out':'in';
+  const mode=document.getElementById('pay-mode').value;
   const pay={
     id:'PAY'+uid4(),
     pid:payTargetId,
     amt,
     date:document.getElementById('pay-date').value,
-    mode:document.getElementById('pay-mode').value,
+    mode,
     ref:document.getElementById('pay-ref').value.trim(),
     rem:document.getElementById('pay-rem').value.trim(),
     dir
   };
+  if(mode==='Split'){
+    const cash=parseFloat(document.getElementById('pay-cash').value)||0;
+    const bank=parseFloat(document.getElementById('pay-bank').value)||0;
+    if(Math.abs(amt-cash-bank)>0.5){alert('Cash + Bank must add up to the total amount ('+fmt(amt)+').');return;}
+    pay.cashPart=cash;pay.bankPart=bank;
+  }
   d.payments.push(pay);
   saveToCloud();closeModal('pay');renderAll();
   if(curParty===payTargetId)openPartyDetail(payTargetId);
@@ -3326,7 +3538,8 @@ function printInvoice(iid){
   // Resolve geography from GSTIN (authoritative), not the possibly-stale party.state
   const si=custStateInfo(inv,party);
   const isIntrastate=si.isIntra;
-  const stateLabel=(si.code?si.code+' ':'')+(isIntrastate?'(Intra-state)':'(Inter-state)');
+  const _stNm=(inv.custState||stateName(si.code)||'').trim();
+  const stateLabel=(_stNm?_stNm+' ':'')+(si.code?'('+si.code+') ':'')+(isIntrastate?'· Intra-state':'· Inter-state');
 
   const itemRows=inv.items.map((it,i)=>`<tr style="background:${i%2?'#F9F9F9':'#fff'}">
     <td style="padding:6px 8px;border:1px solid #E0E0E0;text-align:center">${i+1}</td>
@@ -3371,16 +3584,18 @@ function printInvoice(iid){
         <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">BILL TO</div>
         <div style="font-weight:800;font-size:15px">${esc(party&&party.name||'')}</div>
         <div style="font-size:12px;color:#555">${esc(inv.custAddr||(party&&party.addr)||(party&&party.city)||'')}${(inv.custPin||(party&&party.pin))?' - '+esc(inv.custPin||(party&&party.pin)):''}</div>
-        <div style="font-size:12px">📞 ${esc(party&&party.phone||'-')}</div>
+        <div style="font-size:12px">📞 ${esc(inv.custPhone||(party&&party.phone)||'-')}</div>
         ${(inv.custGstin||(party&&party.gstin))?`<div style="font-size:12px;font-weight:700">GSTIN: ${esc(inv.custGstin||(party&&party.gstin)||'')}</div>`:''}
         ${inv.custAadhaar?`<div style="font-size:12px">Aadhaar: ${esc(inv.custAadhaar)}</div>`:''}
         <div style="font-size:12px">State: ${esc(stateLabel)}</div>
       </div>
-      ${(inv.ship||inv.shipAddr||inv.shipGstin)?`<div style="border:1px solid #E0E0E0;border-radius:8px;padding:10px">
+      ${(inv.ship||inv.shipAddr||inv.shipGstin||inv.shipState||inv.shipPhone)?`<div style="border:1px solid #E0E0E0;border-radius:8px;padding:10px">
         <div style="font-size:11px;font-weight:700;color:#666;margin-bottom:4px">CONSIGNEE / SHIP TO</div>
         ${inv.ship?`<div style="font-size:13px;font-weight:700">${esc(inv.ship)}</div>`:''}
         ${inv.shipAddr?`<div style="font-size:12px;color:#555">${esc(inv.shipAddr)}</div>`:''}
+        ${inv.shipPhone?`<div style="font-size:12px">📞 ${esc(inv.shipPhone)}</div>`:''}
         ${inv.shipGstin?`<div style="font-size:12px;font-weight:700">GSTIN: ${esc(inv.shipGstin)}</div>`:''}
+        ${inv.shipState?`<div style="font-size:12px">State: ${esc(inv.shipState)}</div>`:''}
       </div>`:'<div></div>'}
     </div>
     ${(inv.transport||inv.vehicle)?`<div style="display:flex;gap:18px;border:1px solid #E0E0E0;border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:12px">
@@ -5705,6 +5920,7 @@ function renderGSTSummary(pg){
   let out={taxable:0,igst:0,cgst:0,sgst:0,tax:0},inp={taxable:0,igst:0,cgst:0,sgst:0,tax:0};
   outInvs.forEach(i=>{const g=gstOf(i);out.taxable+=g.taxable;out.igst+=g.igst;out.cgst+=g.cgst;out.sgst+=g.sgst;out.tax+=g.tax;});
   inBills.forEach(b=>{const g=gstOf(b);inp.taxable+=g.taxable;inp.igst+=g.igst;inp.cgst+=g.cgst;inp.sgst+=g.sgst;inp.tax+=g.tax;});
+  const _cap=capitalITC(repMonth);inp.taxable+=_cap.taxable;inp.igst+=_cap.igst;inp.cgst+=_cap.cgst;inp.sgst+=_cap.sgst;inp.tax+=_cap.tax;
   const net=out.tax-inp.tax;
 
   function gstRow(label,o){return `<tr><td style="padding:8px;font-weight:600">${label}</td><td style="padding:8px;text-align:right">${fmt(o.taxable)}</td><td style="padding:8px;text-align:right">${fmt(o.igst)}</td><td style="padding:8px;text-align:right">${fmt(o.cgst)}</td><td style="padding:8px;text-align:right">${fmt(o.sgst)}</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(o.tax)}</td></tr>`;}
@@ -5741,6 +5957,14 @@ function gstSplit(doc){
   return{taxable,tax,igst:intra?0:tax,cgst:intra?tax/2:0,sgst:intra?tax/2:0,rate:doc.gstPct||0,intra};
 }
 function gstinOf(inv){const d=D();const p=d.parties.find(x=>x.id===inv.pid);return (inv.custGstin||(p&&p.gstin)||'').toUpperCase();}
+// Input Tax Credit on capital assets (TV, phone, machinery…) bought in a month where ITC is claimed.
+function capitalITC(ym){
+  const d=D();const r={taxable:0,igst:0,cgst:0,sgst:0,tax:0,count:0};
+  (d.assets||[]).filter(a=>a.claimItc&&(a.gstAmt||0)>0&&(a.date||'').slice(0,7)===ym).forEach(a=>{
+    const g=gstSplit(a);r.taxable+=g.taxable;r.igst+=g.igst;r.cgst+=g.cgst;r.sgst+=g.sgst;r.tax+=g.tax;r.count++;
+  });
+  return r;
+}
 function repMonthInput(){if(!repMonth)repMonth=td().slice(0,7);return `<input type="month" value="${repMonth}" onchange="repMonth=this.value;renderReports()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit">`;}
 function monthLabel(ym){return new Date(ym+'-01').toLocaleDateString('en-IN',{month:'long',year:'numeric'});}
 
@@ -5898,12 +6122,13 @@ function gstr3bData(){
   const O={taxable:0,igst:0,cgst:0,sgst:0},I={igst:0,cgst:0,sgst:0};
   out.forEach(i=>{const g=gstSplit(i);O.taxable+=g.taxable;O.igst+=g.igst;O.cgst+=g.cgst;O.sgst+=g.sgst;});
   inp.forEach(b=>{const g=gstSplit(b);I.igst+=g.igst;I.cgst+=g.cgst;I.sgst+=g.sgst;});
+  const cap=capitalITC(repMonth);I.igst+=cap.igst;I.cgst+=cap.cgst;I.sgst+=cap.sgst;
   const net={igst:Math.max(0,O.igst-I.igst),cgst:Math.max(0,O.cgst-I.cgst),sgst:Math.max(0,O.sgst-I.sgst)};
-  return{O,I,net,outN:out.length,inN:inp.length};
+  return{O,I,net,outN:out.length,inN:inp.length,cap};
 }
 function renderGSTR3B(pg){
   if(!repMonth)repMonth=td().slice(0,7);
-  const {O,I,net,outN,inN}=gstr3bData();
+  const {O,I,net,outN,inN,cap}=gstr3bData();
   const netTotal=net.igst+net.cgst+net.sgst;
   const box=(label,a,b,c,d2,strong)=>`<tr style="${strong?'background:var(--pri3);font-weight:700':''}"><td style="padding:8px;border:1px solid var(--bdr)">${label}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${a==null?'':m2(a)}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${m2(b)}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${m2(c)}</td><td style="padding:8px;border:1px solid var(--bdr);text-align:right">${m2(d2)}</td></tr>`;
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🧮 GSTR-3B Summary</h3>${repMonthInput()}
@@ -5921,10 +6146,10 @@ function renderGSTR3B(pg){
       <div style="font-weight:700;color:${netTotal>0?'#991B1B':'#065F46'}">NET GST PAYABLE IN CASH</div>
       <div style="font-size:22px;font-weight:800;color:${netTotal>0?'#B91C1C':'#059669'}">${fmt(netTotal)}</div>
     </div>
-    <div style="font-size:11px;color:var(--sub);margin-top:8px">Net payable per head = Output − ITC (floored at 0). Hand this to your accountant for the actual 3B filing.</div></div>`;
+    <div style="font-size:11px;color:var(--sub);margin-top:8px">Net payable per head = Output − ITC (floored at 0). Hand this to your accountant for the actual 3B filing.${(cap&&cap.tax>0)?' ITC above includes <strong>'+fmt(cap.tax)+'</strong> on capital goods ('+cap.count+' asset'+(cap.count>1?'s':'')+').':''}</div></div>`;
 }
 function printGSTR3B(){
-  const {O,I,net,outN,inN}=gstr3bData();
+  const {O,I,net,outN,inN,cap}=gstr3bData();
   const netTotal=net.igst+net.cgst+net.sgst;
   const row=(l,a,b,c,d2)=>`<tr><td style="padding:6px;border:1px solid #ccc">${l}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${a==null?'':m2(a)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(b)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(c)}</td><td style="padding:6px;border:1px solid #ccc;text-align:right">${m2(d2)}</td></tr>`;
   const body=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:6px;border:1px solid #ccc;text-align:left">Particulars</th><th style="padding:6px;border:1px solid #ccc;text-align:right">Taxable</th><th style="padding:6px;border:1px solid #ccc;text-align:right">IGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">CGST</th><th style="padding:6px;border:1px solid #ccc;text-align:right">SGST</th></tr></thead><tbody>${row('3.1(a) Outward taxable supplies',O.taxable,O.igst,O.cgst,O.sgst)}${row('4(A)(5) ITC — All other ITC',null,I.igst,I.cgst,I.sgst)}${row('5.1 Net tax payable (cash)',null,net.igst,net.cgst,net.sgst)}</tbody></table><div style="margin-top:14px;font-size:14px;font-weight:700;text-align:right">Net GST Payable in Cash: ₹${m2(netTotal)}</div>`;
@@ -6219,48 +6444,97 @@ function printTrialBalance(){
 }
 
 /* ── BALANCE SHEET ── */
-function balanceSheetData(){
-  const f=pkgFinancials();
-  const liab=[],asset=[];
-  // Assets
-  if(f.fixed)asset.push(['Fixed Assets',f.fixed]);
-  asset.push(['Closing Stock (at cost)',f.stock]);
-  asset.push(['Sundry Debtors',f.debtors]);
-  asset.push(['Cash in Hand',f.cash]);
-  if(f.bank>=0)asset.push(['Bank Balance',f.bank]);
-  const assetTot=asset.reduce((s,r)=>s+r[1],0);
-  // Liabilities (known)
-  if(f.creditors)liab.push(['Sundry Creditors',f.creditors]);
-  if(f.loans)liab.push(['Loans (Unsecured)',f.loans]);
-  if(f.od)liab.push(['Bank Overdraft',f.od]);
-  if(f.bank<0)liab.push(['Bank (overdrawn)',-f.bank]);
-  if(f.reserves)liab.push(['Reserves & Surplus',f.reserves]);
-  const liabKnown=liab.reduce((s,r)=>s+r[1],0);
-  const capital=assetTot-liabKnown; // balancing
-  liab.unshift(['Capital Account',capital]);
-  const liabTot=liab.reduce((s,r)=>s+r[1],0);
-  return{liab,asset,liabTot,assetTot,capital};
+function classifiedBS(){
+  const d=D();
+  let tradeRecv=0,supplierAdv=0,creditors=0,custAdv=0;
+  d.parties.filter(p=>!p.deleted).forEach(p=>{
+    const b=partyBalance(p.id);
+    if(b>0.5){ if(p.type==='S')supplierAdv+=b; else tradeRecv+=b; }
+    else if(b<-0.5){ if(p.type==='C')custAdv+=-b; else creditors+=-b; }
+  });
+  let fixed=0,stInvest=0;
+  ensureAssets().forEach(a=>{const v=parseFloat(a.value)||0; if(a.cat==='Investment / FD')stInvest+=v; else fixed+=v;});
+  const stock=Math.max(0,pkgClosingStock());
+  const cash=Math.max(0,cashInHand());
+  const bank=bankNet();const bankPos=bank>0?bank:0,bankNeg=bank<0?-bank:0;
+  const loans=totalLoanOutstanding(),od=odUsed(),reserves=totalReserves();
+  const cashEq=cash+bankPos;
+  const curAssetsTot=stock+tradeRecv+supplierAdv+stInvest+cashEq;
+  const nonCurAssetsTot=fixed;
+  const assetTot=curAssetsTot+nonCurAssetsTot;
+  const curLiab=creditors+custAdv+od+bankNeg;
+  const nonCurLiab=loans;
+  const capital=assetTot-(reserves+nonCurLiab+curLiab);
+  return {tradeRecv,supplierAdv,creditors,custAdv,fixed,stInvest,stock,cash,bank,bankPos,bankNeg,loans,od,reserves,cashEq,curAssetsTot,nonCurAssetsTot,assetTot,curLiab,nonCurLiab,capital};
+}
+function bsSections(){
+  const b=classifiedBS();
+  const A=[{kind:'head',label:'NON-CURRENT ASSETS'},
+    {kind:'line',label:'Fixed Assets (land, machinery, vehicles, furniture)',amt:b.fixed},
+    {kind:'sub',label:'Total Non-Current Assets',amt:b.nonCurAssetsTot},
+    {kind:'head',label:'CURRENT ASSETS'},
+    {kind:'line',label:'Inventory / Closing Stock (at cost)',amt:b.stock},
+    {kind:'line',label:'Trade Receivables (Debtors)',amt:b.tradeRecv}];
+  if(b.supplierAdv>0.5)A.push({kind:'line',label:'Advances to Suppliers',amt:b.supplierAdv});
+  if(b.stInvest>0.5)A.push({kind:'line',label:'Short-term Investments',amt:b.stInvest});
+  A.push({kind:'line',label:'Cash & Cash Equivalents (cash + bank)',amt:b.cashEq});
+  A.push({kind:'sub',label:'Total Current Assets',amt:b.curAssetsTot});
+  const L=[{kind:'head',label:'CAPITAL & RESERVES'},
+    {kind:'line',label:"Owner's Capital Account (balancing)",amt:b.capital}];
+  if(b.reserves>0.5)L.push({kind:'line',label:'Reserves & Surplus',amt:b.reserves});
+  L.push({kind:'sub',label:'Total Capital & Reserves',amt:b.capital+b.reserves});
+  if(b.nonCurLiab>0.5){L.push({kind:'head',label:'NON-CURRENT LIABILITIES'});L.push({kind:'line',label:'Loans / Borrowings',amt:b.loans});}
+  L.push({kind:'head',label:'CURRENT LIABILITIES'});
+  if(b.creditors>0.5)L.push({kind:'line',label:'Sundry Creditors',amt:b.creditors});
+  if(b.custAdv>0.5)L.push({kind:'line',label:'Advances from Customers',amt:b.custAdv});
+  if(b.od>0.5)L.push({kind:'line',label:'Bank Overdraft',amt:b.od});
+  if(b.bankNeg>0.5)L.push({kind:'line',label:'Bank (overdrawn)',amt:b.bankNeg});
+  L.push({kind:'sub',label:'Total Current Liabilities',amt:b.curLiab});
+  return {A,L,assetTot:b.assetTot,liabTot:b.assetTot,capital:b.capital};
+}
+function bsRowsHTML(rows){
+  return rows.map(r=>{
+    if(r.kind==='head')return `<tr><td colspan="2" style="padding:9px 6px 3px;font-weight:800;font-size:11px;color:var(--pri2);letter-spacing:.3px">${esc(r.label)}</td></tr>`;
+    if(r.kind==='sub')return `<tr style="border-top:1px solid var(--bdr)"><td style="padding:6px;font-weight:700">${esc(r.label)}</td><td style="padding:6px;text-align:right;font-weight:700">${fmt(r.amt)}</td></tr>`;
+    return `<tr><td style="padding:5px 6px 5px 18px;color:var(--sub)">${esc(r.label)}</td><td style="padding:5px 6px;text-align:right">${fmt(r.amt)}</td></tr>`;
+  }).join('');
 }
 function renderBalanceSheetReport(pg){
-  const b=balanceSheetData();const maxLen=Math.max(b.liab.length,b.asset.length);
-  let body='';
-  for(let i=0;i<maxLen;i++){
-    body+=`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${b.liab[i]?esc(b.liab[i][0]):''}</td><td style="padding:7px;text-align:right">${b.liab[i]?fmt(b.liab[i][1]):''}</td><td style="padding:7px;border-left:2px solid var(--bdr)">${b.asset[i]?esc(b.asset[i][0]):''}</td><td style="padding:7px;text-align:right">${b.asset[i]?fmt(b.asset[i][1]):''}</td></tr>`;
-  }
+  const s=bsSections();
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🏛️ Balance Sheet</h3>
-    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${BIZ[curBiz].name}</div>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${BIZ[curBiz].name} · classified (current vs non-current)</div>
     ${repActionBar("printBalanceSheet()",null)}
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
-      <thead><tr style="background:var(--pri);color:#fff"><th style="padding:7px;text-align:left">Liabilities</th><th style="padding:7px;text-align:right">Amount</th><th style="padding:7px;text-align:left;border-left:2px solid #fff">Assets</th><th style="padding:7px;text-align:right">Amount</th></tr></thead>
-      <tbody>${body}</tbody>
-      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(b.liabTot)}</td><td style="padding:8px;border-left:2px solid var(--bdr)">TOTAL</td><td style="padding:8px;text-align:right">${fmt(b.assetTot)}</td></tr></tfoot>
-    </table></div>
-    <div class="ibox blu" style="margin-top:12px">Capital Account (net worth) = <strong>${fmt(b.capital)}</strong>, derived as Assets − outside liabilities. Closing stock valued at cost. Bank from imported statements.</div></div>`;
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">ASSETS</th></tr></thead>
+      <tbody>${bsRowsHTML(s.A)}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL ASSETS</td><td style="padding:8px;text-align:right">${fmt(s.assetTot)}</td></tr></tfoot>
+    </table>
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">EQUITY &amp; LIABILITIES</th></tr></thead>
+      <tbody>${bsRowsHTML(s.L)}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL EQUITY &amp; LIABILITIES</td><td style="padding:8px;text-align:right">${fmt(s.liabTot)}</td></tr></tfoot>
+    </table>
+    <div class="ibox blu" style="margin-top:12px">Capital Account (net worth) = <strong>${fmt(s.capital)}</strong>, the balancing figure. Closing stock at cost. Advances to suppliers and short-term investments shown under Current Assets. Bank from imported statements.</div></div>`;
+}
+function bsRowsPrint(rows){
+  return rows.map(r=>{
+    if(r.kind==='head')return `<tr><td colspan="2" style="padding:6px 5px 2px;font-weight:700;background:#f0f0f0">${esc(r.label)}</td></tr>`;
+    if(r.kind==='sub')return `<tr style="font-weight:700"><td style="padding:4px 5px;border-top:1px solid #999">${esc(r.label)}</td><td style="padding:4px 5px;text-align:right;border-top:1px solid #999">${m2(r.amt)}</td></tr>`;
+    return `<tr><td style="padding:3px 5px 3px 16px">${esc(r.label)}</td><td style="padding:3px 5px;text-align:right">${m2(r.amt)}</td></tr>`;
+  }).join('');
 }
 function printBalanceSheet(){
-  const b=balanceSheetData();const maxLen=Math.max(b.liab.length,b.asset.length);let body='';
-  for(let i=0;i<maxLen;i++){body+=`<tr><td style="padding:5px;border:1px solid #ccc">${b.liab[i]?esc(b.liab[i][0]):''}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${b.liab[i]?m2(b.liab[i][1]):''}</td><td style="padding:5px;border:1px solid #ccc">${b.asset[i]?esc(b.asset[i][0]):''}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${b.asset[i]?m2(b.asset[i][1]):''}</td></tr>`;}
-  const html=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Liabilities</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Assets</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${body}</tbody><tfoot><tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(b.liabTot)}</td><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(b.assetTot)}</td></tr></tfoot></table>`;
+  const s=bsSections();
+  const html=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">
+    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">ASSETS</th></tr></thead>
+    <tbody>${bsRowsPrint(s.A)}</tbody>
+    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL ASSETS</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.assetTot)}</td></tr></tfoot>
+  </table>
+  <table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">EQUITY &amp; LIABILITIES</th></tr></thead>
+    <tbody>${bsRowsPrint(s.L)}</tbody>
+    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL EQUITY &amp; LIABILITIES</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.liabTot)}</td></tr></tfoot>
+  </table>`;
   printReport('Balance Sheet (as on '+fmtD(td())+')',html);
 }
 
@@ -6312,11 +6586,11 @@ function generateAccountantPackage(){
   tbRows+=`<tr style="font-weight:700;background:#eee"><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(t.drTot)}</td><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(t.crTot)}</td></tr>`;
   const tbSec=sec('5. Trial Balance (as on '+fmtD(td())+')',tbl([{t:'Debit'},{t:'Amount',r:1},{t:'Credit'},{t:'Amount',r:1}],tbRows));
 
-  // 6. Balance Sheet
-  const bs=balanceSheetData();const bsMax=Math.max(bs.liab.length,bs.asset.length);let bsRows='';
-  for(let i=0;i<bsMax;i++)bsRows+=`<tr><td style="padding:4px;border:1px solid #ccc">${bs.liab[i]?esc(bs.liab[i][0]):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${bs.liab[i]?m2(bs.liab[i][1]):''}</td><td style="padding:4px;border:1px solid #ccc">${bs.asset[i]?esc(bs.asset[i][0]):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${bs.asset[i]?m2(bs.asset[i][1]):''}</td></tr>`;
-  bsRows+=`<tr style="font-weight:700;background:#eee"><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bs.liabTot)}</td><td style="padding:4px;border:1px solid #ccc">TOTAL</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bs.assetTot)}</td></tr>`;
-  const bsSec=sec('6. Balance Sheet (as on '+fmtD(td())+')',tbl([{t:'Liabilities'},{t:'Amount',r:1},{t:'Assets'},{t:'Amount',r:1}],bsRows));
+  // 6. Balance Sheet (classified)
+  const bss=bsSections();
+  const bsBody=bsRowsPrint(bss.A)+`<tr style="font-weight:800;background:#e8e8e8"><td style="padding:4px;border:1px solid #ccc">TOTAL ASSETS</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bss.assetTot)}</td></tr>`+
+    `<tr><td colspan="2" style="padding:3px"></td></tr>`+bsRowsPrint(bss.L)+`<tr style="font-weight:800;background:#e8e8e8"><td style="padding:4px;border:1px solid #ccc">TOTAL EQUITY &amp; LIABILITIES</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bss.liabTot)}</td></tr>`;
+  const bsSec=sec('6. Balance Sheet (as on '+fmtD(td())+')',`<table style="width:100%;border-collapse:collapse;font-size:10.5px"><tbody>${bsBody}</tbody></table>`);
 
   // 7. Party Ledger Summary
   const parties=partyReportData().filter(r=>r.sales||r.purch||Math.abs(r.bal)>0.5);
