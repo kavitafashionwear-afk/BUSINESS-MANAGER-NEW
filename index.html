@@ -888,12 +888,10 @@ const auth=firebase.auth(),db=firebase.firestore();
 try{ db.enablePersistence({synchronizeTabs:true}).catch(function(err){console.warn('Offline persistence not enabled:',err&&err.code);}); }catch(e){console.warn('Persistence setup skipped',e);}
 let isOnline=(typeof navigator!=='undefined')?navigator.onLine:true;
 let loadedOnce=false; // true after a successful cloud read; guards against blank overwrites
-// On reconnect we do NOT push local data — Firestore auto-flushes its own queued writes,
-// and the live snapshot brings down anything changed elsewhere while we were offline.
-// (Pushing here would overwrite newer remote data with our stale copy — the bug that lost bills.)
-window.addEventListener('online',function(){isOnline=true;if(typeof updateSyncUI==='function')updateSyncUI();});
+window.addEventListener('online',function(){isOnline=true;if(typeof updateSyncUI==='function')updateSyncUI();if(typeof flushPendingSave==='function')flushPendingSave();});
 window.addEventListener('offline',function(){isOnline=false;if(typeof updateSyncUI==='function')updateSyncUI();});
 let uid=null,ready=false,curBiz='MI',curTab='home',curParty=null,curDoc=null;
+try{const _sb=localStorage.getItem('bizmgr_curBiz');if(_sb==='MI'||_sb==='KF')curBiz=_sb;}catch(e){}
 let editPartyId=null,editBillId=null,editInvId=null,payTargetId=null,payTargetType=null;
 let billItemCount=0,invItemCount=0;
 
@@ -939,12 +937,7 @@ const fmtR=n=>{if(!n&&n!==0)return'0';let v=parseFloat(n);return Number.isIntege
 const fmtD=d=>{if(!d)return'-';const p=d.split('-');return p[2]+'/'+p[1]+'/'+p[1]?new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):d;};
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const ini=n=>(n||'').trim().split(' ').map(w=>w[0]||'').join('').toUpperCase().slice(0,2)||'?';
-// Collision-proof unique id: time + per-device tag + session counter + random.
-let _idSeq=0;
-function _devTag(){ try{ var t=localStorage.getItem('bm_dev'); if(!t){ t=Math.random().toString(36).slice(2,6); localStorage.setItem('bm_dev',t); } return t; }catch(e){ return Math.random().toString(36).slice(2,6); } }
-const uid4=()=>{ _idSeq++; return Date.now().toString(36)+_devTag()+_idSeq.toString(36)+Math.floor(Math.random()*1296).toString(36); };
-// Prefixed globally-unique id for entities (so two devices offline never collide on a doc id).
-const uniqId=(p)=>p+'-'+uid4();
+const uid4=()=>Math.random().toString(36).slice(2,10);
 const colors=['#1E40AF','#065F46','#7C3AED','#B45309','#BE123C','#0369A1','#4D7C0F'];
 const avc=i=>colors[i%colors.length];
 
@@ -1028,40 +1021,9 @@ auth.getRedirectResult()
 
 auth.onAuthStateChanged(function(user){_resolveAuth(user||null);});
 
-// ═══════════════════════════════════════════════════════════════
-//  FIRESTORE — PER-DOCUMENT STORAGE (multi-device offline safe)
-//  Each record (party/bill/invoice/payment/note/expense/loan/asset/
-//  reserve) is its OWN Firestore document, per firm. Two devices that
-//  edit DIFFERENT records offline write to DIFFERENT paths, so nothing
-//  overwrites anything — Firestore merges on reconnect.
-//  Layout: users/{uid}/{firm}_{entity}/{id}
-//          users/{uid}/{firm}_meta/state  (counters, trash, bankTxns, invMeta, cfStock)
-// ═══════════════════════════════════════════════════════════════
-const FIRMS=['MI','KF'];
-const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves'];
-// Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
-// scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
-const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns'];
-
+// ═══ FIRESTORE (offline-first) ═══
 let unsubscribe=null;
 let _saving=false;
-function _col(name){ return db.collection('users').doc(uid).collection(name); }
-let _lastSaved={}; // _lastSaved[firm][entity] = {id: record}
-function _indexById(arr){ const m={}; (arr||[]).forEach(x=>{ if(x&&x.id!=null) m[x.id]=x; }); return m; }
-
-function ensureFirm(firm){
-  if(!S[firm]) S[firm]={};
-  const b=S[firm];
-  ENTITIES.forEach(e=>{ if(!Array.isArray(b[e])) b[e]=[]; });
-  if(!Array.isArray(b.bankTxns)) b.bankTxns=[];
-  if(!Array.isArray(b.trash)) b.trash=[];
-  if(b.pC==null)b.pC=1; if(b.bC==null)b.bC=1; if(b.iC==null)b.iC=1; if(b.nC==null)b.nC=1;
-  if(b.loanC==null)b.loanC=1; if(b.assetC==null)b.assetC=1; if(b.reserveC==null)b.reserveC=1;
-  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={};
-  if(!_lastSaved[firm]) _lastSaved[firm]={};
-  return b;
-}
-
 const LS_KEY=function(){return 'bizmgr_backup_'+(uid||'anon');};
 function saveLocal(){ try{ localStorage.setItem(LS_KEY(), JSON.stringify({MI:S.MI,KF:S.KF})); }catch(e){} }
 function loadLocal(){
@@ -1072,60 +1034,39 @@ function loadLocal(){
   }catch(e){ return false; }
 }
 function updateSyncUI(){ setSyncDot(isOnline?'ok':'offline'); }
-function flushPendingSave(){ /* no stale-push on reconnect; Firestore auto-flushes its own queue */ }
-
-function markLoadedBM(firm, cache){
-  loadedOnce=true;
-  normalizeGstData(S[firm]);          // idempotent GST reclassification (totals untouched)
-  reconcileCountersBM(firm);
-  saveLocal();
-  setSyncDot(cache ? (isOnline?'busy':'offline') : 'ok');
-  renderAll();
-}
+function flushPendingSave(){ if(uid&&isOnline&&loadedOnce)saveToCloud(); }
 
 function subscribeData(){
   if(unsubscribe)unsubscribe();
   setSyncDot('busy');
-  const unsubs=[];
-  // Migrate the old single-doc first, THEN attach listeners (no empty flash).
-  migrateLegacyIfNeeded(function(){
-    FIRMS.forEach(firm=>{
-      ensureFirm(firm);
-      ENTITIES.forEach(ent=>{
-        const u=_col(firm+'_'+ent).onSnapshot({includeMetadataChanges:true}, snap=>{
-          ensureFirm(firm);
-          S[firm][ent]=snap.docs.map(x=>x.data());
-          _lastSaved[firm][ent]=_indexById(S[firm][ent]);
-          markLoadedBM(firm, snap.metadata&&snap.metadata.fromCache);
-        }, err=>onSubErrBM(firm+'_'+ent, err));
-        unsubs.push(u);
-      });
-      const um=_col(firm+'_meta').doc('state').onSnapshot({includeMetadataChanges:true}, snap=>{
-        ensureFirm(firm);
-        if(snap.exists){ const d=snap.data(); META_FIELDS.forEach(f=>{ if(d[f]!==undefined) S[firm][f]=d[f]; }); }
-        markLoadedBM(firm, snap.metadata&&snap.metadata.fromCache);
-      }, err=>onSubErrBM(firm+'_meta', err));
-      unsubs.push(um);
+  unsubscribe=db.collection('users').doc(uid).collection('bizdata').doc('main')
+    .onSnapshot({includeMetadataChanges:true},snap=>{
+      if(_saving)return; // don't overwrite local state mid-save
+      // A successful snapshot (even empty/new) means reads work — safe to save later.
+      loadedOnce=true;
+      if(snap.exists){
+        const d=snap.data();
+        S.MI=d.MI||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
+        if(!S.MI.trash)S.MI.trash=[];
+        if(!S.MI.notes)S.MI.notes=[];
+        S.KF=d.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
+        if(!S.KF.trash)S.KF.trash=[];
+        if(!S.KF.notes)S.KF.notes=[];
+        normalizeGstData(S.MI);
+        normalizeGstData(S.KF);
+        saveLocal();
+      }
+      const fromCache=snap.metadata&&snap.metadata.fromCache;
+      setSyncDot(fromCache?(isOnline?'busy':'offline'):'ok');
+      renderAll();
+    },err=>{
+      // Read failed (rules/permission or offline). DON'T mark loaded — keeps save()
+      // from overwriting good cloud data with our empty in-memory state.
+      console.warn('Read blocked:',err&&err.code);
+      if(loadLocal())renderAll();
+      setSyncDot(isOnline?'err':'offline');
     });
-    unsubscribe=function(){ unsubs.forEach(u=>{try{u&&u();}catch(e){}}); };
-  });
 }
-
-function onSubErrBM(which, err){
-  console.warn('Read blocked ('+which+'):', err&&err.code);
-  if(!loadedOnce && loadLocal()) renderAll();
-  setSyncDot(isOnline?'err':'offline');
-}
-
-// Keep numbering counters ahead of the highest existing number (offline devices may drift).
-function reconcileCountersBM(firm){
-  const b=S[firm]; if(!b)return;
-  const maxNum=(arr,re)=>(arr||[]).reduce((m,x)=>{ const a=re.exec(x.num||''); const i=re.exec(x.id||''); const v=parseInt((a&&a[1])||(i&&i[1])||0,10); return v>m?v:m; },0);
-  b.bC=Math.max(b.bC||1, maxNum(b.bills, /(\d+)/)+1);
-  b.iC=Math.max(b.iC||1, maxNum(b.invoices, /(\d+)/)+1);
-  // parties/notes/loans/assets/reserves now use unique ids; counters only seed any legacy display.
-}
-
 // Align stored party.state and invoice gstStr with the authoritative GSTIN.
 // Returns number of fixes. Pure reclassification — totals (gstAmt, grand) are untouched.
 function normalizeGstData(store){
@@ -1150,92 +1091,36 @@ function normalizeGstData(store){
   });
   return fixes;
 }
-
-function deepSanitize(obj){
-  if(Array.isArray(obj)){ obj.forEach(deepSanitize); return; }
-  if(obj && typeof obj==='object'){ Object.keys(obj).forEach(k=>{ if(obj[k]===undefined||obj[k]===null)obj[k]=''; else if(typeof obj[k]==='object')deepSanitize(obj[k]); }); }
-}
-function _clean(o){ const c=JSON.parse(JSON.stringify(o)); deepSanitize(c); return c; }
-
-function diffWrite(coll, arr, lastIndex){
-  const nowIndex={};
-  (arr||[]).forEach(item=>{
-    if(!item||item.id==null) return;
-    const id=String(item.id);
-    nowIndex[id]=item;
-    const prev=lastIndex[id];
-    if(!prev || JSON.stringify(prev)!==JSON.stringify(item))
-      _col(coll).doc(id).set(_clean(item)).catch(e=>console.warn(coll+' write deferred:', e&&e.code));
-  });
-  Object.keys(lastIndex).forEach(id=>{ if(!(id in nowIndex)) _col(coll).doc(id).delete().catch(e=>console.warn(coll+' delete deferred:', e&&e.code)); });
-  Object.keys(lastIndex).forEach(k=>{ delete lastIndex[k]; });
-  Object.assign(lastIndex, nowIndex);
-}
-
 function saveToCloud(){
-  if(!uid) return Promise.resolve();
-  if(!loadedOnce){ console.warn('Save skipped — initial read not confirmed; data left untouched.'); setSyncDot(isOnline?'err':'offline'); return Promise.resolve(); }
-  saveLocal();
+  if(!uid)return;
+  // SAFETY: never write until a successful read confirms we have the real data.
+  if(!loadedOnce){ console.warn('Save skipped — initial read not confirmed; data left untouched.'); setSyncDot(isOnline?'err':'offline'); return; }
+  saveLocal(); // instant on-device backup, never fails
   setSyncDot(isOnline?'busy':'offline');
-  const ps=[];
+  _saving=true;
+  const mi=JSON.parse(JSON.stringify(S.MI||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
+  const kf=JSON.parse(JSON.stringify(S.KF||{parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1}));
   try{
-    FIRMS.forEach(firm=>{
-      if(!S[firm]) return;
-      ensureFirm(firm);
-      if(!_lastSaved[firm]) _lastSaved[firm]={};
-      ENTITIES.forEach(ent=>{
-        if(!_lastSaved[firm][ent]) _lastSaved[firm][ent]={};
-        diffWrite(firm+'_'+ent, S[firm][ent]||[], _lastSaved[firm][ent]);
-      });
-      const meta={updated:new Date().toISOString()};
-      META_FIELDS.forEach(f=>{ meta[f]=S[firm][f]; });
-      ps.push(_col(firm+'_meta').doc('state').set(_clean(meta)));
-    });
-    Promise.all(ps).then(function(){ setSyncDot(isOnline?'ok':'offline'); })
-      .catch(function(err){ console.warn('meta write deferred:', err&&err.code); setSyncDot(isOnline?'err':'offline'); });
-  }catch(e){ console.warn('save threw:', e); setSyncDot(isOnline?'err':'offline'); }
-  return Promise.resolve();
-}
-
-/* One-time migration from old single-doc bizdata/main → per-document. Calls done() when finished.
-   Copy-only: the old document is never modified or deleted (kept as a backup). */
-function migrateLegacyIfNeeded(done){
-  done=done||function(){};
-  const legacy=db.collection('users').doc(uid).collection('bizdata').doc('main');
-  const flag=_col('biz_meta').doc('migration');
-  flag.get().then(function(fs){
-    if(fs.exists && fs.data().done){ done(); return; }
-    legacy.get().then(function(snap){
-      if(!snap.exists){ flag.set({done:true,note:'nothing',at:new Date().toISOString()}); done(); return; }
-      const d=snap.data();
-      // Only migrate if new collections are still empty (don't clobber newer data).
-      _col('MI_parties').limit(1).get().then(function(probe){
-        if(!probe.empty){ flag.set({done:true,note:'already-present',at:new Date().toISOString()}); done(); return; }
-        const writes=[];
-        FIRMS.forEach(firm=>{
-          const src=d[firm]; if(!src) return;
-          ENTITIES.forEach(ent=>{ (src[ent]||[]).forEach(rec=>{ if(rec&&rec.id!=null) writes.push(_col(firm+'_'+ent).doc(String(rec.id)).set(_clean(rec))); }); });
-          const meta={}; META_FIELDS.forEach(f=>{ if(src[f]!==undefined) meta[f]=src[f]; });
-          meta.updated=new Date().toISOString();
-          writes.push(_col(firm+'_meta').doc('state').set(_clean(meta)));
-        });
-        Promise.all(writes).then(function(){ flag.set({done:true,note:'migrated',at:new Date().toISOString()}); console.log('BM migration complete (old data preserved untouched).'); })
-          .catch(function(e){ console.warn('migration write deferred:', e&&e.code); });
-        done();
-      }).catch(function(e){ console.warn('migration probe failed:', e&&e.code); done(); });
-    }).catch(function(e){ console.warn('legacy read skipped:', e&&e.code); done(); });
-  }).catch(function(e){ console.warn('migration flag read skipped:', e&&e.code); done(); });
+    db.collection('users').doc(uid).collection('bizdata').doc('main').set({MI:mi,KF:kf,updated:new Date().toISOString()})
+      .then(function(){ setSyncDot(isOnline?'ok':'offline'); })
+      .catch(function(err){ console.warn('Cloud write deferred:',err&&err.code); setSyncDot(isOnline?'err':'offline'); })
+      .then(function(){ _saving=false; });
+  }catch(e){ console.warn('Cloud write threw:',e); setSyncDot(isOnline?'err':'offline'); _saving=false; }
 }
 
 // ═══ BUSINESS TOGGLE ═══
-function toggleBiz(){
-  curBiz=curBiz==='MI'?'KF':'MI';
-  const biz=BIZ[curBiz];
-  document.getElementById('biz-name').textContent=biz.name;
+function applyBiz(){
+  const biz=BIZ[curBiz];if(!biz)return;
+  const bn=document.getElementById('biz-name');if(bn)bn.textContent=biz.name;
   const db2=document.getElementById('drawer-biz');if(db2)db2.textContent=biz.name;
   document.documentElement.style.setProperty('--pri',biz.color);
   document.documentElement.style.setProperty('--pri2',biz.color2);
   document.documentElement.style.setProperty('--pri3',biz.color3);
+}
+function toggleBiz(){
+  curBiz=curBiz==='MI'?'KF':'MI';
+  try{localStorage.setItem('bizmgr_curBiz',curBiz);}catch(e){}
+  applyBiz();
   renderAll();
 }
 
@@ -2461,7 +2346,7 @@ function saveLoan(){
   const name=document.getElementById('ln-name').value.trim();
   if(!name){alert('Enter a name');return;}
   const obj={
-    id:editLoanId||uniqId('LN'),
+    id:editLoanId||('LN'+String(d.loanC||1).padStart(3,'0')),
     kind:document.getElementById('ln-kind').value,
     name,
     relation:document.getElementById('ln-relation').value.trim(),
@@ -3039,7 +2924,7 @@ function calcBillTotal(){
   const grand=taxable+gstAmt;
   const gstLabel=gstStr.includes('s')?(gstPct/2)+'% CGST + '+(gstPct/2)+'% SGST':gstPct+'% IGST';
   const prev=document.getElementById('b-preview');
-  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
+  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Freight: +${fmt(freight)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
 }
 
 function checkNewParty(inputId, noteId, type) {
@@ -3116,7 +3001,7 @@ function saveBill(){
   const gstAmt=taxable*gstPct/100;
   const grand=Math.round(taxable+gstAmt);
   const bill={
-    id:uniqId('B'),
+    id:'B'+String(d.bC||1).padStart(5,'0'),
     num,date:document.getElementById('b-date').value,
     pid:supplier.id,
     jw:billType==='jobwork',
@@ -3504,7 +3389,7 @@ function saveInvoice(){
   // 'partial' is stored as a credit invoice with a separate cash receipt
   const storeMode=selMode==='cash'?'cash':'credit';
   const inv={
-    id:uniqId('I'),
+    id:'I'+String(d.iC||1).padStart(5,'0'),
     num,date:document.getElementById('i-date').value,
     pid:customer.id,
     ship:document.getElementById('i-ship').value.trim(),
@@ -3884,7 +3769,7 @@ function viewBill(bid){
   const party=d.parties.find(p=>p.id===bill.pid);
   const bbal=billBalance(bid);
   const billPays=d.payments.filter(p=>p.bid===bid);
-  const isSplit=bill.gstStr.includes('s');
+  const isSplit=(bill.gstStr||'').includes('s');
   const gstPct=bill.gstPct||0;
 
   const itemRows=bill.items.map((it,i)=>`<tr style="background:${i%2?'#F9F9F9':'#fff'}">
@@ -4058,7 +3943,7 @@ function doImport(){
     });
     if(!party&&data.partyName){
       party={
-        id:uniqId('P'),
+        id:'P'+String(d.pC||1).padStart(4,'0'),
         name:data.partyName,type:type==='invoice'?'C':'S',
         gstin:data.partyGstin||'',phone:data.partyPhone||'',
         city:data.partyCity||'',state:data.partyState||'07',
@@ -4080,7 +3965,7 @@ function doImport(){
 
     if(type==='invoice'){
       var inv={
-        id:uniqId('I'),
+        id:'I'+String(d.iC||1).padStart(5,'0'),
         num:data.billNo||data.invoiceNo||('INV-'+String(d.iC||1).padStart(3,'0')),
         date:data.billDate||new Date().toISOString().split('T')[0],
         pid:pid,ship:data.consignee||'',
@@ -4092,7 +3977,7 @@ function doImport(){
       d.invoices.push(inv);d.iC=(d.iC||1)+1;
     } else {
       var bill={
-        id:uniqId('B'),
+        id:'B'+String(d.bC||1).padStart(5,'0'),
         num:data.billNo||('BILL-'+String(d.bC||1).padStart(3,'0')),
         date:data.billDate||new Date().toISOString().split('T')[0],
         pid:pid,jw:data.jobWork||false,linkedBill:data.linkedBill||'',
@@ -4455,7 +4340,7 @@ function doImportFromScan(){
              (p.name&&data.partyName&&p.name.toLowerCase()===data.partyName.toLowerCase());
     });
     if(!party&&data.partyName){
-      party={id:uniqId('P'),name:data.partyName,
+      party={id:'P'+String(d.pC||1).padStart(4,'0'),name:data.partyName,
         type:type==='invoice'?'C':'S',gstin:data.partyGstin||'',
         pan:data.partyPan||'',udyam:data.partyUdyam||'',
         phone:data.partyPhone||'',city:data.partyCity||'',
@@ -4491,7 +4376,7 @@ function doImportFromScan(){
     // Job Work ONLY if explicitly set in the file - consignee alone does NOT mean job work
     var autoJW=data.jobWork===true;
     if(type==='invoice'){
-      d.invoices.push({id:uniqId('I'),
+      d.invoices.push({id:'I'+String(d.iC||1).padStart(5,'0'),
         num:data.billNo||('INV-'+String(d.iC||1).padStart(3,'0')),
         date:dt,pid:pid,ship:data.consignee||'',custGstin:data.buyerGstin||'',
         items:data.items||[],sub:sub,disc:disc,discAmt:discAmt,trans:freight,
@@ -4499,7 +4384,7 @@ function doImportFromScan(){
         mode:data.mode||'credit',rem:data.remarks||''});
       d.iC=(d.iC||1)+1;
     } else {
-      d.bills.push({id:uniqId('B'),
+      d.bills.push({id:'B'+String(d.bC||1).padStart(5,'0'),
         num:data.billNo||('BILL-'+String(d.bC||1).padStart(3,'0')),
         date:dt,pid:pid,jw:autoJW,linkedBill:'',
         consignee:data.consignee||'',consigneeGstin:data.consigneeGstin||'',
@@ -5059,7 +4944,7 @@ function saveNote(){
   if(!reason){alert('Enter reason/description');return;}
   if(!d.notes)d.notes=[];
   const note = {
-    id: uniqId('N'),
+    id: 'N'+String(d.nC||1).padStart(5,'0'),
     num: document.getElementById('n-num').value,
     date: document.getElementById('n-date').value,
     type: curNoteType,         // 'credit' or 'debit'
@@ -5785,7 +5670,7 @@ function assignToAsset(){
     t.assigned='asset';t.assignedAsset=a.id;
   }else{
     if(!newName){alert('Enter an asset name (or pick an existing asset)');return;}
-    const a={id:uniqId('AS'),name:newName,cat:cat,value:t.amount,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40)};
+    const a={id:'AS'+String(d.assetC||1).padStart(3,'0'),name:newName,cat:cat,value:t.amount,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40)};
     d.assets.push(a);d.assetC=(d.assetC||1)+1;
     t.assigned='asset';t.assignedAsset=a.id;
   }
@@ -5807,7 +5692,7 @@ function assignToReserve(){
   }else{
     if(!newName){alert('Enter a reserve name (or pick an existing reserve)');return;}
     // New reserve: an inflow seeds the opening amount; an outflow starts at 0 then records the draw
-    const r={id:uniqId('RS'),name:newName,cat:cat,amount:0,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40),
+    const r={id:'RS'+String(d.reserveC||1).padStart(3,'0'),name:newName,cat:cat,amount:0,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40),
       txns:[{id:'RT'+uid4(),date:t.date,dir:dir,amt:t.amount,note:note}]};
     d.reserves.push(r);d.reserveC=(d.reserveC||1)+1;
     t.assigned='reserve';t.assignedReserve=r.id;
@@ -6737,6 +6622,8 @@ function generateAccountantPackage(){
   document.getElementById('print-overlay').style.display='block';
   document.body.style.overflow='hidden';
 }
+// Boot: apply the firm restored from localStorage so a refresh keeps the same firm's name + theme
+try{applyBiz();}catch(e){}
 </script>
 
 <!-- PRINT OVERLAY -->
