@@ -1049,6 +1049,14 @@ let _saving=false;
 function _col(name){ return db.collection('users').doc(uid).collection(name); }
 let _lastSaved={}; // _lastSaved[firm][entity] = {id: record}
 function _indexById(arr){ const m={}; (arr||[]).forEach(x=>{ if(x&&x.id!=null) m[x.id]=x; }); return m; }
+// Coerce id + reference fields to strings so lookups never fail on a number-vs-string mismatch.
+// (Some older/imported records stored numeric ids, but every onclick passes them as strings.)
+function _normRec(r){
+  if(r && typeof r==='object'){
+    ['id','pid','bid','iid','supplierPid'].forEach(k=>{ if(r[k]!=null && typeof r[k]!=='object') r[k]=String(r[k]); });
+  }
+  return r;
+}
 
 function ensureFirm(firm){
   if(!S[firm]) S[firm]={};
@@ -1069,6 +1077,8 @@ function loadLocal(){
   try{ var raw=localStorage.getItem(LS_KEY()); if(!raw)return false;
     var d=JSON.parse(raw);
     if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF;
+    // Normalize ids to strings (older backups may hold numeric ids).
+    [S.MI,S.KF].forEach(function(b){ if(b) ENTITIES.forEach(function(e){ if(Array.isArray(b[e])) b[e].forEach(_normRec); }); });
     return !!(d.MI||d.KF);
   }catch(e){ return false; }
 }
@@ -1095,7 +1105,7 @@ function subscribeData(){
       ENTITIES.forEach(ent=>{
         const u=_col(firm+'_'+ent).onSnapshot({includeMetadataChanges:true}, snap=>{
           ensureFirm(firm);
-          S[firm][ent]=snap.docs.map(x=>x.data());
+          S[firm][ent]=snap.docs.map(x=>_normRec(x.data()));
           _lastSaved[firm][ent]=_indexById(S[firm][ent]);
           markLoadedBM(firm, snap.metadata&&snap.metadata.fromCache);
         }, err=>onSubErrBM(firm+'_'+ent, err));
@@ -2574,7 +2584,10 @@ function openPartyDetail(pid){
           <div style="font-size:11px;text-align:right;color:${bbal<1?'var(--g)':'var(--r)'}">${bbal<1?'Settled':'Due: '+fmt(bbal)}</div>
         </div>
       </div>
-      <div class="bm">${b.items.map(it=>esc(it.desc)).join(', ')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px">
+        <div class="bm" style="margin-top:0;flex:1">${b.items.map(it=>esc(it.desc)).join(', ')}</div>
+        <button class="btn sm" onclick="event.stopPropagation();viewBill('${b.id}')" title="Print">🖨️</button>
+      </div>
     </div>`;
   }).join('');
 
@@ -2588,7 +2601,10 @@ function openPartyDetail(pid){
           <div style="font-size:11px;text-align:right;color:${ibal<1?'var(--g)':'var(--r)'}">${ibal<1?'Settled':'Due: '+fmt(ibal)}</div>
         </div>
       </div>
-      <div class="bm">${inv.items.map(it=>esc(it.desc)).join(', ')}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px">
+        <div class="bm" style="margin-top:0;flex:1">${inv.items.map(it=>esc(it.desc)).join(', ')}</div>
+        <button class="btn sm" onclick="event.stopPropagation();printInvoice('${inv.id}')" title="Print">🖨️</button>
+      </div>
     </div>`;
   }).join('');
 
