@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R3</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -3180,6 +3180,17 @@ function editBill(bid){
   calcBillTotal();openModal('bill');
 }
 function confirmDelBill(bid){
+  const d=D();
+  const bill=d.bills.find(b=>b.id===bid);if(!bill){alert('Bill not found.');return;}
+  if(!confirm('Move purchase bill '+(bill.num||'')+' to Recycle Bin?\n\nYou can restore it anytime from the Recycle Bin.'))return;
+  const billPayments=d.payments.filter(p=>p.bid===bid);
+  if(!d.trash)d.trash=[];
+  d.trash.push({type:'bill',deletedAt:new Date().toISOString(),bill:JSON.parse(JSON.stringify(bill)),payments:JSON.parse(JSON.stringify(billPayments))});
+  d.bills=d.bills.filter(b=>b.id!==bid);
+  d.payments=d.payments.filter(p=>p.bid!==bid);
+  saveToCloud().then(function(){renderAll();});
+}
+function _confirmDelBill_OLD(bid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this purchase bill to Recycle Bin? You can restore it anytime.</div>';
   document.getElementById('cf-ok').onclick=function(){
     const d=D();
@@ -3235,6 +3246,17 @@ function editInvoice(iid){
   openModal('inv');
 }
 function confirmDelInv(iid){
+  const d=D();
+  const inv=d.invoices.find(i=>i.id===iid);if(!inv){alert('Invoice not found.');return;}
+  if(!confirm('Move sales invoice '+(inv.num||'')+' to Recycle Bin?\n\nYou can restore it anytime from the Recycle Bin.'))return;
+  const invPayments=d.payments.filter(p=>p.iid===iid);
+  if(!d.trash)d.trash=[];
+  d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
+  d.invoices=d.invoices.filter(i=>i.id!==iid);
+  d.payments=d.payments.filter(p=>p.iid!==iid);
+  saveToCloud().then(function(){renderAll();});
+}
+function _confirmDelInv_OLD(iid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this sales invoice to Recycle Bin? You can restore it anytime.</div>';
   document.getElementById('cf-ok').onclick=function(){
     const d=D();
@@ -4004,6 +4026,10 @@ window.addEventListener('error',function(ev){
   }catch(_){}
 });
 function closePrint(){document.getElementById('print-overlay').style.display='none';document.body.style.overflow='';}
+// Escape key always closes the print preview (extra escape hatch so it can never trap you)
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'){var po=document.getElementById('print-overlay');if(po&&po.style.display==='block'){closePrint();}}
+});
 function shareWA(){
   const body=document.getElementById('print-body');
   if(!body)return;
