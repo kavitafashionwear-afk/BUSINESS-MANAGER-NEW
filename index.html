@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R5</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R6</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -4010,7 +4010,18 @@ function viewBill(bid){
 }
 
 // ═══ MODAL UTILS ═══
-function openModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='flex';el.classList.add('show');}}
+function openModal(id){
+  const el=document.getElementById('mo-'+id);
+  if(!el)return;
+  // Force the modal to the very top of the page so it can never render behind the app,
+  // and constrain its card height so long forms (e.g. bank Assign) scroll instead of overflowing off-screen.
+  try{ if(el.parentNode!==document.body) document.body.appendChild(el); }catch(e){}
+  el.style.zIndex='2147483600';
+  el.style.display='flex';
+  el.classList.add('show');
+  var mb=el.querySelector('.mb');
+  if(mb){ mb.style.maxHeight='90vh'; }
+}
 function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}if(id==='cf'){const ok=document.getElementById('cf-ok');if(ok)ok.style.display='';}}
 // Surface any uncaught error visibly (so a failing Print/Delete shows the real reason instead of doing nothing)
 window.addEventListener('error',function(ev){
@@ -5750,7 +5761,7 @@ var _assignIdx=null;
 function openAssign(idx){
   _assignIdx=idx;
   const d=D();const t=bankTxns[idx];
-  const parties=[...d.parties].sort((a,b)=>a.name.localeCompare(b.name));
+  const parties=[...d.parties].sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
   const loans=ensureLoans();
   // For a CR (money in): loan 'in' = loan received / OD withdrawn.
   // For a DR (money out): loan 'out' = loan repaid / OD deposited.
@@ -5886,7 +5897,7 @@ function assignToExpense(){
 function openBankMatch(idx){
   _matchIdx=idx;
   const d=D();const t=bankTxns[idx];
-  const pays=d.payments.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const pays=d.payments.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
   const rows=pays.map(p=>{
     const party=d.parties.find(x=>x.id===p.pid);
     const diff=Math.abs(new Date(p.date)-new Date(t.date))/(864e5);
