@@ -863,14 +863,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div></div>
 
 <!-- PRINT OVERLAY -->
-<div id="print-overlay" style="display:none;position:fixed;inset:0;background:#fff;z-index:9999;overflow-y:auto">
-  <div id="print-toolbar" style="position:sticky;top:0;background:#1A3A6B;padding:10px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:1">
+<div id="print-overlay" style="display:none;position:fixed;inset:0;background:#fff;z-index:9999;overflow:auto">
+  <button onclick="closePrint()" aria-label="Close" style="position:fixed;top:10px;right:10px;z-index:10001;width:46px;height:46px;border-radius:50%;border:none;background:#DC2626;color:#fff;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.4);line-height:1">✕</button>
+  <div id="print-toolbar" style="position:sticky;top:0;background:#1A3A6B;padding:10px 60px 10px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:1">
     <button onclick="window.print()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1A3A6B">🖨️ Print / Save PDF</button>
     <button onclick="shareWA()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#25D366;color:#fff">📲 WhatsApp</button>
-    <button onclick="closePrint()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:rgba(255,255,255,.15);color:#fff;margin-left:auto">✕ Close</button>
+    <button onclick="closePrint()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:rgba(255,255,255,.15);color:#fff">✕ Close</button>
     <div style="width:100%;font-size:11px;color:#B0C4DE">Print → Destination → Save as PDF</div>
   </div>
-  <div id="print-body" style="max-width:800px;margin:0 auto;padding:24px 24px 60px"></div>
+  <div id="print-body" style="max-width:800px;margin:0 auto;padding:24px 16px 80px;overflow-x:auto"></div>
 </div>
 <style>@media print{#print-toolbar{display:none!important}body>*:not(#print-overlay){display:none!important}#print-overlay{position:static!important;overflow:visible!important}}</style>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -1049,14 +1050,6 @@ let _saving=false;
 function _col(name){ return db.collection('users').doc(uid).collection(name); }
 let _lastSaved={}; // _lastSaved[firm][entity] = {id: record}
 function _indexById(arr){ const m={}; (arr||[]).forEach(x=>{ if(x&&x.id!=null) m[x.id]=x; }); return m; }
-// Coerce id + reference fields to strings so lookups never fail on a number-vs-string mismatch.
-// (Some older/imported records stored numeric ids, but every onclick passes them as strings.)
-function _normRec(r){
-  if(r && typeof r==='object'){
-    ['id','pid','bid','iid','supplierPid'].forEach(k=>{ if(r[k]!=null && typeof r[k]!=='object') r[k]=String(r[k]); });
-  }
-  return r;
-}
 
 function ensureFirm(firm){
   if(!S[firm]) S[firm]={};
@@ -1077,8 +1070,6 @@ function loadLocal(){
   try{ var raw=localStorage.getItem(LS_KEY()); if(!raw)return false;
     var d=JSON.parse(raw);
     if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF;
-    // Normalize ids to strings (older backups may hold numeric ids).
-    [S.MI,S.KF].forEach(function(b){ if(b) ENTITIES.forEach(function(e){ if(Array.isArray(b[e])) b[e].forEach(_normRec); }); });
     return !!(d.MI||d.KF);
   }catch(e){ return false; }
 }
@@ -1105,7 +1096,7 @@ function subscribeData(){
       ENTITIES.forEach(ent=>{
         const u=_col(firm+'_'+ent).onSnapshot({includeMetadataChanges:true}, snap=>{
           ensureFirm(firm);
-          S[firm][ent]=snap.docs.map(x=>_normRec(x.data()));
+          S[firm][ent]=snap.docs.map(x=>x.data());
           _lastSaved[firm][ent]=_indexById(S[firm][ent]);
           markLoadedBM(firm, snap.metadata&&snap.metadata.fromCache);
         }, err=>onSubErrBM(firm+'_'+ent, err));
@@ -2584,10 +2575,7 @@ function openPartyDetail(pid){
           <div style="font-size:11px;text-align:right;color:${bbal<1?'var(--g)':'var(--r)'}">${bbal<1?'Settled':'Due: '+fmt(bbal)}</div>
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px">
-        <div class="bm" style="margin-top:0;flex:1">${b.items.map(it=>esc(it.desc)).join(', ')}</div>
-        <button class="btn sm" onclick="event.stopPropagation();viewBill('${b.id}')" title="Print">🖨️</button>
-      </div>
+      <div class="bm">${b.items.map(it=>esc(it.desc)).join(', ')}</div>
     </div>`;
   }).join('');
 
@@ -2601,10 +2589,7 @@ function openPartyDetail(pid){
           <div style="font-size:11px;text-align:right;color:${ibal<1?'var(--g)':'var(--r)'}">${ibal<1?'Settled':'Due: '+fmt(ibal)}</div>
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:8px">
-        <div class="bm" style="margin-top:0;flex:1">${inv.items.map(it=>esc(it.desc)).join(', ')}</div>
-        <button class="btn sm" onclick="event.stopPropagation();printInvoice('${inv.id}')" title="Print">🖨️</button>
-      </div>
+      <div class="bm">${inv.items.map(it=>esc(it.desc)).join(', ')}</div>
     </div>`;
   }).join('');
 
@@ -3060,7 +3045,7 @@ function calcBillTotal(){
   const grand=taxable+gstAmt;
   const gstLabel=gstStr.includes('s')?(gstPct/2)+'% CGST + '+(gstPct/2)+'% SGST':gstPct+'% IGST';
   const prev=document.getElementById('b-preview');
-  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Transport: +${fmt(trans)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
+  if(prev)prev.innerHTML=`Subtotal: ${fmt(sub)} | Disc(${disc}%): -${fmt(discAmt)} | Freight: +${fmt(freight)} | ${gstLabel}: +${fmt(gstAmt)} | <strong>Grand: ${fmt(grand)}</strong>`;
 }
 
 function checkNewParty(inputId, noteId, type) {
@@ -4008,6 +3993,16 @@ function viewBill(bid){
 // ═══ MODAL UTILS ═══
 function openModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='flex';el.classList.add('show');}}
 function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}if(id==='cf'){const ok=document.getElementById('cf-ok');if(ok)ok.style.display='';}}
+// Surface any uncaught error visibly (so a failing Print/Delete shows the real reason instead of doing nothing)
+window.addEventListener('error',function(ev){
+  try{
+    var m=(ev&&ev.error&&ev.error.message)||ev.message||'Unknown error';
+    var t=document.getElementById('__errtoast');
+    if(!t){t=document.createElement('div');t.id='__errtoast';t.style.cssText='position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;background:#7F1D1D;color:#fff;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.35);font-family:system-ui,sans-serif';t.onclick=function(){t.remove();};document.body.appendChild(t);}
+    t.textContent='⚠️ '+m+' — tap to dismiss';
+    clearTimeout(t.__to);t.__to=setTimeout(function(){if(t&&t.remove)t.remove();},9000);
+  }catch(_){}
+});
 function closePrint(){document.getElementById('print-overlay').style.display='none';document.body.style.overflow='';}
 function shareWA(){
   const body=document.getElementById('print-body');
