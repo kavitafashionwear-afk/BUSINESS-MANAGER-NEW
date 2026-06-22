@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R7</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R8</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -5350,7 +5350,7 @@ function renderBank(){
           ${misc?`<button class="btn sm pri" onclick="openAssign(${i})" style="font-size:11px">➕ Assign (Party / Expense)</button>`:''}
           <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match Payment'}</button>
           <button class="btn sm" onclick="flipTxnDir(${i})" style="font-size:11px;background:#FFF7ED;color:#92400E">🔄 Mark as ${t.type==='CR'?'OUT (Debit)':'IN (Credit)'}</button>
-          ${t.matchId?`<button class="btn sm" onclick="bankTxns[${i}].matchId=null;bankTxns[${i}].assigned=null;saveToCloud();renderBank()" style="font-size:11px;background:#FEF2F2;color:#DC2626">✕ Unmatch</button>`:''}
+          ${!misc?`<button class="btn sm" onclick="unassignTxn(${i})" style="font-size:11px;background:#FEF3C7;color:#92400E">↩ Unassign / Send back</button>`:''}
           <button class="btn sm" onclick="deleteBankTxn(${i})" style="font-size:11px;background:#FEF2F2;color:#DC2626;margin-left:auto">🗑 Delete</button>
         </div>
       </div>`;
@@ -5640,6 +5640,53 @@ function deleteBankTxn(idx){
   saveToCloud();renderAll();renderBank();
 }
 
+// Reverse an assignment/match but KEEP the bank entry — it goes back to the "needs action" list so you can re-assign it.
+function unassignTxn(idx){
+  const d=D();const t=bankTxns[idx];if(!t)return;
+  if(!(t.matchId||t.assigned)){renderBank();return;}
+  let extra='';
+  if(t.assigned==='party'||t.autoCreated)extra='The receipt/payment it created will be removed from the party ledger.';
+  else if(t.matchId)extra='It will be unlinked from the matched payment (the payment itself is kept).';
+  else if(t.assigned==='expense')extra='The expense it created will be removed.';
+  else if(t.assigned==='loan')extra='The loan transaction it created will be removed.';
+  else if(t.assigned==='asset')extra='The asset value it added will be reversed.';
+  else if(t.assigned==='reserve')extra='The reserve transaction it created will be removed.';
+  if(!confirm('Send this entry back to the unassigned bank list?\n\n'+extra+'\n\nThe bank entry itself stays — only the assignment is reversed, so you can assign it again correctly.'))return;
+  // Reverse side-effects (same as delete) but keep the entry
+  if(t.assigned==='party'||t.autoCreated){
+    if(t.matchId)d.payments=(d.payments||[]).filter(p=>p.id!==t.matchId);
+  }
+  if(t.assigned==='loan'&&t.assignedLoan){
+    const loan=(d.loans||[]).find(l=>l.id===t.assignedLoan);
+    if(loan&&loan.txns){
+      if(t.createdId){loan.txns=loan.txns.filter(x=>x.id!==t.createdId);}
+      else{const note='Bank: '+(t.desc||'').substring(0,50);const j=loan.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)loan.txns.splice(j,1);}
+    }
+  }
+  if(t.assigned==='asset'&&t.assignedAsset){
+    const a=(d.assets||[]).find(x=>x.id===t.assignedAsset);
+    if(a){
+      if(a.txns){const note='Bank: '+(t.desc||'').substring(0,50);const j=a.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)a.txns.splice(j,1);}
+      a.value=(parseFloat(a.value)||0)-t.amount;if(a.value<0)a.value=0;
+    }
+  }
+  if(t.assigned==='expense'){
+    if(t.createdId){d.expenses=(d.expenses||[]).filter(e=>e.id!==t.createdId);}
+    else{const j=(d.expenses||[]).findIndex(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);if(j>=0)d.expenses.splice(j,1);}
+  }
+  if(t.assigned==='reserve'&&t.assignedReserve){
+    const r=(d.reserves||[]).find(x=>x.id===t.assignedReserve);
+    if(r&&r.txns){
+      if(t.createdId){r.txns=r.txns.filter(x=>x.id!==t.createdId);}
+      else{const note='Bank: '+(t.desc||'').substring(0,50);const j=r.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)r.txns.splice(j,1);}
+    }
+  }
+  // Clear all assignment flags → entry returns to the "needs action" list
+  t.matchId=null;t.assigned=null;t.assignedLoan=null;t.assignedAsset=null;t.assignedReserve=null;t.autoCreated=null;t.createdId=null;
+  d.bankTxns=bankTxns;
+  saveToCloud();renderAll();renderBank();
+}
+
 function repairPaymentDirections(){
   const d=D();
   const plan=[];const details=[];
@@ -5892,8 +5939,9 @@ function assignToExpense(){
   const d=D();const t=bankTxns[_assignIdx];
   const cat=document.getElementById('asg-cat').value;
   const note=document.getElementById('asg-note').value.trim();
-  d.expenses.push({id:'EXP'+uid4(),date:t.date,desc:note||t.desc.substring(0,80),amount:t.amount,cat:cat,dir:t.type==='CR'?'in':'out'});
-  t.assigned='expense';
+  const _exp={id:'EXP'+uid4(),date:t.date,desc:note||t.desc.substring(0,80),amount:t.amount,cat:cat,dir:t.type==='CR'?'in':'out'};
+  d.expenses.push(_exp);
+  t.assigned='expense';t.createdId=_exp.id;
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
 
