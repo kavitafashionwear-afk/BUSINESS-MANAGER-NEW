@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R8</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R9</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -5823,10 +5823,22 @@ function openAssign(idx){
     <div style="font-size:12px;color:var(--sub)">${fmtD(t.date)} · <span style="font-weight:700;color:${t.type==='CR'?'var(--g)':'var(--r)'}">${t.type==='CR'?'+':'-'} ${fmt(t.amount)}</span></div>
   </div>
   <div style="font-size:12px;font-weight:700;margin-bottom:6px">👥 Assign to a party (records a ${t.type==='CR'?'receipt':'payment'}):</div>
-  <select id="asg-party" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
+  <select id="asg-party" onchange="var w=document.getElementById('asg-newparty-wrap');if(w)w.style.display=this.value==='__new__'?'block':'none'" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
     <option value="">Select party...</option>
+    <option value="__new__">➕ Create new party…</option>
     ${parties.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
   </select>
+  <div id="asg-newparty-wrap" style="display:none;margin-bottom:8px;padding:10px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px">
+    <input id="asg-newparty-name" placeholder="New party name" style="width:100%;padding:9px;border:1.5px solid var(--bdr);border-radius:8px;font-size:13px;margin-bottom:6px">
+    <div style="display:flex;gap:8px">
+      <select id="asg-newparty-type" style="flex:1;padding:9px;border:1.5px solid var(--bdr);border-radius:8px;font-size:12px;background:#fff">
+        <option value="S" ${t.type!=='CR'?'selected':''}>Supplier (you pay)</option>
+        <option value="C" ${t.type==='CR'?'selected':''}>Customer (they pay)</option>
+      </select>
+      <input id="asg-newparty-gstin" placeholder="GSTIN (optional)" style="flex:1;padding:9px;border:1.5px solid var(--bdr);border-radius:8px;font-size:12px;text-transform:uppercase">
+    </div>
+    <div style="font-size:11px;color:#0369A1;margin-top:6px">💡 Recorded as an advance to this party. A future bill/invoice for them adjusts against it automatically.</div>
+  </div>
   <button class="btn pri" style="width:100%;justify-content:center;margin-bottom:16px" onclick="assignToParty()">✓ Record as Party ${t.type==='CR'?'Receipt':'Payment'}</button>
   <div style="border-top:1.5px dashed var(--bdr);padding-top:14px;margin-bottom:16px">
     <div style="font-size:12px;font-weight:700;margin-bottom:6px">🤝 Or assign to a Loan / OD account (${loanVerb}):</div>
@@ -5928,11 +5940,20 @@ function assignToReserve(){
 }
 function assignToParty(){
   const d=D();const t=bankTxns[_assignIdx];
-  const pid=document.getElementById('asg-party').value;
+  let pid=document.getElementById('asg-party').value;
+  if(pid==='__new__'){
+    const name=(document.getElementById('asg-newparty-name').value||'').trim();
+    if(!name){alert('Enter the new party name');return;}
+    const type=document.getElementById('asg-newparty-type').value||'S';
+    const gstin=(document.getElementById('asg-newparty-gstin').value||'').trim();
+    const np=getOrCreateParty(name,type,gstin);
+    if(!np){alert('Could not create the party');return;}
+    pid=np.id;
+  }
   if(!pid){alert('Select a party');return;}
   const pay={id:'PAY'+uid4(),pid:pid,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60)};
   d.payments.push(pay);
-  t.matchId=pay.id;t.assigned='party';
+  t.matchId=pay.id;t.assigned='party';t.createdId=pay.id;
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
 function assignToExpense(){
