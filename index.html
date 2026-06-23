@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R9</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R10</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -1433,12 +1433,12 @@ function cashLedger(){
     if(m==='cash')cash=e.amount;
     else if(m==='split'&&e.cashPart!=null)cash=e.cashPart;
     if(cash<=0)return;
-    rows.push({date:e.date,desc:'Cash expense — '+(e.cat||'')+(e.desc?' ('+e.desc+')':''),ref:'Expense',dir:e.dir==='in'?'in':'out',amt:cash,kind:'exp'});
+    rows.push({date:e.date,desc:'Cash expense — '+(e.cat||'')+(e.desc?' ('+e.desc+')':''),ref:'Expense',dir:e.dir==='in'?'in':'out',amt:cash,kind:'exp',id:e.id});
   });
   // Capital assets: only the CASH portion reduces cash in hand
   (d.assets||[]).forEach(a=>{
     const cp=(a.cashPaid!=null)?a.cashPaid:((a.payMode==='cash')?(a.grand||a.value||0):0);
-    if(cp>0)rows.push({date:a.date,desc:'Asset purchase — '+(a.name||''),ref:'Asset',dir:'out',amt:cp,kind:'asset'});
+    if(cp>0)rows.push({date:a.date,desc:'Asset purchase — '+(a.name||''),ref:'Asset',dir:'out',amt:cp,kind:'asset',id:a.id});
   });
   return rows.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
 }
@@ -1564,7 +1564,13 @@ function renderCash(){
           <div class="pn" style="font-size:13px">${esc(r.desc)}</div>
           <div class="ps">${fmtD(r.date)} · ${esc(r.ref||'')}</div>
         </div>
-        <div class="pb" style="color:${r.dir==='in'?'var(--g)':'var(--r)'}">${r.dir==='in'?'+':'−'}${fmt(r.amt)}</div>
+        <div style="text-align:right;flex-shrink:0">
+          <div class="pb" style="color:${r.dir==='in'?'var(--g)':'var(--r)'}">${r.dir==='in'?'+':'−'}${fmt(r.amt)}</div>
+          <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px">
+            <button class="btn sm" style="padding:2px 8px;font-size:11px" onclick="editCashRow('${r.kind}','${r.id||''}')" title="Edit">✏️</button>
+            <button class="btn sm red" style="padding:2px 8px;font-size:11px" onclick="delCashRow('${r.kind}','${r.id||''}')" title="Delete">🗑</button>
+          </div>
+        </div>
       </div>`).join(''):'<div class="empty"><div class="ei">💵</div><p>No cash movements yet.<br><span style="font-size:12px;color:#999">Cash bills & cash settlements appear here.</span></p></div>'}
     </div>`;
   ['home','parties','bills','invoices','detail','notes','bank','trash'].forEach(p=>{const el=document.getElementById('pg-'+p);if(el)el.style.display='none';});
@@ -1588,6 +1594,59 @@ function openCashOpening(){
   if(v===null)return;
   d.cashOpening=parseFloat(v)||0;d.cashOpeningDate=d.cashOpeningDate||td();
   saveToCloud();renderCash();
+}
+// Edit a cash-ledger entry at its source (expense / payment / asset / opening)
+function editCashRow(kind,id){
+  const d=D();
+  if(kind==='opening'){openCashOpening();return;}
+  if(kind==='exp'){editExpense(id);return;}        // full expense editor (incl. category)
+  if(kind==='asset'){openAssetModal(id);return;}   // full asset editor
+  if(kind==='pay'){
+    const p=(d.payments||[]).find(x=>x.id===id);
+    if(!p){alert('Entry not found.');return;}
+    const v=prompt('Cash amount (₹):',p.amt);
+    if(v===null)return;
+    const amt=parseFloat(v)||0;if(amt<=0){alert('Enter a valid amount');return;}
+    if((p.mode||'').toLowerCase()==='split'){
+      const c=prompt('Of that, cash portion (₹):',p.cashPart!=null?p.cashPart:amt);
+      p.amt=amt;if(c!==null)p.cashPart=parseFloat(c)||0;
+    } else { p.amt=amt; }
+    const dt=prompt('Date (YYYY-MM-DD):',p.date);if(dt!==null&&dt.trim())p.date=dt.trim();
+    saveToCloud();renderCash();
+    return;
+  }
+  alert('This entry can be edited from its own section.');
+}
+// Delete a cash-ledger entry at its source, then stay on the Cash screen
+function delCashRow(kind,id){
+  const d=D();
+  if(kind==='opening'){
+    if(!confirm('Clear the opening cash balance?'))return;
+    d.cashOpening=0;saveToCloud();renderCash();return;
+  }
+  if(kind==='exp'){
+    const e=(d.expenses||[]).find(x=>x.id===id);if(!e){alert('Entry not found.');return;}
+    if(!confirm('Delete this cash entry?\n\n'+(e.cat||'')+' · '+fmt(e.amount)+' · '+fmtD(e.date)+'\n\nIt will move to the Recycle Bin.'))return;
+    if(!d.trash)d.trash=[];
+    d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
+    d.expenses=d.expenses.filter(x=>x.id!==id);
+    saveToCloud();renderCash();try{updateTrashBadge();}catch(_){}
+    return;
+  }
+  if(kind==='pay'){
+    const p=(d.payments||[]).find(x=>x.id===id);if(!p){alert('Entry not found.');return;}
+    if(!confirm('Delete this cash payment/receipt?\n\n'+fmt(p.amt)+' · '+fmtD(p.date)+'\n\nThis also removes it from the party ledger.'))return;
+    d.payments=d.payments.filter(x=>x.id!==id);
+    saveToCloud();renderCash();
+    return;
+  }
+  if(kind==='asset'){
+    const a=(d.assets||[]).find(x=>x.id===id);if(!a){alert('Entry not found.');return;}
+    if(!confirm('Delete asset "'+(a.name||'')+'"?\n\nThis removes it from your books entirely.'))return;
+    d.assets=d.assets.filter(x=>x.id!==id);
+    saveToCloud();renderCash();
+    return;
+  }
 }
 
 // ═══════════════════════════════
