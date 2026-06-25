@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R10</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R11</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -282,6 +282,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div class="fl"><label>Phone</label><input id="p-phone" placeholder="9999999999"></div>
       <div class="fl"><label>City</label><input id="p-city" placeholder="e.g. Surat"></div>
     </div>
+    <div class="fl"><label>Address</label><input id="p-addr" placeholder="Street, area (used on invoices)"></div>
+    <div class="fl"><label>PIN Code</label><input id="p-pin" placeholder="e.g. 110031" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
     <div class="fl"><label>State *</label>
       <select id="p-state">
         <option value="07">Delhi (07)</option>
@@ -2720,14 +2722,14 @@ function openPartyModal(pid){
   document.getElementById('party-mo-title').textContent=pid?'Edit Party':'Add Party';
   if(pid){
     const p=D().parties.find(x=>x.id===pid);if(!p)return;
-    ['name','phone','city','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value=p[f]||'';});
+    ['name','phone','city','addr','pin','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value=p[f]||'';});
     document.getElementById('p-type').value=p.type||'S';
     document.getElementById('p-state').value=p.state||'07';
     document.getElementById('p-ob').value=p.ob||0;
     document.getElementById('p-ob-type').value=p.obType||'CR';
     loadBankRows(partyBanks(p));
   } else {
-    ['name','phone','city','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value='';});
+    ['name','phone','city','addr','pin','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value='';});
     document.getElementById('p-type').value='S';
     document.getElementById('p-state').value='07';
     document.getElementById('p-ob').value=0;
@@ -2818,6 +2820,8 @@ function saveParty(){
     state:document.getElementById('p-state').value,
     phone:document.getElementById('p-phone').value.trim(),
     city:document.getElementById('p-city').value.trim(),
+    addr:(document.getElementById('p-addr')?.value||'').trim(),
+    pin:(document.getElementById('p-pin')?.value||'').trim(),
     gstin:document.getElementById('p-gstin').value.trim().toUpperCase(),
     pan:(document.getElementById('p-pan')?.value||'').trim().toUpperCase(),
     udyam:(document.getElementById('p-udyam')?.value||'').trim(),
@@ -3123,9 +3127,12 @@ function checkNewParty(inputId, noteId, type) {
     note.style.display = 'none';
     // Auto-set GST + prefill stored address/PIN/GSTIN for the invoice
     if (inputId === 'i-cust') {
-      var gi=document.getElementById('i-cust-gstin');if(gi&&!gi.value.trim()&&exists.gstin)gi.value=exists.gstin;
-      var ai=document.getElementById('i-cust-addr');if(ai&&!ai.value.trim()&&exists.addr)ai.value=exists.addr;
-      var pi=document.getElementById('i-cust-pin');if(pi&&!pi.value.trim()&&exists.pin)pi.value=exists.pin;
+      var gi=document.getElementById('i-cust-gstin');if(gi&&exists.gstin)gi.value=exists.gstin;
+      var ai=document.getElementById('i-cust-addr');if(ai&&(exists.addr||exists.city))ai.value=exists.addr||exists.city;
+      var pi=document.getElementById('i-cust-pin');if(pi&&exists.pin)pi.value=exists.pin;
+      var si=document.getElementById('i-cust-state');if(si&&exists.state)si.value=stateName(exists.state)||exists.state;
+      var phi=document.getElementById('i-cust-phone');if(phi&&exists.phone)phi.value=exists.phone;
+      var aad=document.getElementById('i-cust-aadhaar');if(aad&&exists.aadhaar)aad.value=exists.aadhaar;
       autoSetGST(exists);
     }
   } else {
