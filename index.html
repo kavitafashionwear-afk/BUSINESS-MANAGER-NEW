@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R16</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R18</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -938,7 +938,15 @@ function D(){return bData();}
 
 // ═══ HELPERS ═══
 const td=()=>new Date().toISOString().split('T')[0];
-const fmt=n=>'₹'+new Intl.NumberFormat('en-IN').format(Math.round(n||0));
+const fmt=n=>{n=Number(n)||0;const r=Math.round(n);const whole=Math.abs(n-r)<0.005;return '₹'+new Intl.NumberFormat('en-IN',{minimumFractionDigits:whole?0:2,maximumFractionDigits:2}).format(whole?r:n);};
+// Keep focus + caret in a search box when typing re-renders its page
+function _searchInput(id,fn){
+  var el=document.getElementById(id);
+  var pos=(el&&el.selectionStart!=null)?el.selectionStart:null;
+  fn();
+  var el2=document.getElementById(id);
+  if(el2){el2.focus();if(pos!=null){try{el2.setSelectionRange(pos,pos);}catch(e){}}}
+}
 const fmtR=n=>{if(!n&&n!==0)return'0';let v=parseFloat(n);return Number.isInteger(v)?String(v):v.toFixed(2).replace(/\.?0+$/, '')};
 const fmtD=d=>{if(!d)return'-';const p=d.split('-');return p[2]+'/'+p[1]+'/'+p[1]?new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):d;};
 const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1750,7 +1758,7 @@ function renderExpenses(){
         <div style="height:6px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(4,Math.round(v/maxCat*100))}%;background:#D97706"></div></div>
       </div>`).join('')}
     </div>`:''}
-    <div class="srch-wrap"><input class="srch" id="exp-srch" placeholder="Search expenses…" oninput="renderExpenses()" value="${esc(search)}"></div>
+    <div class="srch-wrap"><input class="srch" id="exp-srch" placeholder="Search expenses…" oninput="_searchInput('exp-srch',renderExpenses)" value="${esc(search)}"></div>
     <div class="card" style="padding:0 16px">
       <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">EXPENSE LOG (${list.length})</div>
       ${rows}
@@ -2002,7 +2010,7 @@ function renderInventory(){
       <div style="text-align:right"><div class="pb" style="color:${g.stock>0?'var(--g)':'var(--sub)'}">${fmtR(g.stock)}</div><div style="font-size:11px;color:var(--sub)">${fmt(g.value)}</div></div>
     </div>`).join(''):'<div class="empty"><div class="ei">📦</div><p>No '+dimLabel+' data yet.<br><span style="font-size:12px;color:#999">Fill the Textile details on bills/invoices to use this view.</span></p></div>';
     document.getElementById('pg-inventory').innerHTML=header+`
-      <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search ${esc(dimLabel)}…" oninput="renderInventory()" value="${esc(search)}"></div>
+      <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search ${esc(dimLabel)}…" oninput="_searchInput('inv-srch',renderInventory)" value="${esc(search)}"></div>
       <div class="card" style="padding:0 16px">
         <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">${esc(dimLabel.toUpperCase())}-WISE STOCK (${groups.length})</div>
         ${rows}
@@ -2073,7 +2081,7 @@ function renderInventory(){
       ${chip('dead','Dead',deadCount,invFilter==='dead')}
     </div>
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-      <div class="srch-wrap" style="flex:1;margin-bottom:0"><input class="srch" id="inv-srch" placeholder="Search items…" oninput="renderInventory()" value="${esc(search)}" style="margin-bottom:0"></div>
+      <div class="srch-wrap" style="flex:1;margin-bottom:0"><input class="srch" id="inv-srch" placeholder="Search items…" oninput="_searchInput('inv-srch',renderInventory)" value="${esc(search)}" style="margin-bottom:0"></div>
       <select onchange="invSort=this.value;renderInventory()" style="padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:12px;background:#fff;font-family:inherit">
         <option value="value" ${invSort==='value'?'selected':''}>By value</option>
         <option value="stock" ${invSort==='stock'?'selected':''}>By stock</option>
@@ -2619,7 +2627,7 @@ function renderParties(){
 
   document.getElementById('pg-parties').innerHTML=`
     <div class="sh"><h2>Parties (${parties.length})</h2><button class="btn sm pri" onclick="openPartyModal()">+ Add</button></div>
-    <div class="srch-wrap"><input class="srch" id="party-srch" placeholder="Search parties..." oninput="renderParties()" value="${esc(search)}"></div>
+    <div class="srch-wrap"><input class="srch" id="party-srch" placeholder="Search parties..." oninput="_searchInput('party-srch',renderParties)" value="${esc(search)}"></div>
     <div class="seg">
       <button class="${filter==='all'?'act':''}" onclick="setPartyFilter('all')">All</button>
       <button class="${filter==='S'?'act':''}" onclick="setPartyFilter('S')">Suppliers</button>
@@ -2914,7 +2922,7 @@ function renderBills(){
   document.getElementById('pg-bills').innerHTML=`
     <div class="sh"><h2>Purchase Bills (${bills.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#EFF6FF;border-color:#BFDBFE;color:#1E40AF" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm pri" onclick="openBillModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox red">Total Pending: <strong>${fmt(totalPending)}</strong></div>`:''}
-    <div class="srch-wrap"><input class="srch" id="bill-srch" placeholder="Search bills..." oninput="renderBills()" value="${esc(search)}"></div>
+    <div class="srch-wrap"><input class="srch" id="bill-srch" placeholder="Search bills..." oninput="_searchInput('bill-srch',renderBills)" value="${esc(search)}"></div>
     <div class="seg">
       <button class="${filter==='all'?'act':''}" onclick="setBillFilter('all')">All</button>
       <button class="${filter==='pending'?'act':''}" onclick="setBillFilter('pending')">Pending</button>
@@ -2967,7 +2975,7 @@ function renderInvoices(){
   document.getElementById('pg-invoices').innerHTML=`
     <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#FEF3C7;border-color:#FCD34D;color:#92400E" onclick="fixGstTypes()">🔧 Fix GST</button><button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox grn">Total Receivable: <strong>${fmt(totalPending)}</strong></div>`:''}
-    <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search invoices..." oninput="renderInvoices()" value="${esc(search)}"></div>
+    <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search invoices..." oninput="_searchInput('inv-srch',renderInvoices)" value="${esc(search)}"></div>
     <div class="seg">
       <button class="${filter==='all'?'act':''}" onclick="setInvFilter('all')">All</button>
       <button class="${filter==='pending'?'act':''}" onclick="setInvFilter('pending')">Pending</button>
@@ -6192,6 +6200,7 @@ function doBankMatch(payId){
    TALLY-STYLE REPORTS
 ══════════════════════════════ */
 var repView='menu',repParty=null,repDate=null,repMonth=null;
+var expFrom='',expTo='',expTab='sales';
 
 function renderReports(){
   const pg=document.getElementById('pg-reports');if(!pg)return;
@@ -6214,9 +6223,16 @@ function renderReports(){
   if(repView==='trial')return renderTrialBalance(pg);
   if(repView==='balsheet')return renderBalanceSheetReport(pg);
   if(repView==='package')return renderAccountantPackage(pg);
+  if(repView==='export')return renderAccountantExport(pg);
   // MENU
   pg.innerHTML=`
   <div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">📊 Reports</h3><div style="font-size:12px;color:var(--sub)">Tally-style books of accounts for ${curBiz==='MI'?'Modrobe Impex':'Kavita Fashion Wear'}</div></div>
+  <div class="card" style="cursor:pointer;padding:18px;background:linear-gradient(135deg,#047857,#065F46);color:#fff;margin-bottom:12px" onclick="repView='export';renderReports()">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:30px">📤</div>
+      <div><div style="font-weight:800;font-size:16px">Export for Accountant</div><div style="font-size:12px;opacity:.9;margin-top:2px">Pick any date range → all sales invoices & purchase bills → download CSV (Excel)</div></div>
+    </div>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='ledger';repParty=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📒</div><div style="font-weight:700;font-size:14px">Party Ledger</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Dr/Cr vouchers with running balance</div></div>
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='daybook';repDate=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📋</div><div style="font-weight:700;font-size:14px">Daybook</div><div style="font-size:11px;color:var(--sub);margin-top:3px">All vouchers of a day</div></div>
@@ -6417,6 +6433,88 @@ function printReport(title,bodyHtml){
     <div style="margin-top:24px;font-size:10px;color:#888;text-align:center">Generated by Business Manager · ${new Date().toLocaleString('en-IN')} · Computer-generated statement</div>
   </div>`;
   _openPrintView();
+}
+function _inExpRange(ds){ if(!ds)return false; if(expFrom&&ds<expFrom)return false; if(expTo&&ds>expTo)return false; return true; }
+function salesRowsRange(){
+  const d=D();
+  return d.invoices.filter(i=>_inExpRange(i.date)).sort((a,b)=>a.date.localeCompare(b.date)).map(i=>{
+    const p=d.parties.find(x=>x.id===i.pid);const g=gstSplit(i);
+    return{date:i.date,num:i.num,party:p?p.name:(i.custName||'?'),gstin:gstinOf(i),rate:g.rate,taxable:g.taxable,igst:g.igst,cgst:g.cgst,sgst:g.sgst,total:i.grand};
+  });
+}
+function purchaseRowsRange(){
+  const d=D();
+  return d.bills.filter(b=>_inExpRange(b.date)&&!b.jw).sort((a,b)=>a.date.localeCompare(b.date)).map(b=>{
+    const p=d.parties.find(x=>x.id===b.pid);const g=gstSplit(b);
+    return{date:b.date,num:b.num,party:p?p.name:(b.supplier||'?'),gstin:(p&&p.gstin)||b.gstin||'',rate:g.rate,taxable:g.taxable,igst:g.igst,cgst:g.cgst,sgst:g.sgst,total:b.grand};
+  });
+}
+function _expDefaults(){
+  if(!expFrom&&!expTo){
+    const now=new Date();const pad=n=>String(n).padStart(2,'0');
+    expFrom=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-01';
+    expTo=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(new Date(now.getFullYear(),now.getMonth()+1,0).getDate());
+  }
+}
+function applyExpFilter(){ expFrom=document.getElementById('exp-from')?.value||''; expTo=document.getElementById('exp-to')?.value||''; renderReports(); }
+function expPreset(p){
+  const now=new Date();const y=now.getFullYear(),m=now.getMonth();const pad=n=>String(n).padStart(2,'0');const iso=dt=>dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());
+  if(p==='tm'){expFrom=iso(new Date(y,m,1));expTo=iso(new Date(y,m+1,0));}
+  else if(p==='lm'){expFrom=iso(new Date(y,m-1,1));expTo=iso(new Date(y,m,0));}
+  else if(p==='fy'){const fy=(m>=3)?y:y-1;expFrom=iso(new Date(fy,3,1));expTo=iso(new Date(fy+1,2,31));}
+  renderReports();
+}
+function setExpTab(t){expTab=t;renderReports();}
+function _expRangeLabel(){ return (expFrom?fmtD(expFrom):'start')+' → '+(expTo?fmtD(expTo):'today'); }
+function csvSalesRange(){
+  const rows=salesRowsRange(); if(!rows.length){alert('No sales invoices in this date range.');return;}
+  downloadCSV('Sales_'+(expFrom||'all')+'_to_'+(expTo||'all')+'_'+curBiz+'.csv',
+    ['Date','Inv No','Customer','GSTIN','GST %','Taxable','IGST','CGST','SGST','Total'],
+    rows.map(r=>[r.date,r.num,r.party,r.gstin||'B2C',r.rate,r.taxable.toFixed(2),r.igst.toFixed(2),r.cgst.toFixed(2),r.sgst.toFixed(2),r.total.toFixed(2)]));
+}
+function csvPurchaseRange(){
+  const rows=purchaseRowsRange(); if(!rows.length){alert('No purchase bills in this date range.');return;}
+  downloadCSV('Purchases_'+(expFrom||'all')+'_to_'+(expTo||'all')+'_'+curBiz+'.csv',
+    ['Date','Bill No','Supplier','GSTIN','GST %','Taxable','IGST','CGST','SGST','Total'],
+    rows.map(r=>[r.date,r.num,r.party,r.gstin,r.rate,r.taxable.toFixed(2),r.igst.toFixed(2),r.cgst.toFixed(2),r.sgst.toFixed(2),r.total.toFixed(2)]));
+}
+function renderAccountantExport(pg){
+  _expDefaults();
+  const sales=salesRowsRange(), purch=purchaseRowsRange();
+  const rows=expTab==='sales'?sales:purch;
+  const T=rows.reduce((s,r)=>({taxable:s.taxable+r.taxable,igst:s.igst+r.igst,cgst:s.cgst+r.cgst,sgst:s.sgst+r.sgst,total:s.total+r.total}),{taxable:0,igst:0,cgst:0,sgst:0,total:0});
+  const headLbl=expTab==='sales'?'Customer':'Supplier';
+  const numLbl=expTab==='sales'?'Inv No':'Bill No';
+  const tbl=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:720px">
+    <thead><tr style="background:var(--pri);color:#fff">
+      <th style="padding:7px;text-align:left">Date</th><th style="padding:7px;text-align:left">${numLbl}</th><th style="padding:7px;text-align:left">${headLbl}</th><th style="padding:7px;text-align:left">GSTIN</th>
+      <th style="padding:7px;text-align:right">Taxable</th><th style="padding:7px;text-align:right">IGST</th><th style="padding:7px;text-align:right">CGST</th><th style="padding:7px;text-align:right">SGST</th><th style="padding:7px;text-align:right">Total</th></tr></thead>
+    <tbody>${rows.length?rows.map((r,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px;white-space:nowrap">${fmtD(r.date)}</td><td style="padding:7px;font-weight:600">${esc(r.num)}</td><td style="padding:7px">${esc(r.party)}</td><td style="padding:7px;font-size:11px">${esc(r.gstin)||'<span style="color:#999">B2C</span>'}</td><td style="padding:7px;text-align:right">${m2(r.taxable)}</td><td style="padding:7px;text-align:right">${m2(r.igst)}</td><td style="padding:7px;text-align:right">${m2(r.cgst)}</td><td style="padding:7px;text-align:right">${m2(r.sgst)}</td><td style="padding:7px;text-align:right;font-weight:700">${m2(r.total)}</td></tr>`).join(''):`<tr><td colspan="9" style="padding:18px;text-align:center;color:var(--sub)">No ${expTab==='sales'?'sales invoices':'purchase bills'} in this date range.</td></tr>`}</tbody>
+    <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="4" style="padding:8px">TOTAL (${rows.length})</td><td style="padding:8px;text-align:right">${m2(T.taxable)}</td><td style="padding:8px;text-align:right">${m2(T.igst)}</td><td style="padding:8px;text-align:right">${m2(T.cgst)}</td><td style="padding:8px;text-align:right">${m2(T.sgst)}</td><td style="padding:8px;text-align:right">${m2(T.total)}</td></tr></tfoot>
+  </table></div>`;
+  pg.innerHTML=repBack()+`<div class="card">
+    <h3 style="margin-bottom:4px">📤 Export for Accountant</h3>
+    <div style="font-size:12px;color:var(--sub);margin-bottom:10px">Choose a date range, then download a CSV (opens in Excel/Tally). ${_expRangeLabel()}.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      <button class="btn sm" onclick="expPreset('tm')" style="font-size:11px">This month</button>
+      <button class="btn sm" onclick="expPreset('lm')" style="font-size:11px">Last month</button>
+      <button class="btn sm" onclick="expPreset('fy')" style="font-size:11px">This FY</button>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">
+      <div style="flex:1;min-width:130px"><label style="font-size:10px;color:var(--sub);display:block;margin-bottom:2px">From date</label><input type="date" id="exp-from" value="${expFrom}" onchange="applyExpFilter()" style="width:100%;padding:8px;border:1.5px solid var(--bdr);border-radius:8px;font-size:12px;box-sizing:border-box"></div>
+      <div style="flex:1;min-width:130px"><label style="font-size:10px;color:var(--sub);display:block;margin-bottom:2px">To date</label><input type="date" id="exp-to" value="${expTo}" onchange="applyExpFilter()" style="width:100%;padding:8px;border:1.5px solid var(--bdr);border-radius:8px;font-size:12px;box-sizing:border-box"></div>
+    </div>
+    <div class="seg" style="margin-bottom:12px">
+      <button class="${expTab==='sales'?'act':''}" onclick="setExpTab('sales')">📤 Sales (${sales.length})</button>
+      <button class="${expTab==='purchase'?'act':''}" onclick="setExpTab('purchase')">📥 Purchase (${purch.length})</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn sm pri" onclick="csvSalesRange()">⬇️ Download Sales CSV</button>
+      <button class="btn sm pri" onclick="csvPurchaseRange()">⬇️ Download Purchase CSV</button>
+    </div>
+    ${tbl}
+    <div class="ibox blu" style="margin-top:12px;font-size:12px">${expTab==='sales'?'Sales':'Purchase'} in range: <strong>${rows.length}</strong> ${expTab==='sales'?'invoice(s)':'bill(s)'} · Taxable <strong>${fmt(T.taxable)}</strong> · GST <strong>${fmt(T.igst+T.cgst+T.sgst)}</strong> · Total <strong>${fmt(T.total)}</strong></div>
+  </div>`;
 }
 function downloadCSV(filename,header,rows){
   const q=s=>{s=String(s==null?'':s);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
