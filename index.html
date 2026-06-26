@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R14</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R15</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -5620,6 +5620,14 @@ function parseDCBPdfText(text){
   var dateRe=/^(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})\b/;
   var amtRe=/([\d,]+\.\d{2})/g;
   var prevBalance=null;
+  // Seed the running balance from an opening / brought-forward balance line, so the FIRST transaction also classifies correctly
+  for(var _li=0;_li<lines.length;_li++){
+    var _L=lines[_li].toUpperCase();
+    if(/OPENING BALANCE|BALANCE B\/F|BROUGHT FORWARD|OPENING BAL\b/.test(_L)){
+      var _om=lines[_li].match(amtRe);
+      if(_om&&_om.length){prevBalance=parseFloat(_om[_om.length-1].replace(/,/g,''));break;}
+    }
+  }
   lines.forEach(function(line){
     line=line.trim();
     var dm=line.match(dateRe);
@@ -5633,26 +5641,24 @@ function parseDCBPdfText(text){
     var desc=line.substring(dm[0].length,firstAmtIdx).trim().replace(/\s{2,}/g,' ');
     // Last amount is usually the running balance; the one before it is the txn amount
     var nums=amounts.map(function(a){return parseFloat(a.replace(/,/g,''));});
-    var amount,balance=null;
-    if(nums.length>=2){amount=nums[nums.length-2];balance=nums[nums.length-1];}
-    else amount=nums[0];
-    if(!amount||amount<=0)return;
-    var up=line.toUpperCase();
-    // ── CR/DR detection ──
-    // PRIORITY 1: running-balance movement (most reliable). If this row's closing
-    // balance is HIGHER than the previous row's, money came IN → Credit (CR).
-    // If LOWER, money went OUT → Debit (DR).
+    var balance=nums.length>=2?nums[nums.length-1]:null;
+    var amount=nums.length>=2?nums[nums.length-2]:nums[0];
     var type=null;
+    // PRIORITY 1: running-balance DELTA. The change in the closing balance versus the
+    // previous row reveals BOTH the direction (balance up = credit, down = debit) AND the
+    // exact amount that moved — independent of how the debit/credit columns are laid out.
     if(balance!==null&&prevBalance!==null){
-      if(balance>prevBalance+0.001)type='CR';
-      else if(balance<prevBalance-0.001)type='DR';
+      var delta=Math.round((balance-prevBalance)*100)/100;
+      if(Math.abs(delta)>0.01){amount=Math.abs(delta);type=delta>0?'CR':'DR';}
     }
-    // PRIORITY 2: explicit CR/DR markers in the narration.
+    // PRIORITY 2: explicit deposit/withdrawal or CR/DR wording in the narration.
     if(!type){
-      if((/\bCR\b|CREDIT|\bCR$|DEPOSIT|RECEIVED|INWARD/.test(up))&&!/\bDR\b|DEBIT/.test(up))type='CR';
-      else if(/\bDR\b|DEBIT|WITHDRAWAL|OUTWARD/.test(up))type='DR';
+      var up=line.toUpperCase();
+      if((/\bCR\b|CREDIT|DEPOSIT|RECEIVED|INWARD|REFUND|REVERSAL/.test(up))&&!/\bDR\b|DEBIT|WITHDRAW/.test(up))type='CR';
+      else if(/\bDR\b|DEBIT|WITHDRAWAL|WITHDRAWN|OUTWARD/.test(up))type='DR';
     }
-    // PRIORITY 3: unknown — leave for the user to classify (do NOT silently assume DR).
+    if(!amount||amount<=0)return;
+    // PRIORITY 3: still unknown — leave for the user to classify (never silently assume a side).
     if(!type)type='UNK';
     if(balance!==null)prevBalance=balance;
     txns.push({date:date,desc:desc||'Bank transaction',amount:amount,balance:balance,type:type,matchId:null,assigned:null});
