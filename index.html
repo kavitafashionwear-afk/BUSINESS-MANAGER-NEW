@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R15</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R16</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -1052,7 +1052,7 @@ let unsubscribe=null;
 let _saving=false;
 function _col(name){ return db.collection('users').doc(uid).collection(name); }
 let _lastSaved={}; // _lastSaved[firm][entity] = {id: record}
-function _indexById(arr){ const m={}; (arr||[]).forEach(x=>{ if(x&&x.id!=null) m[x.id]=x; }); return m; }
+function _indexById(arr){ const m={}; (arr||[]).forEach(x=>{ if(x&&x.id!=null) m[x.id]=JSON.parse(JSON.stringify(x)); }); return m; }
 
 function ensureFirm(firm){
   if(!S[firm]) S[firm]={};
@@ -1167,7 +1167,7 @@ function diffWrite(coll, arr, lastIndex){
   (arr||[]).forEach(item=>{
     if(!item||item.id==null) return;
     const id=String(item.id);
-    nowIndex[id]=item;
+    nowIndex[id]=JSON.parse(JSON.stringify(item));
     const prev=lastIndex[id];
     if(!prev || JSON.stringify(prev)!==JSON.stringify(item))
       _col(coll).doc(id).set(_clean(item)).catch(e=>console.warn(coll+' write deferred:', e&&e.code));
