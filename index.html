@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R11</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R14</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -758,6 +758,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div id="as-gst-calc" class="ibox blu" style="font-size:12px;margin-top:8px;display:none"></div>
     </details>
     <div class="fl"><label>Note</label><input id="as-note" placeholder="Optional"></div>
+    <div id="as-payments" style="display:none"></div>
   </div>
   <div class="mft">
     <button class="btn" onclick="closeModal('asset')">Cancel</button>
@@ -2372,6 +2373,35 @@ function openAssetModal(aid){
   document.getElementById('as-itc').checked=a?(a.claimItc!==false):true;
   const supList=document.getElementById('as-sup-list');if(supList)supList.innerHTML=d.parties.filter(p=>p.type==='S'||p.type==='B').map(p=>`<option value="${esc(p.name)}">`).join('');
   document.getElementById('as-gst-wrap').open=!!(a&&(a.gstPct||a.gstin));
+  // Payment bifurcation — breakdown of every payment made toward this asset
+  var payDiv=document.getElementById('as-payments');
+  if(payDiv){
+    payDiv.innerHTML='';payDiv.style.display='none';
+    if(a){
+      var rows='',totalPaid=0;
+      if(a.txns&&a.txns.length){
+        a.txns.slice().sort(function(x,y){return String(x.date||'').localeCompare(String(y.date||''));}).forEach(function(x){
+          var amt=parseFloat(x.amt)||0;totalPaid+=amt;
+          var lbl=esc((x.note||'').replace(/^Bank:\s*/,''))||'Payment';
+          rows+='<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px dashed var(--bdr);font-size:12px"><span>'+fmtD(x.date)+' &nbsp;<span style="color:var(--sub)">'+lbl+'</span></span><span style="font-weight:700;color:#0369A1;white-space:nowrap">'+fmt(amt)+'</span></div>';
+        });
+      }else{
+        var cpv=parseFloat(a.cashPaid)||0,bpv=parseFloat(a.bankPaid)||0;
+        if(cpv>0){totalPaid+=cpv;rows+='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--bdr);font-size:12px"><span>'+fmtD(a.date)+' &nbsp;<span style="color:var(--sub)">Cash</span></span><span style="font-weight:700;color:#0369A1">'+fmt(cpv)+'</span></div>';}
+        if(bpv>0){totalPaid+=bpv;rows+='<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--bdr);font-size:12px"><span>'+fmtD(a.date)+' &nbsp;<span style="color:var(--sub)">Bank</span></span><span style="font-weight:700;color:#0369A1">'+fmt(bpv)+'</span></div>';}
+      }
+      if(rows){
+        var unp=parseFloat(a.unpaid)||0,n=(a.txns&&a.txns.length)?a.txns.length:0;
+        payDiv.innerHTML='<div style="margin-top:10px;padding:11px;background:#F8FAFC;border:1px solid var(--bdr);border-radius:10px">'
+          +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">💰 Payment breakdown'+(n?' ('+n+' payments)':'')+'</div>'
+          +rows
+          +'<div style="display:flex;justify-content:space-between;padding:7px 0 0;font-size:13px;font-weight:800"><span>Total paid</span><span>'+fmt(totalPaid)+'</span></div>'
+          +(unp>0.5?'<div style="display:flex;justify-content:space-between;font-size:12px;color:#DC2626;margin-top:2px"><span>Still unpaid</span><span>'+fmt(unp)+'</span></div>':'')
+          +'</div>';
+        payDiv.style.display='';
+      }
+    }
+  }
   calcAssetTotal();
   openModal('asset');
 }
@@ -2431,7 +2461,8 @@ function saveAsset(){
     value,taxable,gstPct,gstAmt,gstStr,grand,gstin,supplier,supplierPid,
     cashPaid,bankPaid,unpaid,payMode,claimItc,
     date:document.getElementById('as-date').value||td(),
-    note:document.getElementById('as-note').value.trim()
+    note:document.getElementById('as-note').value.trim(),
+    txns:editAssetId?(d.assets.find(x=>x.id===editAssetId)?.txns||[]):[]
   };
   if(editAssetId){const i=d.assets.findIndex(x=>x.id===editAssetId);if(i>=0)d.assets[i]=obj;}
   else{d.assets.push(obj);d.assetC=(d.assetC||1)+1;}
@@ -5326,15 +5357,54 @@ function printNote(nid){
 // ═══════════════════════════════════════════
 let bankTxns=[];
 let _matchIdx=-1;
+let bankFiltFrom='';
+let bankFiltTo='';
+// Append newly-parsed transactions to the existing list, skipping duplicates (same date+amount+type+desc)
+function mergeBankTxns(newTxns){
+  const d=D();
+  if(!Array.isArray(d.bankTxns))d.bankTxns=[];
+  const existing=d.bankTxns;
+  const keyOf=t=>String(t.date||'')+'|'+Math.round((parseFloat(t.amount)||0)*100)+'|'+(t.type||'')+'|'+String(t.desc||'').replace(/\s+/g,' ').trim().toLowerCase().slice(0,40);
+  const seen=new Set(existing.map(keyOf));
+  let added=0,dup=0;
+  (newTxns||[]).forEach(t=>{const k=keyOf(t);if(seen.has(k)){dup++;return;}seen.add(k);existing.push(t);added++;});
+  existing.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+  d.bankTxns=existing;bankTxns=d.bankTxns;
+  return {added,dup,total:existing.length};
+}
+function _bankInRange(t){
+  const dt=String(t.date||'');
+  if(bankFiltFrom&&dt<bankFiltFrom)return false;
+  if(bankFiltTo&&dt>bankFiltTo)return false;
+  return true;
+}
+function applyBankFilter(){
+  bankFiltFrom=document.getElementById('bnk-from')?.value||'';
+  bankFiltTo=document.getElementById('bnk-to')?.value||'';
+  renderBank();
+}
+function clearBankFilter(){bankFiltFrom='';bankFiltTo='';renderBank();}
+function bankPreset(p){
+  const now=new Date();const y=now.getFullYear(),m=now.getMonth();
+  const pad=n=>String(n).padStart(2,'0');
+  const iso=dt=>dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate());
+  if(p==='all'){bankFiltFrom='';bankFiltTo='';}
+  else if(p==='tm'){bankFiltFrom=iso(new Date(y,m,1));bankFiltTo=iso(now);}
+  else if(p==='lm'){bankFiltFrom=iso(new Date(y,m-1,1));bankFiltTo=iso(new Date(y,m,0));}
+  else if(p==='fy'){const fy=(m>=3)?y:y-1;bankFiltFrom=iso(new Date(fy,3,1));bankFiltTo=iso(now);}
+  renderBank();
+}
 
 function renderBank(){
   const pg=document.getElementById('pg-bank');if(!pg)return;
   const d=D();
   bankTxns=d.bankTxns;  // persisted per business
-  const matched=bankTxns.filter(t=>t.matchId);
-  const unmatched=bankTxns.filter(t=>!t.matchId);
-  const totalCr=bankTxns.filter(t=>t.type==='CR').reduce((s,t)=>s+t.amount,0);
-  const totalDr=bankTxns.filter(t=>t.type==='DR').reduce((s,t)=>s+t.amount,0);
+  const view=bankTxns.filter(_bankInRange);
+  const filtActive=!!(bankFiltFrom||bankFiltTo);
+  const matched=view.filter(t=>t.matchId);
+  const unmatched=view.filter(t=>!t.matchId);
+  const totalCr=view.filter(t=>t.type==='CR').reduce((s,t)=>s+t.amount,0);
+  const totalDr=view.filter(t=>t.type==='DR').reduce((s,t)=>s+t.amount,0);
 
   let html=`<div style="padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:center">
     <h2 style="font-size:17px;font-weight:700">🏦 DCB Bank Statement</h2>
@@ -5362,8 +5432,8 @@ function renderBank(){
     // Stats
     html+=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 16px 12px">
       <div class="card" style="padding:12px;text-align:center">
-        <div style="font-size:11px;color:var(--sub)">Total Txns</div>
-        <div style="font-size:20px;font-weight:700">${bankTxns.length}</div>
+        <div style="font-size:11px;color:var(--sub)">${filtActive?'In range':'Total Txns'}</div>
+        <div style="font-size:20px;font-weight:700">${view.length}</div>
       </div>
       <div class="card" style="padding:12px;text-align:center">
         <div style="font-size:11px;color:var(--sub)">✅ Matched</div>
@@ -5387,6 +5457,20 @@ function renderBank(){
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
       <button class="btn sm" onclick="repairPaymentDirections()" style="background:#FFF7ED;color:#92400E">🔧 Fix Receipt/Payment Mix-ups</button>
       <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
+    </div>
+    <div style="padding:0 16px 10px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn sm" onclick="bankPreset('tm')" style="font-size:11px">This month</button>
+        <button class="btn sm" onclick="bankPreset('lm')" style="font-size:11px">Last month</button>
+        <button class="btn sm" onclick="bankPreset('fy')" style="font-size:11px">This FY</button>
+        <button class="btn sm" onclick="bankPreset('all')" style="font-size:11px;${filtActive?'':'background:var(--pri);color:#fff'}">All</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px"><label style="font-size:10px;color:var(--sub);display:block;margin-bottom:2px">From date</label><input type="date" id="bnk-from" value="${bankFiltFrom}" onchange="applyBankFilter()" style="width:100%;padding:8px;border:1.5px solid var(--bdr);border-radius:8px;font-size:12px;box-sizing:border-box"></div>
+        <div style="flex:1;min-width:120px"><label style="font-size:10px;color:var(--sub);display:block;margin-bottom:2px">To date</label><input type="date" id="bnk-to" value="${bankFiltTo}" onchange="applyBankFilter()" style="width:100%;padding:8px;border:1.5px solid var(--bdr);border-radius:8px;font-size:12px;box-sizing:border-box"></div>
+        ${filtActive?`<button class="btn sm" onclick="clearBankFilter()" style="font-size:11px">✕ Clear</button>`:''}
+      </div>
+      ${filtActive?`<div style="font-size:11px;color:var(--pri2);margin-top:6px">Showing ${view.length} of ${bankTxns.length} entries${bankFiltFrom?' · from '+fmtD(bankFiltFrom):''}${bankFiltTo?' · to '+fmtD(bankFiltTo):''}</div>`:''}
     </div>`;
 
     // Transaction rows — grouped: Miscellaneous first, then matched/assigned
@@ -5423,7 +5507,11 @@ function renderBank(){
     }
 
     const miscTxns=[],doneTxns=[];
-    bankTxns.forEach((t,i)=>{(t.matchId||t.assigned)?doneTxns.push(i):miscTxns.push(i);});
+    bankTxns.forEach((t,i)=>{if(!_bankInRange(t))return;(t.matchId||t.assigned)?doneTxns.push(i):miscTxns.push(i);});
+
+    if(filtActive&&!miscTxns.length&&!doneTxns.length){
+      html+=`<div style="margin:8px 16px;padding:18px;text-align:center;color:var(--sub);background:#F8FAFC;border:1px dashed var(--bdr);border-radius:10px;font-size:13px">No bank entries in the selected date range.</div>`;
+    }
 
     if(miscTxns.length){
       html+=`<div style="margin:0 16px 4px"><div style="font-size:14px;font-weight:700;color:#DC2626;margin-bottom:8px">❓ Miscellaneous — needs your action (${miscTxns.length})</div></div><div style="margin:0 16px">`;
@@ -5570,10 +5658,10 @@ function parseDCBPdfText(text){
     txns.push({date:date,desc:desc||'Bank transaction',amount:amount,balance:balance,type:type,matchId:null,assigned:null});
   });
   if(!txns.length){alert('No transactions found in the PDF. If the statement layout is unusual, download CSV from the DCB app instead and import that.');return;}
-  D().bankTxns=txns;bankTxns=D().bankTxns;
+  var _m=mergeBankTxns(txns);
   autoMatchBank();
-  var unk=txns.filter(function(t){return t.type==='UNK';}).length;
-  alert('✅ Imported '+txns.length+' transaction(s) from PDF. Auto-matching done.'+(unk?'\n⚠️ '+unk+' transaction(s) could not be auto-classified as credit/debit — set them in the ❓ Miscellaneous section.':'\nReview the ❓ Miscellaneous section for unmatched entries.'));
+  var unk=D().bankTxns.filter(function(t){return t.type==='UNK';}).length;
+  alert('✅ Added '+_m.added+' new transaction(s) from PDF'+(_m.dup?' ('+_m.dup+' duplicate(s) skipped)':'')+'.\nTotal bank entries: '+_m.total+'. Auto-matching done.'+(unk?'\n⚠️ '+unk+' entry(ies) could not be auto-classified as credit/debit — set them in the ❓ Miscellaneous section.':''));
 }
 
 function parseBankPaste(){
@@ -5625,8 +5713,9 @@ function parseBankCSV(csv){
     alert('No transactions found.\n\nExpected format:\nDate, Description, Debit, Credit, Balance\n\nTry exporting as CSV from DCB app.');
     return;
   }
-  D().bankTxns=txns;bankTxns=D().bankTxns;
+  var _m=mergeBankTxns(txns);
   autoMatchBank();
+  alert('✅ Added '+_m.added+' new transaction(s)'+(_m.dup?' ('+_m.dup+' duplicate(s) skipped)':'')+'.\nTotal bank entries: '+_m.total+'.');
 }
 
 function flipTxnDir(idx){
@@ -5685,6 +5774,9 @@ function deleteBankTxn(idx){
       }
       a.value=(parseFloat(a.value)||0)-t.amount;
       if(a.value<0)a.value=0;
+      if(a.grand!=null){a.grand=(parseFloat(a.grand)||0)-t.amount;if(a.grand<0)a.grand=0;}
+      if(a.bankPaid!=null){a.bankPaid=(parseFloat(a.bankPaid)||0)-t.amount;if(a.bankPaid<0)a.bankPaid=0;}
+      if(a.unpaid!=null)a.unpaid=(parseFloat(a.unpaid)||0)+t.amount;
     }
   }
   if(t.assigned==='expense'){
@@ -5734,6 +5826,9 @@ function unassignTxn(idx){
     if(a){
       if(a.txns){const note='Bank: '+(t.desc||'').substring(0,50);const j=a.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)a.txns.splice(j,1);}
       a.value=(parseFloat(a.value)||0)-t.amount;if(a.value<0)a.value=0;
+      if(a.grand!=null){a.grand=(parseFloat(a.grand)||0)-t.amount;if(a.grand<0)a.grand=0;}
+      if(a.bankPaid!=null){a.bankPaid=(parseFloat(a.bankPaid)||0)-t.amount;if(a.bankPaid<0)a.bankPaid=0;}
+      if(a.unpaid!=null)a.unpaid=(parseFloat(a.unpaid)||0)+t.amount;
     }
   }
   if(t.assigned==='expense'){
@@ -5921,6 +6016,7 @@ function openAssign(idx){
       <option value="">➕ New asset...</option>
       ${ensureAssets().map(a=>`<option value="${a.id}">Add to: ${esc(a.name)} (${fmt(a.value)})</option>`).join('')}
     </select>
+    <div style="font-size:11px;color:var(--sub);margin:-2px 0 8px">💡 Paying for the same asset in parts? Pick "Add to: …" above (or type the same name) — each payment adds to its total.</div>
     <input id="asg-asset-name" placeholder="Asset name (for new asset)" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;margin-bottom:8px;box-sizing:border-box">
     <select id="asg-asset-cat" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
       <option>Machinery</option><option>Vehicle</option><option>Furniture</option><option>Property</option><option>Investment / FD</option><option>Other</option>
@@ -5962,22 +6058,36 @@ function assignToLoan(){
   t.assigned='loan';t.assignedLoan=lid;
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
+// Apply (or, with a negative amt, reverse) a bank payment toward an asset's cost
+function _assetApplyPayment(a,amt){
+  a.value=(parseFloat(a.value)||0)+amt;if(a.value<0)a.value=0;
+  if(a.grand!=null){a.grand=(parseFloat(a.grand)||0)+amt;if(a.grand<0)a.grand=0;}
+  if(a.bankPaid!=null){a.bankPaid=(parseFloat(a.bankPaid)||0)+amt;if(a.bankPaid<0)a.bankPaid=0;}
+  if(a.unpaid!=null){a.unpaid=(parseFloat(a.unpaid)||0)-amt;if(a.unpaid<0)a.unpaid=0;}
+}
 function assignToAsset(){
   const d=D();const t=bankTxns[_assignIdx];ensureAssets();
   const existingId=document.getElementById('asg-asset').value;
   const newName=(document.getElementById('asg-asset-name').value||'').trim();
   const cat=document.getElementById('asg-asset-cat').value;
+  let a=null;
   if(existingId){
-    // Top up an existing asset's value
-    const a=d.assets.find(x=>x.id===existingId);if(!a){alert('Asset not found');return;}
-    a.value=(parseFloat(a.value)||0)+t.amount;
+    a=d.assets.find(x=>x.id===existingId);
+    if(!a){alert('Asset not found');return;}
+  }else{
+    if(!newName){alert('Enter an asset name (or pick an existing asset)');return;}
+    // Parts-payment for the SAME asset: merge into an existing asset of the same name instead of duplicating
+    a=d.assets.find(x=>(x.name||'').trim().toLowerCase()===newName.toLowerCase());
+  }
+  if(a){
+    if(a.bankPaid==null)a.bankPaid=0; // start tracking bank-paid on legacy assets so the top-up shows
+    _assetApplyPayment(a,t.amount);
     if(!a.txns)a.txns=[];a.txns.push({date:t.date,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)});
     t.assigned='asset';t.assignedAsset=a.id;
   }else{
-    if(!newName){alert('Enter an asset name (or pick an existing asset)');return;}
-    const a={id:uniqId('AS'),name:newName,cat:cat,value:t.amount,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40)};
-    d.assets.push(a);d.assetC=(d.assetC||1)+1;
-    t.assigned='asset';t.assignedAsset=a.id;
+    const na={id:uniqId('AS'),name:newName,cat:cat,value:t.amount,grand:t.amount,cashPaid:0,bankPaid:t.amount,unpaid:0,payMode:'bank',date:t.date,note:'From bank: '+(t.desc||'').substring(0,40),txns:[{date:t.date,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)}]};
+    d.assets.push(na);d.assetC=(d.assetC||1)+1;
+    t.assigned='asset';t.assignedAsset=na.id;
   }
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
