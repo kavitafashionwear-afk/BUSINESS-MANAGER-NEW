@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R19</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R21</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -870,9 +870,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <button onclick="closePrint()" aria-label="Close" style="position:fixed;top:10px;right:10px;z-index:10001;width:46px;height:46px;border-radius:50%;border:none;background:#DC2626;color:#fff;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.4);line-height:1">✕</button>
   <div id="print-toolbar" style="position:sticky;top:0;background:#1A3A6B;padding:10px 60px 10px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:1">
     <button onclick="window.print()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1A3A6B">🖨️ Print / Save PDF</button>
-    <button onclick="shareWA()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#25D366;color:#fff">📲 WhatsApp</button>
+    <button onclick="shareWA()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#25D366;color:#fff">📲 WhatsApp (PDF)</button>
+    <button onclick="downloadPDF()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1A3A6B">📄 Download PDF</button>
     <button onclick="closePrint()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:rgba(255,255,255,.15);color:#fff">✕ Close</button>
-    <div style="width:100%;font-size:11px;color:#B0C4DE">Print → Destination → Save as PDF</div>
+    <div style="width:100%;font-size:11px;color:#B0C4DE">On desktop: tap 📄 Download PDF, then drag/attach it in WhatsApp Web. On phone: 📲 WhatsApp (PDF) attaches it directly.</div>
   </div>
   <div id="print-body" style="max-width:800px;margin:0 auto;padding:24px 16px 80px;overflow-x:auto"></div>
 </div>
@@ -3907,6 +3908,8 @@ function printInvoice(iid){
     </div>
     <div style="text-align:center;font-size:10px;color:#AAA;margin-top:12px;border-top:1px solid #F0F0F0;padding-top:8px">This is a computer generated invoice · ${esc(biz.name)} · GSTIN: ${esc(biz.gstin)}</div>
   </div>`;
+  _printDocName='Invoice_'+String(inv.num||inv.id||'').replace(/[^\w\-]+/g,'_');
+  _printDocMsg='*'+biz.name+'*\nInvoice: '+(inv.num||'')+(party?'\nParty: '+party.name:'')+'\nTotal: '+fmt(inv.grand);
   _openPrintView();
 }
 
@@ -4156,11 +4159,75 @@ function _openPrintView(){
 document.addEventListener('keydown',function(e){
   if(e.key==='Escape'){var po=document.getElementById('print-overlay');if(po&&po.style.display==='block'){closePrint();}}
 });
-function shareWA(){
+var _printDocName='Document',_printDocMsg='';
+var _html2pdfReady=null;
+function ensureHtml2pdf(){
+  if(window.html2pdf)return Promise.resolve();
+  if(_html2pdfReady)return _html2pdfReady;
+  var urls=[
+    'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+    'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js',
+    'https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
+  ];
+  _html2pdfReady=new Promise(function(resolve,reject){
+    var i=0;
+    (function tryNext(){
+      if(window.html2pdf)return resolve();
+      if(i>=urls.length){_html2pdfReady=null;return reject(new Error('Could not load the PDF library — check your internet connection.'));}
+      var s=document.createElement('script');s.src=urls[i++];
+      s.onload=function(){ window.html2pdf?resolve():tryNext(); };
+      s.onerror=function(){ tryNext(); };
+      document.head.appendChild(s);
+    })();
+  });
+  return _html2pdfReady;
+}
+function _shareBusy(on){
+  var id='__sharebusy';var ex=document.getElementById(id);
+  if(on){ if(ex)return; var d=document.createElement('div'); d.id=id; d.textContent='Preparing PDF…'; d.style.cssText='position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:700;z-index:2147483647'; document.body.appendChild(d); }
+  else if(ex){ ex.remove(); }
+}
+async function _makePdfBlob(){
+  const body=document.getElementById('print-body');
+  if(!body)throw new Error('Nothing to export');
+  await ensureHtml2pdf();
+  const name=(_printDocName||'Document')+'.pdf';
+  const opt={margin:[5,5,5,5],filename:name,image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['avoid-all','css','legacy']}};
+  return html2pdf().set(opt).from(body).outputPdf('blob');
+}
+function _downloadBlob(blob,name){
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},5000);
+}
+async function downloadPDF(){
+  const name=(_printDocName||'Document')+'.pdf';
+  try{ _shareBusy(true); const blob=await _makePdfBlob(); _shareBusy(false); _downloadBlob(blob,name); }
+  catch(e){ _shareBusy(false); alert('Could not build the PDF ('+(e&&e.message||'error')+').\nUse "🖨️ Print / Save PDF" instead.'); }
+}
+async function shareWA(){
   const body=document.getElementById('print-body');
   if(!body)return;
-  const text='*'+BIZ[curBiz].name+'*\n\n'+body.innerText.slice(0,500);
-  window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+  const name=(_printDocName||'Document')+'.pdf';
+  const msg=_printDocMsg||('*'+BIZ[curBiz].name+'*');
+  try{
+    _shareBusy(true);
+    const blob=await _makePdfBlob();
+    _shareBusy(false);
+    const file=new File([blob],name,{type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file],title:name.replace(/\.pdf$/,''),text:msg}); return; }
+      catch(err){ if(err&&err.name==='AbortError')return; /* user cancelled */ }
+    }
+    // Fallback (typical on desktop): download the PDF + open WhatsApp to attach manually
+    _downloadBlob(blob,name);
+    alert('On desktop, WhatsApp can\'t receive the file directly from the browser, so the invoice PDF was downloaded.\n\nWhatsApp Web will open next — drag the downloaded PDF into the chat, or use the 📎 attach button.');
+    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
+  }catch(e){
+    _shareBusy(false);
+    console.warn('PDF share failed; falling back to text:',e);
+    alert('Could not build the PDF ('+(e&&e.message||'error')+'). Sending a text summary instead.');
+    const text=msg+'\n\n'+((body.innerText||body.textContent||'').slice(0,500));
+    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+  }
 }
 // Close modal on overlay click
 document.addEventListener('click',e=>{
