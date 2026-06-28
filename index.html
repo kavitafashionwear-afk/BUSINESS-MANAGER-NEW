@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R21</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R22</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -6338,6 +6338,26 @@ function renderReports(){
 function repBack(){return '<button class="btn sm" onclick="repView=\'menu\';renderReports()" style="margin-bottom:10px">&larr; All Reports</button>';}
 
 /* ── PARTY LEDGER ── */
+function _ledgerVouchers(pid){
+  const d=D();let v=[];
+  d.invoices.filter(i=>i.pid===pid).forEach(i=>v.push({date:i.date,type:'Sales',num:i.num,dr:i.grand,cr:0}));
+  d.bills.filter(b=>b.pid===pid).forEach(b=>v.push({date:b.date,type:b.jw?'Job Work':'Purchase',num:b.num,dr:0,cr:b.grand}));
+  d.payments.filter(p=>p.pid===pid).forEach(p=>{ if(p.dir==='in')v.push({date:p.date,type:'Receipt',num:p.ref||p.mode,dr:0,cr:p.amt}); else v.push({date:p.date,type:'Payment',num:p.ref||p.mode,dr:p.amt,cr:0}); });
+  (d.notes||[]).filter(n=>n.pid===pid).forEach(n=>{ if(n.type==='credit')v.push({date:n.date,type:'Credit Note',num:n.num,dr:0,cr:n.amount}); else v.push({date:n.date,type:'Debit Note',num:n.num,dr:n.amount,cr:0}); });
+  v.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  return v;
+}
+function exportLedgerCSV(){
+  const d=D();if(!repParty){alert('Select a party first.');return;}
+  const party=d.parties.find(p=>p.id===repParty);if(!party)return;
+  const vouchers=_ledgerVouchers(repParty);
+  const ob=party.ob||0,obType=party.obType||'DR';
+  let run=obType==='DR'?ob:-ob,totDr=0,totCr=0;const rows=[];
+  if(ob>0)rows.push(['','Opening Balance','',obType==='DR'?ob.toFixed(2):'',obType==='CR'?ob.toFixed(2):'',Math.abs(run).toFixed(2)+' '+(run>=0?'Dr':'Cr')]);
+  vouchers.forEach(v=>{run+=v.dr-v.cr;totDr+=v.dr;totCr+=v.cr;rows.push([v.date,v.type,v.num||'',v.dr?v.dr.toFixed(2):'',v.cr?v.cr.toFixed(2):'',Math.abs(run).toFixed(2)+' '+(run>=0?'Dr':'Cr')]);});
+  rows.push(['','TOTAL','',totDr.toFixed(2),totCr.toFixed(2),Math.abs(run).toFixed(2)+' '+(run>=0?'Dr':'Cr')]);
+  downloadCSV('Ledger_'+(party.name||'party').replace(/[^\w]+/g,'_')+'_'+curBiz+'.csv',['Date','Voucher','No','Debit','Credit','Balance'],rows);
+}
 function renderLedger(pg){
   const d=D();
   let sel='<select onchange="repParty=this.value;renderReports()" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;background:#fff;margin-bottom:12px"><option value="">Select party...</option>'+
@@ -6372,6 +6392,7 @@ function renderLedger(pg){
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:10px">📒 Party Ledger</h3>${sel}
   <div style="font-size:15px;font-weight:700;margin-bottom:2px">${esc(party.name)}</div>
   <div style="font-size:11px;color:var(--sub);margin-bottom:10px">${vouchers.length} voucher(s) · As on ${fmtD(td())}</div>
+  <button class="btn sm pri" onclick="exportLedgerCSV()" style="margin-bottom:12px">⬇️ Export Ledger (CSV)</button>
   <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
   <thead><tr style="background:var(--n);color:#fff"><th style="padding:8px;text-align:left">Date</th><th style="padding:8px;text-align:left">Voucher</th><th style="padding:8px;text-align:left">No.</th><th style="padding:8px;text-align:right">Debit</th><th style="padding:8px;text-align:right">Credit</th><th style="padding:8px;text-align:right">Balance</th></tr></thead>
   <tbody>${obRow}${rows||'<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--sub)">No vouchers</td></tr>'}
@@ -6667,6 +6688,69 @@ function csvSalesReg(){
     rows.map(r=>[r.date,r.num,r.party,r.gstin||'B2C',r.rate,r.taxable.toFixed(2),r.igst.toFixed(2),r.cgst.toFixed(2),r.sgst.toFixed(2),r.total.toFixed(2)]));
 }
 
+/* ── GSTR JSON export (GST portal offline-tool schema) ── */
+function downloadJSON(filename,obj){
+  const blob=new Blob([JSON.stringify(obj)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},4000);
+}
+function _fpFromMonth(){ const p=(repMonth||td().slice(0,7)).split('-'); return p[1]+p[0]; } // YYYY-MM → MMYYYY
+function _r2(n){ return Number((n||0).toFixed(2)); }
+function exportGSTR1JSON(){
+  const d=D();const biz=BIZ[curBiz];
+  if(!repMonth)repMonth=td().slice(0,7);
+  const invs=d.invoices.filter(i=>i.date.slice(0,7)===repMonth);
+  if(!invs.length){alert('No invoices in '+monthLabel(repMonth)+'.');return;}
+  const fp=_fpFromMonth();
+  const b2bMap={},b2cs={},b2cl={},hsn={};
+  invs.forEach(i=>{
+    const g=gstSplit(i);const p=d.parties.find(x=>x.id===i.pid);const gstin=gstinOf(i);
+    const si=custStateInfo(i,p);const pos=(gstin?gstin.slice(0,2):(si.code||HOME_STATE));
+    const idt=String(i.date).split('-').reverse().join('-'); // DD-MM-YYYY
+    if(gstin){
+      const itm={num:1,itm_det:{txval:_r2(g.taxable),rt:g.rate,iamt:_r2(g.igst),camt:_r2(g.cgst),samt:_r2(g.sgst),csamt:0}};
+      (b2bMap[gstin]=b2bMap[gstin]||[]).push({inum:String(i.num||''),idt:idt,val:_r2(i.grand),pos:pos,rchrg:'N',inv_typ:'R',itms:[itm]});
+    } else if(!g.intra && (i.grand||0)>250000){
+      (b2cl[pos]=b2cl[pos]||[]).push({inum:String(i.num||''),idt:idt,val:_r2(i.grand),itms:[{num:1,itm_det:{txval:_r2(g.taxable),rt:g.rate,iamt:_r2(g.igst),csamt:0}}]});
+    } else {
+      const key=pos+'|'+g.rate+'|'+(g.intra?'INTRA':'INTER');
+      const e=b2cs[key]||(b2cs[key]={sply_ty:g.intra?'INTRA':'INTER',rt:g.rate,typ:'OE',pos:pos,txval:0,iamt:0,camt:0,samt:0});
+      e.txval+=g.taxable;e.iamt+=g.igst;e.camt+=g.cgst;e.samt+=g.sgst;
+    }
+    const sub=(i.items||[]).reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
+    (i.items||[]).forEach(it=>{const hs=(it.hsn||'').trim();if(!hs)return;const share=sub>0?(parseFloat(it.amt)||0)/sub:0;const tax=g.taxable*share;const taxAmt=tax*(g.rate/100);const h=hsn[hs]||(hsn[hs]={hsn_sc:hs,uqc:(it.unit||'OTH').toUpperCase(),qty:0,txval:0,iamt:0,camt:0,samt:0,rt:g.rate});h.qty+=parseFloat(it.qty)||0;h.txval+=tax;if(g.intra){h.camt+=taxAmt/2;h.samt+=taxAmt/2;}else{h.iamt+=taxAmt;}});
+  });
+  const out={gstin:biz.gstin,fp:fp,version:'GST3.2',hash:'hash'};
+  const b2b=Object.keys(b2bMap).map(ctin=>({ctin:ctin,inv:b2bMap[ctin]}));
+  if(b2b.length)out.b2b=b2b;
+  const b2csArr=Object.values(b2cs).map(e=>({sply_ty:e.sply_ty,rt:e.rt,typ:e.typ,pos:e.pos,txval:_r2(e.txval),iamt:_r2(e.iamt),camt:_r2(e.camt),samt:_r2(e.samt),csamt:0}));
+  if(b2csArr.length)out.b2cs=b2csArr;
+  const b2clArr=Object.keys(b2cl).map(pos=>({pos:pos,inv:b2cl[pos]}));
+  if(b2clArr.length)out.b2cl=b2clArr;
+  const hsnArr=Object.values(hsn).map((h,idx)=>({num:idx+1,hsn_sc:h.hsn_sc,uqc:h.uqc,qty:_r2(h.qty),txval:_r2(h.txval),iamt:_r2(h.iamt),camt:_r2(h.camt),samt:_r2(h.samt),csamt:0,rt:h.rt}));
+  if(hsnArr.length)out.hsn={data:hsnArr};
+  downloadJSON('GSTR1_'+biz.gstin+'_'+fp+'.json',out);
+}
+function exportGSTR3BJSON(){
+  const biz=BIZ[curBiz];
+  if(!repMonth)repMonth=td().slice(0,7);
+  const g3=gstr3bData();const O=g3.O,I=g3.I,cap=g3.cap;const fp=_fpFromMonth();
+  const inIgst=I.igst-cap.igst,inCgst=I.cgst-cap.cgst,inSgst=I.sgst-cap.sgst;
+  const itc_avl=[{ty:'OTH',iamt:_r2(inIgst),camt:_r2(inCgst),samt:_r2(inSgst),csamt:0}];
+  if((cap.igst+cap.cgst+cap.sgst)>0)itc_avl.push({ty:'CG',iamt:_r2(cap.igst),camt:_r2(cap.cgst),samt:_r2(cap.sgst),csamt:0});
+  const out={
+    gstin:biz.gstin,ret_period:fp,
+    sup_details:{
+      osup_det:{txval:_r2(O.taxable),iamt:_r2(O.igst),camt:_r2(O.cgst),samt:_r2(O.sgst),csamt:0},
+      osup_zero:{txval:0,iamt:0,csamt:0},
+      osup_nil_exmp:{txval:0},
+      isup_rev:{txval:0,iamt:0,camt:0,samt:0,csamt:0},
+      osup_nongst:{txval:0}
+    },
+    itc_elg:{itc_avl:itc_avl,itc_rev:[],itc_net:{iamt:_r2(I.igst),camt:_r2(I.cgst),samt:_r2(I.sgst),csamt:0},itc_inelg:[]},
+    inward_sup:{isup_details:[{ty:'GST',inter:0,intra:0},{ty:'NONGST',inter:0,intra:0}]}
+  };
+  downloadJSON('GSTR3B_'+biz.gstin+'_'+fp+'.json',out);
+}
 /* ── GSTR-1 (outward supplies) ── */
 function gstr1Data(){
   const d=D();
@@ -6698,6 +6782,7 @@ function renderGSTR1(pg){
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📋 GSTR-1 — Outward Supplies</h3>${repMonthInput()}
     <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)}</div>
     ${repActionBar("printGSTR1()",null)}
+    <button class="btn sm" onclick="exportGSTR1JSON()" style="background:#1A3A6B;color:#fff;margin-bottom:10px">⬇️ Export GSTR-1 JSON (for GST portal)</button>
     <div class="stats" style="margin-bottom:14px">
       <div class="stat"><div class="sl">B2B Invoices</div><div class="sv blu" style="font-size:16px">${b2b.length}</div><div style="font-size:10px;color:var(--sub)">Taxable ${fmt(sb.taxable)}</div></div>
       <div class="stat"><div class="sl">B2C Invoices</div><div class="sv ora" style="font-size:16px">${b2c.length}</div><div style="font-size:10px;color:var(--sub)">Taxable ${fmt(sc.taxable)}</div></div>
@@ -6734,6 +6819,7 @@ function renderGSTR3B(pg){
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🧮 GSTR-3B Summary</h3>${repMonthInput()}
     <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${outN} sale(s), ${inN} purchase(s). Job-work excluded.</div>
     ${repActionBar("printGSTR3B()",null)}
+    <button class="btn sm" onclick="exportGSTR3BJSON()" style="background:#1A3A6B;color:#fff;margin-bottom:10px">⬇️ Export GSTR-3B JSON (for GST portal)</button>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:480px">
       <thead><tr style="background:var(--pri);color:#fff"><th style="padding:8px;text-align:left">Particulars</th><th style="padding:8px;text-align:right">Taxable</th><th style="padding:8px;text-align:right">IGST</th><th style="padding:8px;text-align:right">CGST</th><th style="padding:8px;text-align:right">SGST</th></tr></thead>
       <tbody>
