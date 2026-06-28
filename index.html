@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 22Jun-R22</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 28Jun-R23</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -285,7 +285,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="fl"><label>Address</label><input id="p-addr" placeholder="Street, area (used on invoices)"></div>
     <div class="fl"><label>PIN Code</label><input id="p-pin" placeholder="e.g. 110031" inputmode="numeric" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
     <div class="fl"><label>State *</label>
-      <select id="p-state">
+      <select id="p-state" onchange="validatePartyGstLive()">
         <option value="07">Delhi (07)</option>
         <option value="01">Jammu & Kashmir (01)</option>
         <option value="02">Himachal Pradesh (02)</option>
@@ -318,11 +318,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <option value="37">Andhra Pradesh (37)</option>
       </select>
     </div>
-    <div class="fl"><label>GSTIN</label><input id="p-gstin" placeholder="e.g. 24ACIPS3195C1ZL" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();syncPartyStateFromGstin()"></div>
-    <div class="fr">
-      <div class="fl"><label>PAN No.</label><input id="p-pan" placeholder="e.g. ACIPS3195C" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase()"></div>
-      <div class="fl"><label>Udyam / MSME No.</label><input id="p-udyam" placeholder="e.g. UDYAM-GJ-22-0086871"></div>
+    <div class="fl"><label>GSTIN</label><input id="p-gstin" placeholder="e.g. 24ACIPS3195C1ZL" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();syncPartyStateFromGstin();validatePartyGstLive()"></div>
+    <div class="fl"><label>PAN No.</label><input id="p-pan" placeholder="e.g. ACIPS3195C" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();validatePartyGstLive()"></div>
+    <div id="p-gst-msg" style="font-size:12px;font-weight:600;min-height:16px;margin:-4px 0 4px"></div>
+    <div id="p-constitution" style="font-size:12px;color:var(--sub);min-height:16px;margin:-2px 0 6px"></div>
+    <div class="fl"><label>Is this business MSME / Udyam registered?</label>
+      <select id="p-msme" onchange="toggleMsme()">
+        <option value="No">No</option>
+        <option value="Yes">Yes</option>
+      </select>
     </div>
+    <div class="fl" id="p-udyam-wrap" style="display:none"><label>Udyam / MSME No.</label><input id="p-udyam" placeholder="e.g. UDYAM-GJ-22-0086871"></div>
     <div class="card-hd" style="margin-top:4px;display:flex;justify-content:space-between;align-items:center">
       <span>🏦 Bank / UPI Details</span>
       <button class="btn sm" type="button" onclick="addBankRow()" style="font-size:11px">+ Add Account</button>
@@ -2724,6 +2730,7 @@ function openPartyDetail(pid){
     <div class="det-hd" style="background:var(--pri)">
       <div class="dn">${esc(party.name)}</div>
       <div class="ds">${party.city?esc(party.city)+' · ':''}${party.phone?'📞 '+esc(party.phone):''}${party.gstin?' · GSTIN: '+esc(party.gstin):''}</div>
+      ${(party.constitution||party.msme==='Yes')?`<div class="ds" style="font-size:11px">${party.constitution?'🏷️ '+esc(party.constitution):''}${party.msme==='Yes'?(party.constitution?' · ':'')+'🟢 MSME'+(party.udyam?': '+esc(party.udyam):' registered'):''}</div>`:''}
       ${(()=>{const bks=partyBanks(party);return bks.length?`<div style="font-size:11px;opacity:.85;margin-top:6px;line-height:1.5">${bks.map(b=>'🏦 '+[b.bankName,b.acNo,b.ifsc,b.upi].filter(Boolean).map(esc).join(' · ')).join('<br>')}</div>`:'';})()}
     </div>
     <div class="stats">
@@ -2767,6 +2774,8 @@ function openPartyModal(pid){
     document.getElementById('p-state').value=p.state||'07';
     document.getElementById('p-ob').value=p.ob||0;
     document.getElementById('p-ob-type').value=p.obType||'CR';
+    // Batch 1: MSME inferred from stored flag or legacy udyam value
+    document.getElementById('p-msme').value=(p.msme==='Yes'||(!p.msme&&p.udyam))?'Yes':'No';
     loadBankRows(partyBanks(p));
   } else {
     ['name','phone','city','addr','pin','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value='';});
@@ -2774,8 +2783,10 @@ function openPartyModal(pid){
     document.getElementById('p-state').value='07';
     document.getElementById('p-ob').value=0;
     document.getElementById('p-ob-type').value='CR';
+    document.getElementById('p-msme').value='No';
     loadBankRows([]);
   }
+  toggleMsme();validatePartyGstLive();
   openModal('party');
 }
 // Normalise a party's bank info to an array, supporting the old single-field format
@@ -2848,9 +2859,18 @@ function syncPartyStateFromGstin(){
   const st=stateFromGstin(g);
   if(st){const sel=document.getElementById('p-state');if(sel){const has=[...sel.options].some(o=>o.value===st);if(has)sel.value=st;}}
 }
+function toggleMsme(){
+  const on=(document.getElementById('p-msme')?.value)==='Yes';
+  const wrap=document.getElementById('p-udyam-wrap');if(wrap)wrap.style.display=on?'':'none';
+  if(!on){const u=document.getElementById('p-udyam');if(u)u.value='';}
+}
 function saveParty(){
   const name=document.getElementById('p-name').value.trim();
   if(!name){alert('Party name required');return;}
+  // Batch 1: block invalid GST/PAN before saving (items 1–3)
+  const gv=validatePartyGst();
+  if(!gv.ok){alert('Cannot save — please fix:\n\n• '+gv.errors.join('\n• '));return;}
+  const msme=document.getElementById('p-msme')?.value||'No';
   const d=D();
   const banks=getBankRows();
   const first=banks[0]||{};
@@ -2865,6 +2885,8 @@ function saveParty(){
     gstin:document.getElementById('p-gstin').value.trim().toUpperCase(),
     pan:(document.getElementById('p-pan')?.value||'').trim().toUpperCase(),
     udyam:(document.getElementById('p-udyam')?.value||'').trim(),
+    msme:msme,
+    constitution:gv.constitution||'',
     banks:banks,
     // legacy mirror (first account) so older code paths keep working
     bank:first.acNo||'',
@@ -3431,6 +3453,87 @@ function onInvModeChange(){
 const HOME_STATE='07';
 const STATE_CODES={'01':'Jammu & Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh','05':'Uttarakhand','06':'Haryana','07':'Delhi','08':'Rajasthan','09':'Uttar Pradesh','10':'Bihar','11':'Sikkim','12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur','15':'Mizoram','16':'Tripura','17':'Meghalaya','18':'Assam','19':'West Bengal','20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh','24':'Gujarat','25':'Daman & Diu','26':'Dadra & Nagar Haveli','27':'Maharashtra','29':'Karnataka','30':'Goa','31':'Lakshadweep','32':'Kerala','33':'Tamil Nadu','34':'Puducherry','35':'Andaman & Nicobar','36':'Telangana','37':'Andhra Pradesh','38':'Ladakh','97':'Other Territory'};
 function stateName(code){return STATE_CODES[code]||'';}
+// ═══ GST / PAN VALIDATION ENGINE (Batch 1: items 1–3) ═══════════════════════
+// PAN 4th character → entity constitution (official income-tax mapping).
+const PAN_ENTITY={A:'Association of Persons (AOP)',B:'Body of Individuals (BOI)',C:'Company',F:'Partnership Firm / LLP',G:'Government',H:'HUF (Hindu Undivided Family)',J:'Artificial Juridical Person',L:'Local Authority',P:'Individual',T:'Trust'};
+function panEntityType(pan){
+  pan=(pan||'').toUpperCase().trim();
+  if(pan.length<4)return '';
+  return PAN_ENTITY[pan[3]]||'Unknown / Invalid entity code';
+}
+// PAN format: 5 letters + 4 digits + 1 letter.
+function validatePAN(pan){
+  pan=(pan||'').toUpperCase().trim();
+  if(!pan)return {ok:true,error:''}; // PAN optional
+  if(!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan))return {ok:false,error:'PAN must be 5 letters + 4 digits + 1 letter (e.g. ACIPS3195C).'};
+  if(!PAN_ENTITY[pan[3]])return {ok:false,error:'PAN 4th character "'+pan[3]+'" is not a recognised entity type.'};
+  return {ok:true,error:''};
+}
+// Luhn-mod-36 checksum used by the GST portal for the 15th GSTIN character.
+function gstinCheckDigit(gstin14){
+  const code='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ',mod=36;
+  let factor=2,sum=0;
+  for(let i=gstin14.length-1;i>=0;i--){
+    let cp=code.indexOf(gstin14[i]);if(cp<0)return '';
+    let d=factor*cp;factor=(factor===2)?1:2;
+    d=Math.floor(d/mod)+(d%mod);sum+=d;
+  }
+  return code[(mod-(sum%mod))%mod];
+}
+// Full structural GSTIN validation. expectedState = 2-digit code from the form (optional).
+function validateGSTIN(gstin,expectedState){
+  gstin=(gstin||'').toUpperCase().trim();
+  if(!gstin)return {ok:true,error:''}; // GSTIN optional (unregistered parties)
+  if(gstin.length!==15)return {ok:false,error:'GSTIN must be exactly 15 characters (this one has '+gstin.length+').'};
+  // structure: 2 state + 5 letters + 4 digits + 1 letter (=PAN) + 1 entity + 'Z' + 1 checksum
+  if(!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/.test(gstin))
+    return {ok:false,error:'GSTIN structure is invalid. Expected: 2-digit state + 10-char PAN + entity code + Z + checksum.'};
+  const sc=gstin.slice(0,2);
+  if(!STATE_CODES[sc])return {ok:false,error:'GSTIN state code "'+sc+'" is not a valid Indian state code.'};
+  if(expectedState&&sc!==expectedState)
+    return {ok:false,error:'GST State Code does not match the selected state. Selected '+stateName(expectedState)+' ('+expectedState+'), but GSTIN starts with '+sc+' ('+(stateName(sc)||'unknown')+').'};
+  // 14th char (index 13) must be 'Z' for standard registrations
+  if(gstin[13]!=='Z')return {ok:false,error:'14th character is "'+gstin[13]+'"; standard GST registrations use "Z" here.'};
+  // 15th checksum char
+  const expect=gstinCheckDigit(gstin.slice(0,14));
+  if(expect&&gstin[14]!==expect)return {ok:false,error:'GSTIN checksum is wrong. Last character should be "'+expect+'" — please re-check the number.'};
+  return {ok:true,error:''};
+}
+// Cross-validate PAN embedded in GSTIN (positions 3–12) against the PAN field (item 2).
+function crossValidatePanGst(pan,gstin){
+  pan=(pan||'').toUpperCase().trim();gstin=(gstin||'').toUpperCase().trim();
+  if(!pan||gstin.length<12)return {ok:true,error:''};
+  const gstPan=gstin.slice(2,12);
+  if(gstPan!==pan)return {ok:false,error:'PAN ('+pan+') does not match the PAN inside the GSTIN ('+gstPan+').'};
+  return {ok:true,error:''};
+}
+// Master validator for the party form. Returns {ok, errors[], constitution}.
+function validatePartyGst(){
+  const g=(document.getElementById('p-gstin')?.value||'').toUpperCase().trim();
+  const pan=(document.getElementById('p-pan')?.value||'').toUpperCase().trim();
+  const st=document.getElementById('p-state')?.value||'';
+  const errs=[];
+  const vp=validatePAN(pan);if(!vp.ok)errs.push(vp.error);
+  const vg=validateGSTIN(g,st);if(!vg.ok)errs.push(vg.error);
+  const vc=crossValidatePanGst(pan,g);if(!vc.ok)errs.push(vc.error);
+  // derive constitution from PAN, else from PAN inside GSTIN
+  let cons='';
+  if(/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan))cons=panEntityType(pan);
+  else if(g.length>=12&&/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(g.slice(2,12)))cons=panEntityType(g.slice(2,12));
+  return {ok:errs.length===0,errors:errs,constitution:cons};
+}
+// Live feedback as the user types GSTIN / PAN (item 1–3).
+function validatePartyGstLive(){
+  const box=document.getElementById('p-gst-msg');if(!box)return;
+  const g=(document.getElementById('p-gstin')?.value||'').trim();
+  const pan=(document.getElementById('p-pan')?.value||'').trim();
+  const consEl=document.getElementById('p-constitution');
+  const r=validatePartyGst();
+  if(consEl)consEl.textContent=r.constitution?('🏷️ Detected constitution: '+r.constitution):'';
+  if(!g&&!pan){box.textContent='';box.style.color='';return;}
+  if(r.ok){box.textContent='✓ GST / PAN valid';box.style.color='#15803D';}
+  else{box.textContent='⚠ '+r.errors[0];box.style.color='#B91C1C';}
+}
 function autoFillCustState(){
   const g=(document.getElementById('i-cust-gstin')?.value||'').trim();
   const code=stateFromGstin(g);const stEl=document.getElementById('i-cust-state');
