@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 28Jun-R27</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 28Jun-R28</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -853,6 +853,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       <div id="exp-split-calc" style="font-size:11px;color:var(--sub)"></div>
     <div class="fl"><label>Description / Notes</label><input id="exp-desc" placeholder="e.g. June shop rent, Blue Dart courier #4471"></div>
     <div class="fl"><label>Paid To (optional)</label><input id="exp-payee" placeholder="e.g. Landlord, electricity board, staff name"></div>
+    <div class="fl"><label>📎 Attachment (bill PDF or image — optional)</label>
+      <input type="file" id="exp-file" accept="image/*,application/pdf" onchange="onExpFile(this)">
+      <div id="exp-file-msg" style="font-size:11px;min-height:14px;margin-top:4px"></div>
+    </div>
     <div class="ibox blu" style="font-size:12px">💡 Cash expenses automatically appear in your Cash in Hand ledger. All expenses flow into the Profit report.</div>
   </div>
   <div class="mft">
@@ -1762,7 +1766,7 @@ function renderExpenses(){
       <div class="pav" style="background:#B45309;font-size:16px">🧾</div>
       <div class="pi">
         <div class="pn">${esc(e.cat||'Expense')}</div>
-        <div class="ps">${fmtD(e.date)} ${modeBadge(e.mode)}${e.desc?' · '+esc(e.desc):''}${e.payee?' · '+esc(e.payee):''}</div>
+        <div class="ps">${fmtD(e.date)} ${modeBadge(e.mode)}${e.desc?' · '+esc(e.desc):''}${e.payee?' · '+esc(e.payee):''}${e.attach?` · <a href="#" onclick="event.stopPropagation();openExpAttach('${e.id}');return false" style="color:#1E40AF">📎 attachment</a>`:''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div class="pb" style="color:var(--r)">−${fmt(e.amount)}</div>
@@ -1833,6 +1837,7 @@ function openExpenseModal(){
   document.getElementById('exp-desc').value='';
   document.getElementById('exp-payee').value='';
   document.getElementById('exp-cash').value='';document.getElementById('exp-bank').value='';
+  clearExpFile();
   toggleExpSplit();
   openModal('expense');
 }
@@ -1870,10 +1875,51 @@ function editExpense(id){
   document.getElementById('exp-payee').value=e.payee||'';
   document.getElementById('exp-cash').value=e.cashPart!=null?e.cashPart:'';
   document.getElementById('exp-bank').value=e.bankPart!=null?e.bankPart:'';
+  _expAttach=e.attach||null;
+  const _ei=document.getElementById('exp-file');if(_ei)_ei.value='';
+  const _em=document.getElementById('exp-file-msg');
+  if(_em){if(e.attach){_em.innerHTML='📎 '+esc(e.attach.name)+' (saved) <a href="#" onclick="clearExpFile();return false" style="color:#B91C1C;margin-left:6px">remove</a>';_em.style.color='#15803D';}else _em.textContent='';}
   toggleExpSplit();
   openModal('expense');
 }
 
+// ═══ EXPENSE ATTACHMENTS (item 9) ═══════════════════════════════════════════
+let _expAttach=null;
+function onExpFile(input){
+  const f=input.files&&input.files[0];const msg=document.getElementById('exp-file-msg');if(!f)return;
+  const isImg=/^image\//.test(f.type),isPdf=f.type==='application/pdf'||/\.pdf$/i.test(f.name);
+  if(!isImg&&!isPdf){if(msg){msg.textContent='⚠ Only images or PDF allowed.';msg.style.color='#B91C1C';}input.value='';return;}
+  if(msg){msg.textContent='⏳ Reading…';msg.style.color='';}
+  if(isImg){
+    const rd=new FileReader();
+    rd.onload=e=>{const img=new Image();
+      img.onload=()=>{const max=1280;let w=img.width,h=img.height;
+        if(w>max||h>max){const s=Math.min(max/w,max/h);w=Math.round(w*s);h=Math.round(h*s);}
+        const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+        _setExpAttach(f.name.replace(/\.[^.]+$/,'')+'.jpg','image/jpeg',cv.toDataURL('image/jpeg',0.8),input);};
+      img.onerror=()=>{if(msg){msg.textContent='⚠ Could not read image.';msg.style.color='#B91C1C';}};
+      img.src=e.target.result;};
+    rd.readAsDataURL(f);
+  } else {
+    if(f.size>700*1024){if(msg){msg.textContent='⚠ PDF too large ('+Math.round(f.size/1024)+'KB). Max ~700KB — compress it first.';msg.style.color='#B91C1C';}input.value='';return;}
+    const rd=new FileReader();rd.onload=e=>_setExpAttach(f.name,'application/pdf',e.target.result,input);rd.readAsDataURL(f);
+  }
+}
+function _setExpAttach(name,type,data,input){
+  const kb=Math.round((data.length*0.75)/1024);const msg=document.getElementById('exp-file-msg');
+  if(kb>800){if(msg){msg.textContent='⚠ Attachment ~'+kb+'KB is too large to store reliably. Use a smaller/compressed file.';msg.style.color='#B91C1C';}if(input)input.value='';_expAttach=null;return;}
+  _expAttach={name,type,data};
+  if(msg){msg.innerHTML='📎 '+esc(name)+' ('+kb+'KB) <a href="#" onclick="clearExpFile();return false" style="color:#B91C1C;margin-left:6px">remove</a>';msg.style.color='#15803D';}
+}
+function clearExpFile(){_expAttach=null;const i=document.getElementById('exp-file');if(i)i.value='';const m=document.getElementById('exp-file-msg');if(m)m.textContent='';}
+function openExpAttach(id){
+  const e=(D().expenses||[]).find(x=>x.id===id);if(!e||!e.attach)return;
+  try{const parts=e.attach.data.split(',');const bin=atob(parts[1]);const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([arr],{type:e.attach.type||'application/octet-stream'}));
+    window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }catch(err){alert('Could not open attachment.');}
+}
 function saveExpense(){
   const d=D();if(!d.expenses)d.expenses=[];
   const date=document.getElementById('exp-date').value||td();
@@ -1892,11 +1938,11 @@ function saveExpense(){
   }
   if(editExpId){
     const e=d.expenses.find(x=>x.id===editExpId);
-    if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir='out';e.cashPart=cashPart;e.bankPart=bankPart;}
+    if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir='out';e.cashPart=cashPart;e.bankPart=bankPart;e.attach=_expAttach||null;}
   } else {
-    d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out',cashPart,bankPart});
+    d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out',cashPart,bankPart,attach:_expAttach||null});
   }
-  editExpId=null;
+  editExpId=null;_expAttach=null;
   saveToCloud();closeModal('expense');renderExpenses();
 }
 
@@ -2251,14 +2297,17 @@ function balanceSheet(){
   const fixed=totalFixedAssets();
   const loans=totalLoanOutstanding();
   const od=odUsed();
-  const reserves=totalReserves();
+  // Item 10: Capital (Owner Capital) shown as its own equity section, separate from other reserves.
+  const _resList=ensureReserves();
+  const capital=_resList.filter(r=>r.cat==='Owner Capital').reduce((s,r)=>s+reserveBalance(r),0);
+  const reserves=_resList.reduce((s,r)=>s+reserveBalance(r),0)-capital;
   const assets={cash:cash>0?cash:0,debtors,stock:stock>0?stock:0,fixed};
   assets.total=assets.cash+assets.debtors+assets.stock+assets.fixed;
   const liabilities={creditors,loans,od};
   liabilities.total=liabilities.creditors+liabilities.loans+liabilities.od;
-  // Net worth before reserves; reserves are shown as a separate equity column.
+  // Net worth before reserves; reserves & capital are shown as separate equity sections.
   const netWorth=assets.total-liabilities.total;
-  return {assets,liabilities,reserves,netWorth};
+  return {assets,liabilities,reserves,capital,netWorth};
 }
 
 function renderLoans(){
@@ -2341,7 +2390,7 @@ function renderLoans(){
   </div>`;
   const sheetRow=(label,val,color)=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span>${label}</span><span style="font-weight:700;color:${color||'inherit'}">${fmt(val)}</span></div>`;
   // Liabilities + Equity (reserves) total — should balance against assets in proper double-entry
-  const liabPlusEquity=bs.liabilities.total+bs.reserves;
+  const liabPlusEquity=bs.liabilities.total+bs.capital+bs.reserves;
 
   document.getElementById('pg-loans').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -2370,12 +2419,14 @@ function renderLoans(){
           ${sheetRow('🤝 Loans',bs.liabilities.loans)}
           ${sheetRow('🏦 OD Drawn',bs.liabilities.od)}
           <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Liabilities</strong><strong style="color:#DC2626">${fmt(bs.liabilities.total)}</strong></div>
+          <div style="font-size:12px;font-weight:800;color:#7C3AED;border-bottom:2px solid #EDE9FE;padding-bottom:4px;margin:10px 0 4px">CAPITAL</div>
+          ${sheetRow('🏛️ Capital',bs.capital,'#7C3AED')}
           <div style="font-size:12px;font-weight:800;color:#16A34A;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin:10px 0 4px">RESERVES &amp; SURPLUS</div>
           ${sheetRow('💰 Reserves & Surplus',bs.reserves,'#16A34A')}
         </div>
       </div>
       <div style="background:#F0FDF4;border-radius:10px;padding:10px 12px;margin-top:12px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:12px;font-weight:700;color:#166534">Liabilities + Reserves & Surplus</span>
+        <span style="font-size:12px;font-weight:700;color:#166534">Liabilities + Capital + Reserves</span>
         <span style="font-size:15px;font-weight:800;color:#16A34A">${fmt(liabPlusEquity)}</span>
       </div>
       <div style="background:${bs.netWorth>=0?'#ECFDF5':'#FEF2F2'};border-radius:10px;padding:12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
@@ -5908,6 +5959,17 @@ function bankPreset(p){
   renderBank();
 }
 
+// Item 11: current total bank balance — latest statement running balance, else net of CR−DR.
+function currentBankBalance(){
+  const t=(D().bankTxns||[]);
+  if(!t.length)return null;
+  const withBal=t.filter(x=>x.balance!=null&&!isNaN(x.balance));
+  if(withBal.length){
+    const sorted=withBal.slice().sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    return {value:sorted[sorted.length-1].balance,source:'statement'};
+  }
+  return {value:t.reduce((s,x)=>s+(x.type==='CR'?x.amount:-x.amount),0),source:'net'};
+}
 function renderBank(){
   const pg=document.getElementById('pg-bank');if(!pg)return;
   const d=D();
@@ -5920,18 +5982,22 @@ function renderBank(){
   const totalDr=view.filter(t=>t.type==='DR').reduce((s,t)=>s+t.amount,0);
 
   let html=`<div style="padding:14px 16px 8px;display:flex;justify-content:space-between;align-items:center">
-    <h2 style="font-size:17px;font-weight:700">🏦 DCB Bank Statement</h2>
+    <h2 style="font-size:17px;font-weight:700">🏦 Bank Statements</h2>
     <button class="btn sm pri" onclick="document.getElementById('bnk-file').click()">📂 Import</button>
   </div>
-  <input type="file" id="bnk-file" accept=".csv,.xlsx,.xls,.txt,.pdf" style="display:none" onchange="parseBankFile(this)">`;
+  <input type="file" id="bnk-file" accept=".csv,.xlsx,.xls,.txt,.pdf" style="display:none" onchange="parseBankFile(this)">
+  ${(function(){const _bb=currentBankBalance();return _bb!=null?`<div style="margin:4px 16px 10px;background:linear-gradient(135deg,#1E3A8A,#1E40AF);color:#fff;border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:11px;opacity:.85;font-weight:700">CURRENT TOTAL BANK BALANCE</div><div style="font-size:10px;opacity:.7">${_bb.source==='statement'?'From latest statement entry':'Net of imported credits − debits'}</div></div>
+    <div style="font-size:22px;font-weight:800">${fmt(_bb.value)}</div>
+  </div>`:'';})()}`;
 
   if(!bankTxns.length){
     html+=`
     <div style="margin:12px 16px;background:#EFF6FF;border:1.5px dashed #3B82F6;border-radius:12px;padding:20px;text-align:center">
       <div style="font-size:32px;margin-bottom:8px">🏦</div>
-      <div style="font-weight:700;color:#1E40AF;font-size:14px;margin-bottom:6px">Import DCB Bank Statement</div>
+      <div style="font-weight:700;color:#1E40AF;font-size:14px;margin-bottom:6px">Import Bank Statement</div>
       <div style="font-size:12px;color:#555;line-height:1.7;margin-bottom:14px">
-        <b>From DCB app:</b> Accounts → Statement → Download PDF / CSV / Excel<br>Password-protected PDFs supported — you'll be asked for the password.<br>
+        <b>From your bank app:</b> Accounts → Statement → Download PDF / CSV / Excel<br>Password-protected PDFs supported — you'll be asked for the password.<br>
         Transactions are matched automatically to your recorded payments.
       </div>
       <button class="btn pri" onclick="document.getElementById('bnk-file').click()">📂 Upload Statement File</button>
