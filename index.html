@@ -232,7 +232,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R31</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R32</div>
   </nav>
 
   <!-- PAGES -->
@@ -1340,7 +1340,7 @@ function closeDrawer(){
 function navTo(t){closeDrawer();goTab(t);}
 
 // ═══ NAV ═══
-let billsSub='sales';
+let billsSub='sales',billListFilter='all',invListFilter='all';
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
   const map={bills:'billshub',invoices:'billshub',inventory:'items'};
@@ -3193,7 +3193,7 @@ function confirmDelParty(pid){
 function renderBills(){
   const d=D();
   const search=(document.getElementById('bill-srch')||{}).value||'';
-  const filter=document.getElementById('bill-filter')?.value||'all';
+  const filter=billListFilter;
   let bills=d.bills.filter(b=>{
     const ms=!search||b.num.toLowerCase().includes(search.toLowerCase())||(d.parties.find(p=>p.id===b.pid)?.name||'').toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='pending'&&billBalance(b.id)>0)||(filter==='settled'&&billBalance(b.id)<=0)||(filter==='jw'&&b.jw);
@@ -3240,13 +3240,13 @@ function renderBills(){
       }).join(''):'<div class="empty"><div class="ei">📦</div><p>No purchase bills yet</p></div>'}
     </div>`;
 }
-function setBillFilter(f){renderBills();}
+function setBillFilter(f){billListFilter=f;renderBills();}
 
 // ═══ INVOICES ═══
 function renderInvoices(){
   const d=D();
   const search=(document.getElementById('inv-srch')||{}).value||'';
-  const filter=document.getElementById('inv-filter')?.value||'all';
+  const filter=invListFilter;
   let invs=d.invoices.filter(i=>{
     const ms=!search||i.num.toLowerCase().includes(search.toLowerCase())||(d.parties.find(p=>p.id===i.pid)?.name||'').toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='pending'&&invBalance(i.id)>0)||(filter==='settled'&&invBalance(i.id)<=0);
@@ -3288,7 +3288,7 @@ function renderInvoices(){
       }).join(''):'<div class="empty"><div class="ei">🧾</div><p>No sales invoices yet</p></div>'}
     </div>`;
 }
-function setInvFilter(f){renderInvoices();}
+function setInvFilter(f){invListFilter=f;renderInvoices();}
 
 // ═══ TRASH BADGE ═══
 function updateTrashBadge(){
