@@ -205,7 +205,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="hamb" id="hamb-btn" onclick="openDrawer()" aria-label="Menu">☰</button>
     <div style="flex:1;min-width:0">
       <div style="font-size:15px;font-weight:800;line-height:1.2" id="biz-name">Modrobe Impex</div>
-      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 28Jun-R29</span> <span class="sync-dot" id="sync-dot"></span></div>
+      <div style="font-size:11px;opacity:.7">Business Manager · <span style="opacity:.85">build 28Jun-R30</span> <span class="sync-dot" id="sync-dot"></span></div>
     </div>
     <button class="biz-toggle" id="biz-toggle-btn" onclick="toggleBiz()">⇄ Switch</button>
     <div class="av" id="av" onclick="doLogout()">H</div>
@@ -221,9 +221,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <div class="dgroup">Main</div>
     <button class="ditem" data-tab="home" onclick="navTo('home')"><span class="di">🏠</span> Home</button>
     <button class="ditem" data-tab="parties" onclick="navTo('parties')"><span class="di">👥</span> Parties</button>
-    <button class="ditem" data-tab="bills" onclick="navTo('bills')"><span class="di">📦</span> Purchase</button>
-    <button class="ditem" data-tab="invoices" onclick="navTo('invoices')"><span class="di">🧾</span> Sales</button>
-    <button class="ditem" data-tab="inventory" onclick="navTo('inventory')"><span class="di">📦</span> Inventory</button>
+    <button class="ditem" data-tab="bills" onclick="navTo('bills')"><span class="di">🧾</span> Bills <span style="font-size:11px;color:var(--sub);font-weight:500;margin-left:2px">· Sales &amp; Purchase</span></button>
+    <button class="ditem" data-tab="items" onclick="navTo('items')"><span class="di">📦</span> Item Master</button>
     <div class="dgroup">Money</div>
     <button class="ditem" data-tab="bank" onclick="navTo('bank')"><span class="di">🏦</span> Bank</button>
     <button class="ditem" data-tab="cash" onclick="navTo('cash')"><span class="di">💵</span> Cash in Hand</button>
@@ -238,8 +237,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <!-- PAGES -->
   <div id="pg-home" class="main"></div>
   <div id="pg-parties" class="main" style="display:none"></div>
-  <div id="pg-bills" class="main" style="display:none"></div>
-  <div id="pg-invoices" class="main" style="display:none"></div>
+  <div id="pg-billshub" class="main" style="display:none">
+    <div id="billsub-bar"></div>
+    <div id="pg-invoices"></div>
+    <div id="pg-bills"></div>
+  </div>
+  <div id="pg-items" class="main" style="display:none"></div>
   <div id="pg-bank" class="main" style="display:none"></div>
   <div id="pg-cash" class="main" style="display:none"></div>
   <div id="pg-expenses" class="main" style="display:none"></div>
@@ -257,8 +260,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <nav class="botnav">
     <button class="nb act" id="nb-home" onclick="goTab('home')"><span class="ic">🏠</span>Home</button>
     <button class="nb" id="nb-parties" onclick="goTab('parties')"><span class="ic">👥</span>Parties</button>
-    <button class="nb" id="nb-invoices" onclick="goTab('invoices')"><span class="ic">🧾</span>Sales</button>
-    <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">📦</span>Purchase</button>
+    <button class="nb" id="nb-bills" onclick="goTab('bills')"><span class="ic">🧾</span>Bills</button>
+    <button class="nb" id="nb-items" onclick="goTab('items')"><span class="ic">📦</span>Items</button>
     <button class="nb" id="nb-more" onclick="openDrawer()"><span class="ic">☰</span>More</button>
   </nav>
 </div>
@@ -1336,20 +1339,22 @@ function closeDrawer(){
 function navTo(t){closeDrawer();goTab(t);}
 
 // ═══ NAV ═══
+let billsSub='sales';
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
-  ['home','parties','bills','invoices','detail','notes','bank','cash','expenses','inventory','loans','reports','trash'].forEach(p=>{
+  const map={bills:'billshub',invoices:'billshub',inventory:'items'};
+  const cont=map[t]||t;
+  ['home','parties','billshub','items','inventory','detail','notes','bank','cash','expenses','loans','reports','trash'].forEach(p=>{
     const el=document.getElementById('pg-'+p);
-    if(el)el.style.display=p===t?'block':'none';
+    if(el)el.style.display=p===cont?'block':'none';
   });
-  // Slim bottom nav: only these 4 have buttons; "More" stays inactive
-  ['home','parties','bills','invoices'].forEach(n=>{
+  const navKey=(t==='invoices')?'bills':(t==='inventory'?'items':t);
+  ['home','parties','bills','items'].forEach(n=>{
     const el=document.getElementById('nb-'+n);
-    if(el)el.className='nb'+(n===t?' act':'');
+    if(el)el.className='nb'+(n===navKey?' act':'');
   });
-  // Keep drawer highlight in sync
   document.querySelectorAll('#drawer .ditem').forEach(el=>{
-    el.classList.toggle('act',el.dataset.tab===t);
+    el.classList.toggle('act',el.dataset.tab===navKey);
   });
   renderTab(t);
 }
@@ -1357,24 +1362,56 @@ function renderAll(){renderTab(curTab);updateTrashBadge();}
 function renderTab(t){
   if(t==='home')renderHome();
   else if(t==='parties')renderParties();
-  else if(t==='bills')renderBills();
-  else if(t==='invoices')renderInvoices();
+  else if(t==='bills'||t==='invoices')renderBillsHub();
+  else if(t==='items'||t==='inventory')renderItemsPage();
   else if(t==='notes')renderNotes();
   else if(t==='bank')renderBank();
   else if(t==='cash')renderCash();
   else if(t==='expenses')renderExpenses();
-  else if(t==='inventory')renderInventory();
   else if(t==='loans')renderLoans();
   else if(t==='reports')renderReports();
   else if(t==='trash')renderTrash();
 }
+// ═══ BILLS HUB — unified Sales + Purchase with sub-tabs ═══
+function renderBillsHub(){
+  const bar=document.getElementById('billsub-bar');
+  if(bar)bar.innerHTML=`<div style="display:flex;gap:8px;background:var(--card,#fff);padding:12px 14px 0">
+    <button onclick="setBillsSub('sales')" style="flex:1;padding:11px;border-radius:10px 10px 0 0;border:none;border-bottom:3px solid ${billsSub==='sales'?'var(--pri)':'transparent'};background:${billsSub==='sales'?'var(--pri3)':'transparent'};color:${billsSub==='sales'?'var(--pri2)':'var(--sub)'};font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">🧾 Sales</button>
+    <button onclick="setBillsSub('purchase')" style="flex:1;padding:11px;border-radius:10px 10px 0 0;border:none;border-bottom:3px solid ${billsSub==='purchase'?'var(--pri)':'transparent'};background:${billsSub==='purchase'?'var(--pri3)':'transparent'};color:${billsSub==='purchase'?'var(--pri2)':'var(--sub)'};font-weight:700;font-size:14px;cursor:pointer;font-family:inherit">📦 Purchase</button>
+  </div>`;
+  const inv=document.getElementById('pg-invoices'),bil=document.getElementById('pg-bills');
+  if(billsSub==='sales'){if(inv)inv.style.display='block';if(bil)bil.style.display='none';renderInvoices();}
+  else{if(inv)inv.style.display='none';if(bil)bil.style.display='block';renderBills();}
+}
+function setBillsSub(s){billsSub=s;renderBillsHub();}
+// ═══ ITEM MASTER PAGE (replaces Inventory in nav) ═══
+function renderItemsPage(){
+  const d=D();if(!d.items)d.items=[];
+  const q=(document.getElementById('itp-search')?.value||'').toLowerCase().trim();
+  let list=d.items.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  if(q)list=list.filter(i=>((i.name||'')+' '+(i.code||'')+' '+(i.hsn||'')).toLowerCase().includes(q));
+  const rows=list.length?list.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--bdr);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:#fff">
+    <div style="min-width:0"><div style="font-weight:700">${esc(i.name)}</div><div style="font-size:11px;color:var(--sub);margin-top:2px">${i.code?'Code '+esc(i.code)+' · ':''}${i.hsn?'HSN '+esc(i.hsn)+' · ':''}${esc(i.unit||'')} · GST ${i.gstSlab||0}%</div></div>
+    <div style="display:flex;gap:6px;flex-shrink:0"><button class="btn sm" type="button" onclick="pageEditItem('${i.id}')">Edit</button><button class="btn sm" type="button" style="background:#FEF2F2;color:#DC2626;border-color:#FECACA" onclick="delItem('${i.id}')">✕</button></div>
+  </div>`).join(''):`<div style="text-align:center;padding:40px 16px;color:var(--sub)"><div style="font-size:40px;margin-bottom:8px">📦</div><div style="font-weight:700;color:var(--txt);margin-bottom:4px">No items added yet</div><div style="font-size:13px;margin-bottom:14px">Build a catalogue of your products to auto-fill HSN, unit and GST while billing.</div><button class="btn pri" onclick="openItemMaster()">+ Add your first item</button></div>`;
+  document.getElementById('pg-items').innerHTML=`
+  <div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+    <div><h3 style="margin-bottom:2px">📦 Item Master</h3><div style="font-size:12px;color:var(--sub)">Product catalogue · price is entered per invoice</div></div>
+    <button class="btn pri sm" onclick="openItemMaster()">+ Add Item</button>
+  </div>
+  <div class="card">
+    <input id="itp-search" placeholder="🔎 Search items by name, code or HSN…" oninput="_searchInput('itp-search',renderItemsPage)" value="${esc(q)}" style="width:100%;margin-bottom:12px">
+    ${rows}
+  </div>`;
+  syncItemDatalist();
+}
+function pageEditItem(id){openItemMaster();editItem(id);}
 function fabAction(){
   // When viewing a single party's detail, the FAB should NOT add a party.
   // Offer document actions relevant to that party instead.
   if(curParty){openFabMenu('detail');return;}
   if(curTab==='parties'){openFabMenu('parties');return;}
-  if(curTab==='bills')openBillModal();
-  else if(curTab==='invoices')openInvModal();
+  if(curTab==='bills'||curTab==='invoices'){(billsSub==='purchase'?openBillModal:openInvModal)();return;}
   else if(curTab==='cash')openCashAdjust('in');
   else if(curTab==='expenses')openExpenseModal();
   else openInvModal();
@@ -1540,10 +1577,15 @@ function renderHome(){
   const pendInvs=d.invoices.filter(i=>i.mode!=='cash'&&invBalance(i.id)>0).length;
 
   document.getElementById('pg-home').innerHTML=`
-    <div style="background:var(--pri);color:#fff;border-radius:14px;padding:18px;margin-bottom:14px">
-      <div style="font-size:11px;opacity:.7;margin-bottom:4px">📊 ${biz.name}</div>
-      <div style="font-size:22px;font-weight:800">Business Overview</div>
-      <div style="font-size:13px;opacity:.8;margin-top:2px">Today: ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</div>
+    <div style="background:linear-gradient(135deg,var(--pri),var(--pri2));color:#fff;border-radius:14px;padding:18px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="min-width:0">
+          <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:8px">${curBiz==='MI'?'🔵':'🟣'} ${esc(biz.name)}</div>
+          <div style="font-size:22px;font-weight:800;line-height:1.15">Business Overview</div>
+          <div style="font-size:11px;opacity:.85;margin-top:4px">GSTIN ${esc(biz.gstin)} · ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</div>
+        </div>
+        <button onclick="toggleBiz()" style="flex-shrink:0;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:10px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">⇄ Switch to ${curBiz==='MI'?'KF':'MI'}</button>
+      </div>
     </div>
     <div class="stats">
       <div class="stat"><div class="sl">💰 Debtors (Receivable)</div><div class="sv grn">${fmt(totalDebtors)}</div></div>
@@ -1569,10 +1611,10 @@ function renderHome(){
         <div class="sv" style="color:#4338CA">${fmt(totalLoanOutstanding())}<span style="font-size:11px;color:var(--sub);margin-left:8px">loans owed</span></div>
         <div style="font-size:11px;color:var(--sub)">OD drawn ${fmt(odUsed())} · tap to manage</div>
       </div>
-      <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE;cursor:pointer" onclick="goTab('inventory')">
+      <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE;cursor:pointer" onclick="repView='stockrep';goTab('reports')">
         <div class="sl">📊 Stock in Hand (Purchased - Sold)</div>
         <div class="sv" style="color:${stockValue()>=0?'#059669':'#DC2626'}">${fmt(Math.abs(stockValue()))}${d.cfStock?'<span style="font-size:11px;color:var(--sub);margin-left:8px">incl. C/F ₹'+new Intl.NumberFormat("en-IN").format(d.cfStock)+'</span>':''}</div>
-        <div style="font-size:11px;color:var(--sub);margin-top:2px">Tap for item-wise inventory →</div>
+        <div style="font-size:11px;color:var(--sub);margin-top:2px">Tap for item-wise stock report →</div>
         <button class="btn sm" style="margin-top:8px;width:100%;justify-content:center" onclick="event.stopPropagation();openCFModal()">📦 Set Last Year C/F Stock</button>
       </div>
     </div>
@@ -2995,7 +3037,7 @@ function saveItem(){
   if(dup&&!confirm('An item named "'+name+'" already exists. Save anyway?'))return;
   const i=d.items.findIndex(x=>x.id===id);
   if(i>=0)d.items[i]=rec;else d.items.push(rec);
-  saveToCloud();resetItemForm();renderItemMaster();
+  saveToCloud();resetItemForm();renderItemMaster();if(document.getElementById('itp-list')||document.getElementById('pg-items')&&curTab==='items')renderItemsPage();
 }
 function editItem(id){
   const it=(D().items||[]).find(x=>x.id===id);if(!it)return;
@@ -3009,7 +3051,7 @@ function editItem(id){
 }
 function delItem(id){
   const d=D();if(!confirm('Delete this item from the master?'))return;
-  d.items=(d.items||[]).filter(x=>x.id!==id);saveToCloud();renderItemMaster();
+  d.items=(d.items||[]).filter(x=>x.id!==id);saveToCloud();renderItemMaster();if(curTab==='items')renderItemsPage();
 }
 function syncItemDatalist(){
   const dl=document.getElementById('item-list');if(!dl)return;
