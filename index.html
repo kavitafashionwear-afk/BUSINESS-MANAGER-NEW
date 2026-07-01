@@ -2766,14 +2766,14 @@ function renderParties(){
   const search=(document.getElementById('party-srch')||{}).value||'';
   const filter=document.getElementById('party-filter')?.value||'all';
   let parties=d.parties.filter(p=>{
-    const ms=!search||p.name.toLowerCase().includes(search.toLowerCase())||p.city?.toLowerCase().includes(search.toLowerCase());
+    const ms=!search||((p.name||'')+' '+(p.city||'')+' '+(p.gstin||'')+' '+(p.phone||'')).toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='S'&&(p.type==='S'||p.type==='B'))||(filter==='C'&&(p.type==='C'||p.type==='B'));
     return ms&&mf&&!p.deleted;
   }).sort((a,b)=>a.name.localeCompare(b.name));
 
   document.getElementById('pg-parties').innerHTML=`
     <div class="sh"><h2>Parties (${parties.length})</h2><button class="btn sm pri" onclick="openPartyModal()">+ Add</button></div>
-    <div class="srch-wrap"><input class="srch" id="party-srch" placeholder="Search parties..." oninput="_searchInput('party-srch',renderParties)" value="${esc(search)}"></div>
+    <div class="srch-wrap"><input class="srch" id="party-srch" placeholder="Search by name, GSTIN, phone or city…" oninput="_searchInput('party-srch',renderParties)" value="${esc(search)}"></div>
     <div class="seg">
       <button class="${filter==='all'?'act':''}" onclick="setPartyFilter('all')">All</button>
       <button class="${filter==='S'?'act':''}" onclick="setPartyFilter('S')">Suppliers</button>
@@ -3195,7 +3195,8 @@ function renderBills(){
   const search=(document.getElementById('bill-srch')||{}).value||'';
   const filter=billListFilter;
   let bills=d.bills.filter(b=>{
-    const ms=!search||b.num.toLowerCase().includes(search.toLowerCase())||(d.parties.find(p=>p.id===b.pid)?.name||'').toLowerCase().includes(search.toLowerCase());
+    const _bp=d.parties.find(p=>p.id===b.pid);
+    const ms=!search||((b.num||'')+' '+(_bp?(_bp.name||'')+' '+(_bp.gstin||'')+' '+(_bp.phone||''):'')+' '+Math.round(b.grand||0)+' '+(b.date||'')).toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='pending'&&billBalance(b.id)>0)||(filter==='settled'&&billBalance(b.id)<=0)||(filter==='jw'&&b.jw);
     return ms&&mf;
   }).sort((a,b)=>b.date.localeCompare(a.date));
@@ -3205,7 +3206,7 @@ function renderBills(){
   document.getElementById('pg-bills').innerHTML=`
     <div class="sh"><h2>Purchase Bills (${bills.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#EFF6FF;border-color:#BFDBFE;color:#1E40AF" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm pri" onclick="openBillModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox red">Total Pending: <strong>${fmt(totalPending)}</strong></div>`:''}
-    <div class="srch-wrap"><input class="srch" id="bill-srch" placeholder="Search bills..." oninput="_searchInput('bill-srch',renderBills)" value="${esc(search)}"></div>
+    <div class="srch-wrap"><input class="srch" id="bill-srch" placeholder="Search by bill no, party, GSTIN, phone or amount…" oninput="_searchInput('bill-srch',renderBills)" value="${esc(search)}"></div>
     <div class="seg">
       <button class="${filter==='all'?'act':''}" onclick="setBillFilter('all')">All</button>
       <button class="${filter==='pending'?'act':''}" onclick="setBillFilter('pending')">Pending</button>
@@ -3248,7 +3249,8 @@ function renderInvoices(){
   const search=(document.getElementById('inv-srch')||{}).value||'';
   const filter=invListFilter;
   let invs=d.invoices.filter(i=>{
-    const ms=!search||i.num.toLowerCase().includes(search.toLowerCase())||(d.parties.find(p=>p.id===i.pid)?.name||'').toLowerCase().includes(search.toLowerCase());
+    const _ip=d.parties.find(p=>p.id===i.pid);
+    const ms=!search||((i.num||'')+' '+(_ip?(_ip.name||'')+' '+(_ip.gstin||'')+' '+(_ip.phone||''):'')+' '+Math.round(i.grand||0)+' '+(i.date||'')).toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='pending'&&invBalance(i.id)>0)||(filter==='settled'&&invBalance(i.id)<=0);
     return ms&&mf;
   }).sort((a,b)=>b.date.localeCompare(a.date));
@@ -3258,7 +3260,7 @@ function renderInvoices(){
   document.getElementById('pg-invoices').innerHTML=`
     <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#FEF3C7;border-color:#FCD34D;color:#92400E" onclick="fixGstTypes()">🔧 Fix GST</button><button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm" style="background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" onclick="openItemMaster()">📦 Items</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
     ${totalPending>0?`<div class="ibox grn">Total Receivable: <strong>${fmt(totalPending)}</strong></div>`:''}
-    <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search invoices..." oninput="_searchInput('inv-srch',renderInvoices)" value="${esc(search)}"></div>
+    <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search by invoice no, party, GSTIN, phone or amount…" oninput="_searchInput('inv-srch',renderInvoices)" value="${esc(search)}"></div>
     <div class="seg">
       <button class="${filter==='all'?'act':''}" onclick="setInvFilter('all')">All</button>
       <button class="${filter==='pending'?'act':''}" onclick="setInvFilter('pending')">Pending</button>
