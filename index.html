@@ -17,6 +17,9 @@
   --bg:#F3F4F6;--card:#fff;--bdr:#E5E7EB;
   --txt:#111827;--sub:#6B7280;
   --pri:var(--mi);--pri2:var(--mi2);--pri3:var(--mi3);
+  --r-sm:8px;--r-md:10px;--r-lg:14px;--r-xl:20px;
+  --sh-1:0 1px 3px rgba(0,0,0,.07);--sh-2:0 4px 14px rgba(0,0,0,.10);--sh-3:0 10px 30px rgba(0,0,0,.16);
+  --ring:0 0 0 3px rgba(37,99,235,.22);--t:.16s ease;--report:#7C3AED;--report-bg:#F5F3FF;
 }
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
 /* LOADING */
@@ -174,9 +177,60 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .sync-dot.busy{background:#FDE68A;animation:pulse 1s infinite}
 .sync-dot.err{background:#FCA5A5}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* ── TOASTS ── */
+#toast-wrap{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:calc(100% - 32px);max-width:420px}
+.toast{background:#111827;color:#fff;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.22);display:flex;align-items:center;gap:10px;opacity:0;transform:translateY(12px);animation:toastIn .28s cubic-bezier(.2,.8,.2,1) forwards;pointer-events:auto;max-width:100%}
+.toast.out{animation:toastOut .25s ease forwards}
+.toast.ok{background:#065F46}.toast.err{background:#991B1B}.toast.warn{background:#92400E}.toast.info{background:#1E3A8A}
+@keyframes toastIn{to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{to{opacity:0;transform:translateY(12px)}}
+/* ── INFO TOOLTIP ── */
+.info-ic{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--bdr);color:var(--sub);font-size:10px;font-weight:800;font-style:normal;cursor:pointer;margin-left:4px;vertical-align:middle;user-select:none;flex-shrink:0;line-height:1}
+.info-ic:hover,.info-ic:focus{background:var(--pri2);color:#fff;outline:none}
+#tip-pop{position:fixed;z-index:2100;max-width:260px;background:#111827;color:#fff;padding:11px 13px;border-radius:10px;font-size:12.5px;line-height:1.5;box-shadow:0 8px 28px rgba(0,0,0,.28);opacity:0;transform:translateY(4px);transition:opacity .16s,transform .16s;pointer-events:none;font-weight:400}
+#tip-pop.show{opacity:1;transform:translateY(0)}
+#tip-pop b{color:#93C5FD;display:block;margin-bottom:3px;font-size:13px}
+/* ═══ DESIGN SYSTEM ═══ */
+*{-webkit-tap-highlight-color:transparent}
+button,.btn,.nb,.ditem,.seg button,input,select,textarea,.card,.stat,.prow,.brow{transition:background var(--t),border-color var(--t),box-shadow var(--t),transform var(--t),color var(--t),filter var(--t)}
+button:focus-visible,a:focus-visible,[tabindex]:focus-visible,.seg button:focus-visible,.nb:focus-visible,.ditem:focus-visible{outline:2px solid var(--pri2);outline-offset:2px;border-radius:6px}
+.fl input:focus,.fl select:focus,.fl textarea:focus,.srch:focus,input:focus,select:focus,textarea:focus{border-color:var(--pri2);box-shadow:var(--ring)}
+.btn:hover{filter:brightness(.97)}
+.btn.pri:hover{background:var(--pri);border-color:var(--pri);filter:none}
+.btn:active{transform:translateY(1px)}
+.btn:disabled,.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;filter:none}
+.card[onclick],.stat[onclick]{cursor:pointer}
+.card[onclick]:hover,.stat[onclick]:hover{box-shadow:var(--sh-2);transform:translateY(-1px)}
+.prow:hover,.brow:hover{background:#F9FAFB}
+.seg button:active{transform:translateY(1px)}
+.main>.sh{position:sticky;top:56px;background:var(--bg);z-index:20;padding:8px 0;margin-bottom:8px}
+.itbl th{position:sticky;top:0;z-index:1}
+.ov.show .mb{animation:sheetUp .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes sheetUp{from{transform:translateY(24px);opacity:.5}to{transform:translateY(0);opacity:1}}
+@media(max-width:600px){.btn.sm{padding:8px 12px;font-size:12px}.xb{padding:8px;font-size:22px}}
+@media(min-width:600px){.ov{align-items:center}.mb{border-radius:18px;max-height:88vh}}
+/* ── FORM HELPERS ── */
+.hint{font-size:11px;color:var(--sub);margin-top:5px;line-height:1.45}
+.req{color:var(--r);font-weight:800}
+details.adv{margin:2px 0 14px;border:1px solid var(--bdr);border-radius:10px;padding:0 12px;background:#FAFAFB}
+details.adv>summary{font-size:12.5px;font-weight:700;color:var(--pri2);cursor:pointer;padding:11px 2px;list-style:none;user-select:none}
+details.adv>summary::-webkit-details-marker{display:none}
+details.adv>summary::before{content:'▸';font-size:10px;margin-right:7px;display:inline-block}
+details.adv[open]>summary::before{content:'▾'}
+details.adv[open]{padding-bottom:8px}
+details.adv .fr,details.adv .fl{margin-bottom:12px}
+/* ── DASHBOARD QUICK ACTIONS ── */
+.qa-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.qa-btn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:13px 4px;background:var(--card);border:1px solid var(--bdr);border-radius:12px;cursor:pointer;font-size:11px;font-weight:700;color:var(--txt);box-shadow:var(--sh-1);text-align:center;line-height:1.1}
+.qa-btn .qi{font-size:21px}
+.qa-btn:hover{box-shadow:var(--sh-2);transform:translateY(-1px);border-color:var(--pri2)}
+.qa-btn:active{transform:translateY(1px)}
+@media(max-width:400px){.qa-btn{font-size:10px;padding:11px 2px}.qa-btn .qi{font-size:19px}}
 </style>
 </head>
 <body>
+<div id="toast-wrap" aria-live="polite"></div>
+<div id="tip-pop" role="tooltip"></div>
 
 <!-- LOADING -->
 <div id="pg-load">
@@ -232,7 +286,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R32</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R34</div>
   </nav>
 
   <!-- PAGES -->
@@ -274,7 +328,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 <div class="mb">
   <div class="mhd"><div><h3 id="party-mo-title">Add Party</h3><div class="sub">Supplier / Customer / Both</div></div><button class="xb" onclick="closeModal('party')">✕</button></div>
   <div class="mbd">
-    <div class="fl"><label>Party Name *</label><input id="p-name" placeholder="e.g. Harsh Prints"></div>
+    <div class="fl"><label>Party Name <span class="req">*</span></label><input id="p-name" placeholder="e.g. Harsh Prints"></div>
     <div class="fl"><label>Type *</label>
       <select id="p-type">
         <option value="S">Supplier (Purchase Party)</option>
@@ -283,7 +337,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </select>
     </div>
     <div class="fr">
-      <div class="fl"><label>Phone</label><input id="p-phone" placeholder="9999999999"></div>
+      <div class="fl"><label>Phone</label><input id="p-phone" type="tel" inputmode="numeric" placeholder="e.g. 9876543210"><div class="hint">10-digit mobile number. Used on invoices and for sharing bills.</div></div>
       <div class="fl"><label>City</label><input id="p-city" placeholder="e.g. Surat"></div>
     </div>
     <div class="fl"><label>Address</label><input id="p-addr" placeholder="Street, area (used on invoices)"></div>
@@ -323,8 +377,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
         <option value="37">Andhra Pradesh (37)</option>
       </select>
     </div>
-    <div class="fl"><label>GSTIN</label><input id="p-gstin" placeholder="e.g. 24ACIPS3195C1ZL" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();syncPartyStateFromGstin();validatePartyGstLive()"></div>
-    <div class="fl"><label>PAN No.</label><input id="p-pan" placeholder="e.g. ACIPS3195C" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();validatePartyGstLive()"></div>
+    <div class="fl"><label>GSTIN</label><input id="p-gstin" placeholder="e.g. 29ABCDE1234F1Z5" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();syncPartyStateFromGstin();validatePartyGstLive()"><div class="hint">The party\'s 15-digit GST number. Leave blank if they are not GST-registered — the state auto-fills from the first 2 digits.</div></div>
+    <div class="fl"><label>PAN No.</label><input id="p-pan" placeholder="e.g. ABCDE1234F" style="text-transform:uppercase" oninput="this.value=this.value.toUpperCase();validatePartyGstLive()"><div class="hint">10-character PAN. Auto-checked against the GSTIN if both are entered.</div></div>
     <div id="p-gst-msg" style="font-size:12px;font-weight:600;min-height:16px;margin:-4px 0 4px"></div>
     <div id="p-constitution" style="font-size:12px;color:var(--sub);min-height:16px;margin:-2px 0 6px"></div>
     <div class="fl"><label>Is this business MSME / Udyam registered?</label>
@@ -357,7 +411,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="mft">
     <button class="btn" onclick="closeModal('party')">Cancel</button>
-    <button class="btn pri" onclick="saveParty()">Save Party</button>
+    <button class="btn pri" id="party-save-btn" onclick="saveParty()">Create Party</button>
   </div>
 </div></div>
 
@@ -367,7 +421,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="mhd"><div><h3 id="bill-mo-title">Add Purchase Bill</h3><div class="sub" id="bill-mo-sub"></div></div><button class="xb" onclick="closeModal('bill')">✕</button></div>
   <div class="mbd">
     <div class="fr">
-      <div class="fl"><label>Bill No. *</label><input id="b-num" placeholder="e.g. 34/G"></div>
+      <div class="fl"><label>Bill No. <span class="req">*</span></label><input id="b-num" placeholder="e.g. 34/G"></div>
       <div class="fl"><label>Date *</label><input id="b-date" type="date"></div>
     </div>
     <div class="fl"><label>Supplier *</label>
@@ -380,18 +434,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
     </div>
     <div class="fl"><label>Consignee (Ship To)</label><input id="b-consignee" placeholder="e.g. Dhanudhar Processor Pvt. Ltd."></div>
-    <div class="fr">
-      <div class="fl"><label>LR No.</label><input id="b-lr-no" placeholder="e.g. 1234"></div>
-      <div class="fl"><label>LR Date</label><input id="b-lr-date" type="date"></div>
-    </div>
-    <div class="fr">
-      <div class="fl"><label>Case No.</label><input id="b-case-no" placeholder="e.g. 34x1"></div>
-      <div class="fl"><label>Weight (kg)</label><input id="b-weight" type="number" placeholder="0.000" step="0.001"></div>
-    </div>
-    <div class="fr">
+    <details class="adv">
+      <summary>🚚 Transport &amp; LR details (optional)</summary>
+      <div class="fr">
+        <div class="fl"><label>LR No.</label><input id="b-lr-no" placeholder="e.g. 1234"></div>
+        <div class="fl"><label>LR Date</label><input id="b-lr-date" type="date"></div>
+      </div>
+      <div class="fr">
+        <div class="fl"><label>Case No.</label><input id="b-case-no" placeholder="e.g. 34x1"></div>
+        <div class="fl"><label>Weight (kg)</label><input id="b-weight" type="number" placeholder="0.000" step="0.001"></div>
+      </div>
       <div class="fl"><label>Station / Distance</label><input id="b-station" placeholder="e.g. Delhi → (1220 km)"></div>
-      <div class="fl"><label>Place of Supply</label><input id="b-pos" placeholder="e.g. 07-Delhi"></div>
-    </div>
+    </details>
+    <div class="fl"><label>Place of Supply</label><input id="b-pos" placeholder="e.g. 07-Delhi"><div class="hint">State where goods are delivered — decides IGST vs CGST+SGST. Auto-filled from the supplier\'s GSTIN.</div></div>
     <div class="fl"><label>Bill Type</label>
       <div class="seg" style="margin-bottom:0">
         <button id="bt-purchase" class="act" onclick="setBillType('purchase')">Purchase Bill</button>
@@ -443,7 +498,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="mft">
     <button class="btn" onclick="closeModal('bill')">Cancel</button>
-    <button class="btn pri" onclick="saveBill()">Save Bill</button>
+    <button class="btn pri" id="bill-save-btn" onclick="saveBill()">Create Bill</button>
   </div>
 </div></div>
 
@@ -489,10 +544,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
       </div>
       <div class="fl"><label style="font-size:11px">Consignee Phone</label><input id="i-ship-phone" type="tel" inputmode="numeric" placeholder="Optional"></div>
     </details>
-    <div class="fr">
-      <div class="fl"><label>🚚 Transport / Carrier</label><input id="i-transport" placeholder="e.g. VRL Logistics"></div>
-      <div class="fl"><label>🚛 Vehicle No.</label><input id="i-vehicle" placeholder="e.g. DL01AB1234" oninput="this.value=this.value.toUpperCase()"></div>
-    </div>
+    <details class="adv">
+      <summary>🚚 Transport details (optional)</summary>
+      <div class="fr">
+        <div class="fl"><label>Transport / Carrier</label><input id="i-transport" placeholder="e.g. VRL Logistics"></div>
+        <div class="fl"><label>Vehicle No.</label><input id="i-vehicle" placeholder="e.g. DL01AB1234" oninput="this.value=this.value.toUpperCase()"></div>
+      </div>
+    </details>
     <!-- ITEMS -->
     <div class="card-hd" style="margin-top:8px">Items</div>
     <div id="i-items-list"></div>
@@ -541,7 +599,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   </div>
   <div class="mft">
     <button class="btn" onclick="closeModal('inv')">Cancel</button>
-    <button class="btn pri" onclick="saveInvoice()">Save Invoice</button>
+    <button class="btn pri" id="inv-save-btn" onclick="saveInvoice()">Create Invoice</button>
   </div>
 </div></div>
 
@@ -552,7 +610,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="mbd">
     <div class="ibox blu" id="pay-info"></div>
     <div class="fr">
-      <div class="fl"><label>Amount (₹) *</label><input id="pay-amt" type="number" placeholder="0" min="1"></div>
+      <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="pay-amt" type="number" placeholder="0" min="1"></div>
       <div class="fl"><label>Date *</label><input id="pay-date" type="date"></div>
     </div>
     <div class="fl"><label>Mode</label>
@@ -741,7 +799,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="mhd"><div><h3 id="lt-title">Loan Transaction</h3></div><button class="xb" onclick="closeModal('loantxn')">✕</button></div>
   <div class="mbd">
     <div class="fr">
-      <div class="fl"><label>Amount (₹) *</label><input id="lt-amt" type="number" placeholder="0" min="1" step="0.01"></div>
+      <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="lt-amt" type="number" placeholder="0" min="1" step="0.01"></div>
       <div class="fl"><label>Date *</label><input id="lt-date" type="date"></div>
     </div>
     <div class="fl"><label>Note</label><input id="lt-note" placeholder="Optional"></div>
@@ -826,7 +884,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="mhd"><div><h3 id="rt-title">Reserve Transaction</h3></div><button class="xb" onclick="closeModal('reservetxn')">✕</button></div>
   <div class="mbd">
     <div class="fr">
-      <div class="fl"><label>Amount (₹) *</label><input id="rt-amt" type="number" placeholder="0" min="1" step="0.01"></div>
+      <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="rt-amt" type="number" placeholder="0" min="1" step="0.01"></div>
       <div class="fl"><label>Date *</label><input id="rt-date" type="date"></div>
     </div>
     <div class="fl"><label>Note</label><input id="rt-note" placeholder="Optional"></div>
@@ -844,7 +902,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
   <div class="mbd">
     <div class="fr">
       <div class="fl"><label>Date *</label><input id="exp-date" type="date"></div>
-      <div class="fl"><label>Amount (₹) *</label><input id="exp-amt" type="number" placeholder="0" min="0" step="0.01" oninput="this.value=Math.abs(this.value)"></div>
+      <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="exp-amt" type="number" placeholder="0" min="0" step="0.01" oninput="this.value=Math.abs(this.value)"></div>
     </div>
     <div class="fl"><label>Category *</label>
       <select id="exp-cat" onchange="onExpCatChange()"></select>
@@ -1340,7 +1398,81 @@ function closeDrawer(){
 function navTo(t){closeDrawer();goTab(t);}
 
 // ═══ NAV ═══
-let billsSub='sales',billListFilter='all',invListFilter='all';
+let billsSub=(function(){try{return localStorage.getItem('bm_billsSub')||'sales';}catch(e){return 'sales';}})(),
+    billListFilter=(function(){try{return localStorage.getItem('bm_billFilter')||'all';}catch(e){return 'all';}})(),
+    invListFilter=(function(){try{return localStorage.getItem('bm_invFilter')||'all';}catch(e){return 'all';}})();
+// ═══ TOAST NOTIFICATIONS ═══
+function toast(msg,type){
+  const w=document.getElementById('toast-wrap');if(!w)return;
+  const t=document.createElement('div');t.className='toast'+(type?' '+type:'');t.textContent=msg;
+  w.appendChild(t);
+  while(w.children.length>3)w.firstChild.remove();
+  setTimeout(()=>{t.classList.add('out');setTimeout(()=>{if(t.parentNode)t.remove();},260);},2600);
+}
+// ═══ PLAIN-ENGLISH GLOSSARY ═══
+const GLOSSARY={
+  outstanding:['Outstanding','Money still left to receive from a customer, or still left to pay to a supplier.'],
+  receivable:['Receivable','Money your customers still have to pay you.'],
+  payable:['Payable','Money you still have to pay your suppliers.'],
+  itc:['ITC — Input Tax Credit','GST you already paid on purchases. It can be adjusted against the GST you collected from customers, so you pay less GST to the government.'],
+  outputtax:['Output Tax','The GST you collected from your customers on your sales.'],
+  gst:['GST','Goods & Services Tax — the tax charged on most goods and services in India. The app calculates it automatically from the selected rate.'],
+  gstsummary:['GST Summary','A snapshot of GST collected on sales, GST paid on purchases (ITC), and the final GST you owe.'],
+  gstliability:['GST Payable','The GST you owe the government = GST collected on sales minus the GST credit (ITC) from purchases.'],
+  hsn:['HSN Code','A government product code used in GST returns to identify what you sold. Usually given by your supplier or tax consultant.'],
+  sac:['SAC Code','Like an HSN code, but for services instead of goods.'],
+  cgst:['CGST','The central government\u2019s half of GST on a sale made within your own state.'],
+  sgst:['SGST','The state government\u2019s half of GST on a sale made within your own state.'],
+  igst:['IGST','A single GST charged when you sell to a customer in another state (instead of CGST + SGST).'],
+  creditnote:['Credit Note','Issued when you need to reduce an earlier sales invoice — for example a return or an overcharge. It lowers what the customer owes.'],
+  debitnote:['Debit Note','Issued when an amount needs to be increased or charged back to a supplier — for example goods returned to them.'],
+  capital:['Capital','Money the owner has invested into the business.'],
+  asset:['Assets','Things the business owns — cash, stock, money owed to you, equipment.'],
+  liability:['Liabilities','Money the business owes to others — suppliers, loans, overdraft.'],
+  od:['OD — Bank Overdraft','A short-term borrowing facility from your bank that lets your account go below zero up to a limit.'],
+  ledger:['Ledger','The full transaction history with one customer, supplier or account — every bill and payment in one place.'],
+  reservesurplus:['Reserves & Surplus','Profits the business has kept rather than withdrawn.'],
+  msme:['MSME','Micro, Small & Medium Enterprise — a government registration for smaller businesses that gives certain benefits.'],
+  udyam:['Udyam Number','The registration number you receive after registering as an MSME.'],
+  reversecharge:['Reverse Charge','A case where the buyer (not the seller) has to pay the GST directly to the government.'],
+  ewaybill:['E-Way Bill','A document required when moving goods above a certain value, generated on the government portal.'],
+  duedate:['Due Date','The date by which a payment is expected.'],
+  stock:['Stock in Hand','The value of goods you have bought but not yet sold.'],
+  tds:['TDS','Tax Deducted at Source — a small part of a payment held back and deposited with the government on the other party\u2019s behalf.'],
+  tcs:['TCS','Tax Collected at Source — tax a seller collects from the buyer on certain goods and pays to the government.'],
+  huf:['HUF','Hindu Undivided Family — a family treated as a single entity for tax purposes.'],
+  llp:['LLP','Limited Liability Partnership — a partnership where partners aren\u2019t personally liable for business debts.'],
+  proprietorship:['Sole Proprietorship','A business owned and run by one person, with no legal separation from the owner.'],
+  partnership:['Partnership','A business owned by two or more people who share profits and responsibilities.']
+};
+let _tipHideT=null;
+function info(key){
+  const g=GLOSSARY[key];if(!g)return '';
+  return `<span class="info-ic" tabindex="0" role="button" aria-label="${esc(g[0])}. ${esc(g[1])}" onmouseenter="showTip(event,'${key}')" onmouseleave="hideTip()" onfocus="showTip(event,'${key}')" onblur="hideTip()" onclick="event.stopPropagation();showTip(event,'${key}',1)">i</span>`;
+}
+function showTip(e,key,sticky){
+  const g=GLOSSARY[key];if(!g)return;
+  const pp=document.getElementById('tip-pop');if(!pp)return;
+  clearTimeout(_tipHideT);
+  pp.innerHTML='<b>'+esc(g[0])+'</b>'+esc(g[1]);
+  pp.classList.add('show');
+  const r=(e.currentTarget||e.target).getBoundingClientRect();
+  const pw=pp.offsetWidth,ph=pp.offsetHeight,m=8,vw=window.innerWidth,vh=window.innerHeight;
+  let left=r.left+r.width/2-pw/2;left=Math.max(m,Math.min(left,vw-pw-m));
+  let top=r.bottom+8;if(top+ph>vh-m)top=r.top-ph-8;
+  pp.style.left=left+'px';pp.style.top=Math.max(m,top)+'px';
+  if(sticky)_tipHideT=setTimeout(hideTip,4500);
+}
+function hideTip(){const pp=document.getElementById('tip-pop');if(pp)pp.classList.remove('show');}
+document.addEventListener('scroll',hideTip,true);
+// ═══ EMPTY STATES + PAGE INTROS ═══
+function emptyState(icon,title,sub,btnLabel,btnAction){
+  return '<div class="empty"><div class="ei">'+icon+'</div>'+
+    '<div style="font-weight:700;color:var(--txt);font-size:15px;margin-bottom:4px">'+title+'</div>'+
+    '<div style="font-size:13px;line-height:1.5;max-width:300px;margin:0 auto '+(btnLabel?'16px':'0')+'">'+sub+'</div>'+
+    (btnLabel?'<button class="btn pri" onclick="'+btnAction+'">'+btnLabel+'</button>':'')+'</div>';
+}
+function pageIntro(txt){return '<div style="font-size:12.5px;color:var(--sub);margin:-2px 0 12px;line-height:1.5">'+txt+'</div>';}
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
   const map={bills:'billshub',invoices:'billshub',inventory:'items'};
@@ -1384,7 +1516,7 @@ function renderBillsHub(){
   if(billsSub==='sales'){if(inv)inv.style.display='block';if(bil)bil.style.display='none';renderInvoices();}
   else{if(inv)inv.style.display='none';if(bil)bil.style.display='block';renderBills();}
 }
-function setBillsSub(s){billsSub=s;renderBillsHub();}
+function setBillsSub(s){billsSub=s;try{localStorage.setItem('bm_billsSub',s);}catch(e){}renderBillsHub();}
 // ═══ ITEM MASTER PAGE (replaces Inventory in nav) ═══
 function renderItemsPage(){
   const d=D();if(!d.items)d.items=[];
@@ -1585,15 +1717,28 @@ function renderHome(){
         <div style="font-size:11px;opacity:.85;margin-top:4px">GSTIN ${esc(biz.gstin)} · ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</div>
       </div>
     </div>
-    <div class="stats">
-      <div class="stat"><div class="sl">💰 Debtors (Receivable)</div><div class="sv grn">${fmt(totalDebtors)}</div></div>
-      <div class="stat"><div class="sl">📤 Creditors (Payable)</div><div class="sv red">${fmt(totalCreditors)}</div></div>
-      <div class="stat"><div class="sl">📦 Total Purchased</div><div class="sv blu">${fmt(totalPurchased())}</div></div>
-      <div class="stat"><div class="sl">🧾 Total Sold</div><div class="sv grn">${fmt(totalSold())}</div></div>
+    <div class="qa-row">
+      <div class="qa-btn" onclick="openInvModal()"><span class="qi">🧾</span>Invoice</div>
+      <div class="qa-btn" onclick="openBillModal()"><span class="qi">📦</span>Purchase</div>
+      <div class="qa-btn" onclick="openExpenseModal()"><span class="qi">💸</span>Expense</div>
+      <div class="qa-btn" onclick="openPartyModal()"><span class="qi">👥</span>Party</div>
+      <div class="qa-btn" onclick="goTab('bank')"><span class="qi">🏦</span>Bank</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+      <div class="stat" style="border-left:4px solid var(--g)" onclick="billsSub='sales';invListFilter='pending';goTab('bills')">
+        <div class="sl">💰 Customers Yet to Pay${info('receivable')}</div>
+        <div class="sv grn" style="font-size:24px">${fmt(totalDebtors)}</div>
+        <div style="font-size:11px;color:var(--sub);margin-top:3px">${pendInvs} pending invoice${pendInvs===1?'':'s'} · View →</div>
+      </div>
+      <div class="stat" style="border-left:4px solid var(--r)" onclick="billsSub='purchase';billListFilter='pending';goTab('bills')">
+        <div class="sl">📤 Payments to Suppliers${info('payable')}</div>
+        <div class="sv red" style="font-size:24px">${fmt(totalCreditors)}</div>
+        <div style="font-size:11px;color:var(--sub);margin-top:3px">${pendBills} pending bill${pendBills===1?'':'s'} · View →</div>
+      </div>
     </div>
     <div class="stats" style="margin-top:0">
-      <div class="stat"><div class="sl">📦 Pending Bills</div><div class="sv ora">${pendBills}</div></div>
-      <div class="stat"><div class="sl">🧾 Pending Invoices</div><div class="sv blu">${pendInvs}</div></div>
+      <div class="stat"><div class="sl">🧾 Total Sold</div><div class="sv grn">${fmt(totalSold())}</div></div>
+      <div class="stat"><div class="sl">📦 Total Purchased</div><div class="sv blu">${fmt(totalPurchased())}</div></div>
       <div class="stat" style="grid-column:1/-1;background:#FEFCE8;border:1.5px solid #FDE047;cursor:pointer" onclick="goTab('cash')">
         <div class="sl">💵 Cash in Hand</div>
         <div class="sv" style="color:${cashInHand()>=0?'#854D0E':'#DC2626'}">${fmt(cashInHand())}</div>
@@ -1605,12 +1750,12 @@ function renderHome(){
         <div style="font-size:11px;color:var(--sub)">Rent, salary, freight & more · tap to manage</div>
       </div>
       <div class="stat" style="grid-column:1/-1;background:#EEF2FF;border:1.5px solid #C7D2FE;cursor:pointer" onclick="goTab('loans')">
-        <div class="sl">🤝 Loans & OD</div>
+        <div class="sl">🤝 Loans & OD${info('od')}</div>
         <div class="sv" style="color:#4338CA">${fmt(totalLoanOutstanding())}<span style="font-size:11px;color:var(--sub);margin-left:8px">loans owed</span></div>
         <div style="font-size:11px;color:var(--sub)">OD drawn ${fmt(odUsed())} · tap to manage</div>
       </div>
       <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE;cursor:pointer" onclick="repView='stockrep';goTab('reports')">
-        <div class="sl">📊 Stock in Hand (Purchased - Sold)</div>
+        <div class="sl">📊 Stock in Hand (Purchased - Sold)${info('stock')}</div>
         <div class="sv" style="color:${stockValue()>=0?'#059669':'#DC2626'}">${fmt(Math.abs(stockValue()))}${d.cfStock?'<span style="font-size:11px;color:var(--sub);margin-left:8px">incl. C/F ₹'+new Intl.NumberFormat("en-IN").format(d.cfStock)+'</span>':''}</div>
         <div style="font-size:11px;color:var(--sub);margin-top:2px">Tap for item-wise stock report →</div>
         <button class="btn sm" style="margin-top:8px;width:100%;justify-content:center" onclick="event.stopPropagation();openCFModal()">📦 Set Last Year C/F Stock</button>
@@ -1619,10 +1764,6 @@ function renderHome(){
     <div class="card">
       <div class="sh"><h2>Recent Activity</h2></div>
       ${recentActivity()}
-    </div>
-    <div class="btn-row">
-      <button class="btn pri" onclick="openInvModal()">+ Sales Invoice</button>
-      <button class="btn" onclick="openBillModal()">+ Purchase Bill</button>
     </div>`;
 }
 
@@ -1739,7 +1880,7 @@ function delCashRow(kind,id){
     if(!d.trash)d.trash=[];
     d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
     d.expenses=d.expenses.filter(x=>x.id!==id);
-    saveToCloud();renderCash();try{updateTrashBadge();}catch(_){}
+    saveToCloud();renderCash();try{updateTrashBadge();}catch(_){}toast('🗑 Moved to Recycle Bin','warn');
     return;
   }
   if(kind==='pay'){
@@ -1825,7 +1966,7 @@ function renderExpenses(){
         </div>
       </div>
     </div>`;
-  }).join(''):'<div class="empty"><div class="ei">🧾</div><p>No expenses'+(expMonth?' this month':'')+' yet.<br><span style="font-size:12px;color:#999">Tap + to record rent, salary, freight, courier…</span></p></div>';
+  }).join(''):emptyState('🧾','No expenses'+(expMonth?' this month':'')+' yet','Record rent, salary, freight, courier and other costs — they flow straight into your Profit report.','+ Record Expense','openExpenseModal()');
 
   document.getElementById('pg-expenses').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -1992,7 +2133,7 @@ function saveExpense(){
     d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out',cashPart,bankPart,attach:_expAttach||null});
   }
   editExpId=null;_expAttach=null;
-  saveToCloud();closeModal('expense');renderExpenses();
+  saveToCloud();closeModal('expense');toast('✅ Expense saved','ok');renderExpenses();
 }
 
 function delExpense(id){
@@ -2002,7 +2143,7 @@ function delExpense(id){
   if(!d.trash)d.trash=[];
   d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
   d.expenses.splice(idx,1);
-  saveToCloud();renderExpenses();updateTrashBadge();
+  saveToCloud();renderExpenses();updateTrashBadge();toast('🗑 Moved to Recycle Bin','warn');
 }
 
 // ═══════════════════════════════
@@ -2455,7 +2596,7 @@ function renderLoans(){
       <div class="card-hd">📊 Balance Sheet (live)</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div>
-          <div style="font-size:12px;font-weight:800;color:#059669;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin-bottom:4px">ASSETS</div>
+          <div style="font-size:12px;font-weight:800;color:#059669;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin-bottom:4px">ASSETS${info('asset')}</div>
           ${sheetRow('💵 Cash in Hand',bs.assets.cash)}
           ${sheetRow('💰 Receivables',bs.assets.debtors)}
           ${sheetRow('📦 Stock in Hand',bs.assets.stock)}
@@ -2463,14 +2604,14 @@ function renderLoans(){
           <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Assets</strong><strong style="color:#059669">${fmt(bs.assets.total)}</strong></div>
         </div>
         <div>
-          <div style="font-size:12px;font-weight:800;color:#DC2626;border-bottom:2px solid #FEE2E2;padding-bottom:4px;margin-bottom:4px">LIABILITIES</div>
+          <div style="font-size:12px;font-weight:800;color:#DC2626;border-bottom:2px solid #FEE2E2;padding-bottom:4px;margin-bottom:4px">LIABILITIES${info('liability')}</div>
           ${sheetRow('📤 Payables',bs.liabilities.creditors)}
           ${sheetRow('🤝 Loans',bs.liabilities.loans)}
           ${sheetRow('🏦 OD Drawn',bs.liabilities.od)}
           <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Liabilities</strong><strong style="color:#DC2626">${fmt(bs.liabilities.total)}</strong></div>
-          <div style="font-size:12px;font-weight:800;color:#7C3AED;border-bottom:2px solid #EDE9FE;padding-bottom:4px;margin:10px 0 4px">CAPITAL</div>
+          <div style="font-size:12px;font-weight:800;color:#7C3AED;border-bottom:2px solid #EDE9FE;padding-bottom:4px;margin:10px 0 4px">CAPITAL${info('capital')}</div>
           ${sheetRow('🏛️ Capital',bs.capital,'#7C3AED')}
-          <div style="font-size:12px;font-weight:800;color:#16A34A;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin:10px 0 4px">RESERVES &amp; SURPLUS</div>
+          <div style="font-size:12px;font-weight:800;color:#16A34A;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin:10px 0 4px">RESERVES &amp; SURPLUS${info('reservesurplus')}</div>
           ${sheetRow('💰 Reserves & Surplus',bs.reserves,'#16A34A')}
         </div>
       </div>
@@ -2627,7 +2768,7 @@ function delAsset(aid){
   const d=D();const a=d.assets.find(x=>x.id===aid);if(!a)return;
   if(!confirm('Delete asset "'+a.name+'"?'))return;
   d.assets=d.assets.filter(x=>x.id!==aid);
-  saveToCloud();renderLoans();
+  saveToCloud();renderLoans();toast('🗑 Asset deleted','warn');
 }
 
 // ═══ RESERVES & SURPLUS MODAL ═══
@@ -2665,7 +2806,7 @@ function delReserve(rid){
   const d=D();const r=d.reserves.find(x=>x.id===rid);if(!r)return;
   if(!confirm('Delete reserve "'+r.name+'" and its '+(r.txns||[]).length+' transaction(s)?'))return;
   d.reserves=d.reserves.filter(x=>x.id!==rid);
-  saveToCloud();renderLoans();
+  saveToCloud();renderLoans();toast('🗑 Reserve deleted','warn');
 }
 var _reserveTxnTarget=null,_reserveTxnDir=null;
 function openReserveTxn(rid,dir){
@@ -2736,7 +2877,7 @@ function delLoan(lid){
   const d=D();const l=d.loans.find(x=>x.id===lid);if(!l)return;
   if(!confirm('Delete "'+l.name+'" and its '+(l.txns||[]).length+' transaction(s)?'))return;
   d.loans=d.loans.filter(x=>x.id!==lid);
-  saveToCloud();renderLoans();
+  saveToCloud();renderLoans();toast('🗑 Loan deleted','warn');
 }
 var _loanTxnTarget=null,_loanTxnDir=null;
 function openLoanTxn(lid,dir){
@@ -2773,6 +2914,7 @@ function renderParties(){
 
   document.getElementById('pg-parties').innerHTML=`
     <div class="sh"><h2>Parties (${parties.length})</h2><button class="btn sm pri" onclick="openPartyModal()">+ Add</button></div>
+    ${pageIntro('Your customers and suppliers. Tap any party to open their full account — every bill, invoice and payment in one place.')}
     <div class="srch-wrap"><input class="srch" id="party-srch" placeholder="Search by name, GSTIN, phone or city…" oninput="_searchInput('party-srch',renderParties)" value="${esc(search)}"></div>
     <div class="seg">
       <button class="${filter==='all'?'act':''}" onclick="setPartyFilter('all')">All</button>
@@ -2795,7 +2937,7 @@ function renderParties(){
             <div style="font-size:10px;color:var(--sub)">${b>0?'Receivable':b<0?'Payable':''}</div>
           </div>
         </div>`;
-      }).join(''):'<div class="empty"><div class="ei">👥</div><p>No parties yet.<br>Add suppliers and customers.</p></div>'}
+      }).join(''):(search||filter!=='all'?emptyState('🔎','No matching parties','Try a different search term or switch the filter back to All.'):emptyState('👥','No parties yet','Add your customers and suppliers here — then tap any of them to see their full account.','+ Add Party','openPartyModal()'))}
     </div>`;
 }
 function setPartyFilter(f){
@@ -2905,7 +3047,7 @@ function openPartyDetail(pid){
 // ═══ PARTY MODAL ═══
 function openPartyModal(pid){
   editPartyId=pid||null;
-  document.getElementById('party-mo-title').textContent=pid?'Edit Party':'Add Party';
+  document.getElementById('party-mo-title').textContent=pid?'Update Party':'New Party';var _pb=document.getElementById('party-save-btn');if(_pb)_pb.textContent=pid?'Update Party':'Create Party';
   if(pid){
     const p=D().parties.find(x=>x.id===pid);if(!p)return;
     ['name','phone','city','addr','pin','gstin','pan','udyam','rem'].forEach(f=>{const el=document.getElementById('p-'+f);if(el)el.value=p[f]||'';});
@@ -3035,7 +3177,7 @@ function saveItem(){
   if(dup&&!confirm('An item named "'+name+'" already exists. Save anyway?'))return;
   const i=d.items.findIndex(x=>x.id===id);
   if(i>=0)d.items[i]=rec;else d.items.push(rec);
-  saveToCloud();resetItemForm();renderItemMaster();if(document.getElementById('itp-list')||document.getElementById('pg-items')&&curTab==='items')renderItemsPage();
+  saveToCloud();resetItemForm();renderItemMaster();if(document.getElementById('itp-list')||document.getElementById('pg-items')&&curTab==='items')renderItemsPage();toast('✅ Item saved','ok');
 }
 function editItem(id){
   const it=(D().items||[]).find(x=>x.id===id);if(!it)return;
@@ -3049,7 +3191,7 @@ function editItem(id){
 }
 function delItem(id){
   const d=D();if(!confirm('Delete this item from the master?'))return;
-  d.items=(d.items||[]).filter(x=>x.id!==id);saveToCloud();renderItemMaster();if(curTab==='items')renderItemsPage();
+  d.items=(d.items||[]).filter(x=>x.id!==id);saveToCloud();renderItemMaster();if(curTab==='items')renderItemsPage();toast('🗑 Item deleted','warn');
 }
 function syncItemDatalist(){
   const dl=document.getElementById('item-list');if(!dl)return;
@@ -3161,7 +3303,7 @@ function saveParty(){
   if(editPartyId){const i=d.parties.findIndex(x=>x.id===editPartyId);if(i>=0)d.parties[i]=party;}
   else{d.parties.push(party);d.pC=(d.pC||1)+1;}
   const wasEdit=editPartyId;
-  saveToCloud();closeModal('party');renderAll();
+  saveToCloud();closeModal('party');toast(editPartyId?'✅ Party updated':'✅ Party created','ok');renderAll();
   if(curParty===wasEdit)openPartyDetail(wasEdit);
 }
 function confirmDelParty(pid){
@@ -3184,7 +3326,7 @@ function confirmDelParty(pid){
     d.invoices=d.invoices.filter(i=>i.pid!==pid);
     d.payments=d.payments.filter(p=>p.pid!==pid);
     closeModal('cf');
-    saveToCloud().then(function(){goTab('parties');renderAll();});
+    saveToCloud().then(function(){goTab('parties');renderAll();});toast('🗑 Party moved to Recycle Bin','warn');
   };
   openModal('cf');
 }
@@ -3205,6 +3347,7 @@ function renderBills(){
 
   document.getElementById('pg-bills').innerHTML=`
     <div class="sh"><h2>Purchase Bills (${bills.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#EFF6FF;border-color:#BFDBFE;color:#1E40AF" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm pri" onclick="openBillModal()">+ Manual</button></div></div>
+    ${pageIntro('Record supplier bills, log your payments and keep track of what you still owe suppliers.')}
     ${totalPending>0?`<div class="ibox red">Total Pending: <strong>${fmt(totalPending)}</strong></div>`:''}
     <div class="srch-wrap"><input class="srch" id="bill-srch" placeholder="Search by bill no, party, GSTIN, phone or amount…" oninput="_searchInput('bill-srch',renderBills)" value="${esc(search)}"></div>
     <div class="seg">
@@ -3238,10 +3381,10 @@ function renderBills(){
             </div>
           </div>
         </div>`;
-      }).join(''):'<div class="empty"><div class="ei">📦</div><p>No purchase bills yet</p></div>'}
+      }).join(''):(search||filter!=='all'?emptyState('🔎','No matching bills','Try a different search term or switch the filter back to All.'):emptyState('📦','No purchase bills yet','Record your first purchase bill to track suppliers and what you owe them.','+ Create Bill','openBillModal()'))}
     </div>`;
 }
-function setBillFilter(f){billListFilter=f;renderBills();}
+function setBillFilter(f){billListFilter=f;try{localStorage.setItem('bm_billFilter',f);}catch(e){}renderBills();}
 
 // ═══ INVOICES ═══
 function renderInvoices(){
@@ -3259,6 +3402,7 @@ function renderInvoices(){
 
   document.getElementById('pg-invoices').innerHTML=`
     <div class="sh"><h2>Sales Invoices (${invs.length})</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" style="background:#FEF3C7;border-color:#FCD34D;color:#92400E" onclick="fixGstTypes()">🔧 Fix GST</button><button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="openPregModal()">📊 Register</button><button class="btn sm" onclick="openModal('scan')">📸 Scan</button><button class="btn sm" style="background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" onclick="openItemMaster()">📦 Items</button><button class="btn sm pri" onclick="openInvModal()">+ Manual</button></div></div>
+    ${pageIntro('Create invoices, record customer payments and keep track of what customers still owe you.')}
     ${totalPending>0?`<div class="ibox grn">Total Receivable: <strong>${fmt(totalPending)}</strong></div>`:''}
     <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search by invoice no, party, GSTIN, phone or amount…" oninput="_searchInput('inv-srch',renderInvoices)" value="${esc(search)}"></div>
     <div class="seg">
@@ -3287,10 +3431,10 @@ function renderInvoices(){
             </div>
           </div>
         </div>`;
-      }).join(''):'<div class="empty"><div class="ei">🧾</div><p>No sales invoices yet</p></div>'}
+      }).join(''):(search||filter!=='all'?emptyState('🔎','No matching invoices','Try a different search term or switch the filter back to All.'):emptyState('🧾','No sales invoices yet','Create your first invoice to start tracking sales and what customers owe you.','+ Create Invoice','openInvModal()'))}
     </div>`;
 }
-function setInvFilter(f){invListFilter=f;renderInvoices();}
+function setInvFilter(f){invListFilter=f;try{localStorage.setItem('bm_invFilter',f);}catch(e){}renderInvoices();}
 
 // ═══ TRASH BADGE ═══
 function updateTrashBadge(){
@@ -3312,7 +3456,7 @@ function setBillType(t){
 }
 function openBillModal(pid){
   editBillId=null;billItemCount=0;
-  document.getElementById('bill-mo-title').textContent='Add Purchase Bill';
+  document.getElementById('bill-mo-title').textContent='New Purchase Bill';var _bb=document.getElementById('bill-save-btn');if(_bb)_bb.textContent='Create Bill';
   document.getElementById('b-date').value=td();
   document.getElementById('b-supplier').value='';
   document.getElementById('b-consignee').value='';
@@ -3325,7 +3469,7 @@ function openBillModal(pid){
   document.getElementById('b-num').value='';
   document.getElementById('b-disc').value='';
   document.getElementById('b-freight').value='';
-  document.getElementById('b-gst').value='5';
+  document.getElementById('b-gst').value=(function(){try{return localStorage.getItem('bm_lastGstBill')||'5';}catch(e){return '5';}})();
   document.getElementById('b-mode').value='credit';
   document.getElementById('b-rem').value='';
   document.getElementById('b-supup').value='No';
@@ -3516,7 +3660,7 @@ function saveBill(){
   const sub=items.reduce((s,i)=>s+i.amt,0);
   const disc=parseFloat(document.getElementById('b-disc').value)||0;
   const freight=parseFloat(document.getElementById('b-freight').value)||0;
-  const gstStr=document.getElementById('b-gst').value;
+  const gstStr=document.getElementById('b-gst').value;try{localStorage.setItem('bm_lastGstBill',gstStr);}catch(e){}
   const gstPct=parseFloat(gstStr)||0;
   const discAmt=sub*disc/100;
   const taxable=sub-discAmt+freight;
@@ -3547,7 +3691,7 @@ function saveBill(){
     d.bills.push(bill);d.bC=(d.bC||1)+1;
     if(bill.mode==='cash'){d.payments.push({id:'PAY'+uid4(),pid:supplier.id,bid:bill.id,amt:grand,date:bill.date,mode:'Cash',dir:'out',ref:'Cash Bill',rem:''}); }
   }
-  saveToCloud();closeModal('bill');renderAll();
+  saveToCloud();closeModal('bill');toast('✅ Purchase bill saved','ok');renderAll();
   if(curParty===supplier.id)openPartyDetail(supplier.id);
 }
 
@@ -3555,7 +3699,7 @@ function saveBill(){
 function editBill(bid){
   const d=D();const bill=d.bills.find(b=>b.id===bid);if(!bill)return;
   editBillId=bid;billItemCount=0;
-  document.getElementById('bill-mo-title').textContent='Edit Purchase Bill';
+  document.getElementById('bill-mo-title').textContent='Edit Purchase Bill';var _bb2=document.getElementById('bill-save-btn');if(_bb2)_bb2.textContent='Update Bill';
   document.getElementById('b-num').value=bill.num;document.getElementById('b-date').value=bill.date;
   document.getElementById('b-consignee').value=bill.consignee||'';document.getElementById('b-lr-no').value=bill.lrNo||'';
   document.getElementById('b-lr-date').value=bill.lrDate||'';document.getElementById('b-case-no').value=bill.caseNo||'';
@@ -3594,7 +3738,7 @@ function confirmDelBill(bid){
   d.trash.push({type:'bill',deletedAt:new Date().toISOString(),bill:JSON.parse(JSON.stringify(bill)),payments:JSON.parse(JSON.stringify(billPayments))});
   d.bills=d.bills.filter(b=>b.id!==bid);
   d.payments=d.payments.filter(p=>p.bid!==bid);
-  saveToCloud().then(function(){renderAll();});
+  saveToCloud().then(function(){renderAll();});toast('🗑 Bill moved to Recycle Bin','warn');
 }
 function _confirmDelBill_OLD(bid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this purchase bill to Recycle Bin? You can restore it anytime.</div>';
@@ -3614,7 +3758,7 @@ function _confirmDelBill_OLD(bid){
 function editInvoice(iid){
   const d=D();const inv=d.invoices.find(i=>i.id===iid);if(!inv)return;
   editInvId=iid;invItemCount=0;
-  document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';
+  document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';var _ib=document.getElementById('inv-save-btn');if(_ib)_ib.textContent='Update Invoice';
   document.getElementById('i-num').value=inv.num;document.getElementById('i-date').value=inv.date;
   document.getElementById('i-ship').value=inv.ship||'';document.getElementById('i-cust-gstin').value=inv.custGstin||'';
   document.getElementById('i-ship-gstin').value=inv.shipGstin||'';
@@ -3648,7 +3792,7 @@ function editInvoice(iid){
     document.getElementById('i-items-list').appendChild(div);});
   calcInvTotal();
   // Reset invoice modal title and open
-  document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';
+  document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';var _ib=document.getElementById('inv-save-btn');if(_ib)_ib.textContent='Update Invoice';
   syncItemDatalist();openModal('inv');
 }
 function confirmDelInv(iid){
@@ -3660,7 +3804,7 @@ function confirmDelInv(iid){
   d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
   d.invoices=d.invoices.filter(i=>i.id!==iid);
   d.payments=d.payments.filter(p=>p.iid!==iid);
-  saveToCloud().then(function(){renderAll();});
+  saveToCloud().then(function(){renderAll();});toast('🗑 Invoice moved to Recycle Bin','warn');
 }
 function _confirmDelInv_OLD(iid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this sales invoice to Recycle Bin? You can restore it anytime.</div>';
@@ -3680,6 +3824,8 @@ function _confirmDelInv_OLD(iid){
 // ═══ INVOICE MODAL ═══
 function openInvModal(pid){
   editInvId=null;invItemCount=0;
+  var _it=document.getElementById('inv-mo-title');if(_it)_it.textContent='New Sales Invoice';
+  var _ibn=document.getElementById('inv-save-btn');if(_ibn)_ibn.textContent='Create Invoice';
   const d=D();const biz=BIZ[curBiz];
   // Auto invoice number
   const y=new Date().getFullYear().toString().slice(2);
@@ -3703,7 +3849,7 @@ function openInvModal(pid){
   document.getElementById('i-ship-phone').value='';
   document.getElementById('i-disc').value='';
   document.getElementById('i-trans').value='';
-  document.getElementById('i-gst').value='5i';
+  document.getElementById('i-gst').value=(function(){try{return localStorage.getItem('bm_lastGstInv')||'5i';}catch(e){return '5i';}})();
   document.getElementById('i-round').value='round';
   document.getElementById('i-mode').value='credit';
   document.getElementById('i-rem').value='';
@@ -4049,7 +4195,7 @@ function saveInvoice(){
   const sub=items.reduce((s,i)=>s+i.amt,0);
   const disc=parseFloat(document.getElementById('i-disc').value)||0;
   const trans=parseFloat(document.getElementById('i-trans').value)||0;
-  const gstStr=document.getElementById('i-gst').value;
+  const gstStr=document.getElementById('i-gst').value;try{localStorage.setItem('bm_lastGstInv',gstStr);}catch(e){}
   const gstPct=parseFloat(gstStr)||0;
   const roundMode=document.getElementById('i-round').value;
   const inclGst=document.getElementById('i-incl-gst')?.checked;
@@ -4108,7 +4254,7 @@ function saveInvoice(){
       }
     }
   }
-  saveToCloud();closeModal('inv');printInvoice(inv.id);renderAll();
+  saveToCloud();closeModal('inv');toast('✅ Invoice saved','ok');printInvoice(inv.id);renderAll();
   if(curParty===customer.id)openPartyDetail(customer.id);
 }
 
@@ -4189,7 +4335,7 @@ function savePayment(){
     pay.cashPart=cash;pay.bankPart=bank;
   }
   d.payments.push(pay);
-  saveToCloud();closeModal('pay');renderAll();
+  saveToCloud();closeModal('pay');toast('✅ Payment recorded','ok');renderAll();
   if(curParty===payTargetId)openPartyDetail(payTargetId);
 }
 function openCashSettle(pid){
@@ -4207,7 +4353,7 @@ function delPayment(pid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this payment entry?</div>';
   document.getElementById('cf-ok').onclick=()=>{
     const d=D();d.payments=d.payments.filter(p=>p.id!==pid);
-    saveToCloud();closeModal('cf');renderAll();
+    saveToCloud();closeModal('cf');toast('🗑 Payment deleted','warn');renderAll();
     if(curParty)openPartyDetail(curParty);
   };
   openModal('cf');
@@ -5681,7 +5827,7 @@ function restoreTrashItem(idx){
     alert('✅ Party "'+t.party.name+'" and all data restored!');
   }
   d.trash.splice(idx,1);
-  saveToCloud().then(function(){renderAll();});
+  saveToCloud().then(function(){renderAll();});toast('♻️ Restored','ok');
 }
 
 function permDeleteItem(idx){
@@ -5859,6 +6005,7 @@ function saveNote(){
   d.nC = (d.nC||1)+1;
   saveToCloud().then(function(){
     closeModal('note');
+    toast('✅ Note saved','ok');
     renderAll();
     // Auto-print
     printNote(note.id);
@@ -5869,7 +6016,7 @@ function deleteNote(nid){
   if(!confirm('Delete this note permanently?'))return;
   const d = D();
   d.notes = (d.notes||[]).filter(n=>n.id!==nid);
-  saveToCloud().then(function(){renderNotes();});
+  saveToCloud().then(function(){renderNotes();});toast('🗑 Note deleted','warn');
 }
 
 function renderNotes(){
@@ -5883,6 +6030,7 @@ function renderNotes(){
       <h2>Debit / Credit Notes (${notes.length})</h2>
       <button class="btn sm pri" onclick="openNoteModal()">+ New Note</button>
     </div>
+    ${pageIntro('Issue a credit note to reduce a sales invoice (customer return) or a debit note against a purchase (goods sent back to a supplier).')}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 0 12px">
       <div class="card" style="padding:14px;text-align:center">
         <div style="font-size:11px;color:var(--sub);margin-bottom:4px">📉 Credit Notes (Sales Returns)</div>
@@ -5895,7 +6043,7 @@ function renderNotes(){
     </div>`;
 
   if(!notes.length){
-    html += `<div class="empty"><div class="ei">📋</div><p>No notes yet.<br><span style="font-size:12px;color:#999">Use notes for goods returns, rate corrections, or adjustments.</span></p></div>`;
+    html += emptyState('📋','No credit / debit notes yet','Notes let you handle goods returns, rate corrections or adjustments against an existing bill or invoice.','+ New Note','openNoteModal()');
   } else {
     html += `<div class="card" style="padding:0 16px">` +
       notes.map(note=>{
@@ -6444,7 +6592,7 @@ function deleteBankTxn(idx){
   // Remove the bank entry itself
   bankTxns.splice(idx,1);
   d.bankTxns=bankTxns;
-  saveToCloud();renderAll();renderBank();
+  saveToCloud();renderAll();renderBank();toast('🗑 Bank entry deleted','warn');
 }
 
 // Reverse an assignment/match but KEEP the bank entry — it goes back to the "needs action" list so you can re-assign it.
@@ -6871,8 +7019,8 @@ function renderReports(){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='ledger';repParty=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📒</div><div style="font-weight:700;font-size:14px">Party Ledger</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Dr/Cr vouchers with running balance</div></div>
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='daybook';repDate=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📋</div><div style="font-weight:700;font-size:14px">Daybook</div><div style="font-size:11px;color:var(--sub);margin-top:3px">All vouchers of a day</div></div>
-    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='outstanding';renderReports()"><div style="font-size:28px;margin-bottom:6px">⏰</div><div style="font-weight:700;font-size:14px">Outstanding</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Receivables & payables with aging</div></div>
-    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gst';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🧾</div><div style="font-weight:700;font-size:14px">GST Summary</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Output vs input tax by month</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='outstanding';renderReports()"><div style="font-size:28px;margin-bottom:6px">⏰</div><div style="font-weight:700;font-size:14px">Outstanding${info('outstanding')}</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Receivables & payables with aging</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gst';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🧾</div><div style="font-weight:700;font-size:14px">GST Summary${info('gstsummary')}</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Output vs input tax by month</div></div>
   </div>
   <div style="font-size:12px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 8px">GST Returns & Registers</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -7139,7 +7287,7 @@ function renderGSTSummary(pg){
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:10px">🧾 GST Summary</h3>
   <input type="month" value="${repMonth}" onchange="repMonth=this.value;renderReports()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit">
   <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-    <span style="font-size:11px;color:var(--sub);align-self:center">ITC basis:</span>
+    <span style="font-size:11px;color:var(--sub);align-self:center">ITC${info('itc')} basis:</span>
     <button class="btn sm${itcBasis==='purchase'?' pri':''}" onclick="itcBasis='purchase';renderReports()">Purchase month</button>
     <button class="btn sm${itcBasis==='upload'?' pri':''}" onclick="itcBasis='upload';renderReports()">Supplier upload month</button>
   </div>
@@ -8118,7 +8266,7 @@ function generateAccountantPackage(){
     <div class="fl"><label>Reason / Description *</label>
       <input id="n-reason" placeholder="e.g. Goods returned - damaged items, Quality issue"></div>
     <div class="fr">
-      <div class="fl"><label>Amount (₹) *</label><input id="n-amount" type="number" placeholder="0" min="0" step="0.01" oninput="this.value=Math.abs(this.value)"></div>
+      <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="n-amount" type="number" placeholder="0" min="0" step="0.01" oninput="this.value=Math.abs(this.value)"></div>
       <div class="fl"><label>Reference (Bill/Invoice No.)</label><input id="n-ref" placeholder="e.g. 34/G or INV-001"></div>
     </div>
     <div class="fl"><label>Remarks</label><input id="n-rem" placeholder="Optional remarks"></div>
