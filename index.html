@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R39</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R41</div>
   </nav>
 
   <!-- PAGES -->
@@ -622,8 +622,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
   <div class="mhd"><div><h3 id="pay-mo-title">Record Payment</h3><div class="sub" id="pay-mo-sub"></div></div><button class="xb" onclick="closeModal('pay')">✕</button></div>
   <div class="mbd">
     <div class="ibox blu" id="pay-info"></div>
+    <div id="pay-alloc-preview" style="font-size:11.5px;color:var(--txt);margin:-4px 0 10px;line-height:1.6"></div>
     <div class="fr">
-      <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="pay-amt" type="number" placeholder="0" min="1"></div>
+      <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="pay-amt" type="number" placeholder="0" min="1" oninput="previewAlloc()"></div>
       <div class="fl"><label>Date *</label><input id="pay-date" type="date"></div>
     </div>
     <div class="fl"><label>Mode</label>
@@ -1411,6 +1412,7 @@ function closeDrawer(){
 function navTo(t){closeDrawer();goTab(t);}
 
 // ═══ NAV ═══
+let partyListFilter='all';
 let billsSub=(function(){try{return localStorage.getItem('bm_billsSub')||'sales';}catch(e){return 'sales';}})(),
     billListFilter=(function(){try{return localStorage.getItem('bm_billFilter')||'all';}catch(e){return 'all';}})(),
     invListFilter=(function(){try{return localStorage.getItem('bm_invFilter')||'all';}catch(e){return 'all';}})();
@@ -1648,16 +1650,21 @@ function partyBalance(pid){
   const obVal=(obType==='CR'?ob:-ob);
   return obVal + salesTotal - purchTotal - received + paid - creditNotes + debitNotes - assetPay;
 }
+function _allocTo(p,key,id){
+  // amount of payment p applied to doc id: direct link (legacy/cash-bill) or explicit allocation
+  if(p[key]===id)return p.amt;
+  return (p.allocations||[]).filter(a=>a[key]===id).reduce((s,a)=>s+a.amt,0);
+}
 function billBalance(bid){
   const d=D();
   const bill=d.bills.find(b=>b.id===bid);if(!bill)return 0;
-  const paid=d.payments.filter(p=>p.bid===bid).reduce((s,p)=>s+p.amt,0);
+  const paid=d.payments.reduce((s,p)=>s+_allocTo(p,'bid',bid),0);
   return bill.grand-paid;
 }
 function invBalance(iid){
   const d=D();
   const inv=d.invoices.find(i=>i.id===iid);if(!inv)return 0;
-  const recv=d.payments.filter(p=>p.iid===iid).reduce((s,p)=>s+p.amt,0);
+  const recv=d.payments.reduce((s,p)=>s+_allocTo(p,'iid',iid),0);
   return inv.grand-recv;
 }
 
@@ -2924,7 +2931,7 @@ function saveLoanTxn(){
 function renderParties(){
   const d=D();
   const search=(document.getElementById('party-srch')||{}).value||'';
-  const filter=document.getElementById('party-filter')?.value||'all';
+  const filter=partyListFilter;
   let parties=d.parties.filter(p=>{
     const ms=!search||((p.name||'')+' '+(p.city||'')+' '+(p.gstin||'')+' '+(p.phone||'')).toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='S'&&(p.type==='S'||p.type==='B'))||(filter==='C'&&(p.type==='C'||p.type==='B'));
@@ -2932,7 +2939,7 @@ function renderParties(){
   }).sort((a,b)=>a.name.localeCompare(b.name));
 
   document.getElementById('pg-parties').innerHTML=`
-    <div class="sh"><h2>Parties (${parties.length})</h2><button class="btn sm pri" onclick="openPartyModal()">+ Add</button></div>
+    <div class="sh"><h2>Parties (${parties.length})</h2><button class="btn sm pri" onclick="openPartyModal()">+ Add Party</button></div>
     ${pageIntro('Your customers and suppliers. Tap any party to open their full account — every bill, invoice and payment in one place.')}
     <div class="srch-wrap"><input class="srch" id="party-srch" placeholder="Search by name, GSTIN, phone or city…" oninput="_searchInput('party-srch',renderParties)" value="${esc(search)}"></div>
     <div class="seg">
@@ -2959,11 +2966,7 @@ function renderParties(){
       }).join(''):(search||filter!=='all'?emptyState('🔎','No matching parties','Try a different search term or switch the filter back to All.'):emptyState('👥','No parties yet','Add your customers and suppliers here — then tap any of them to see their full account.','+ Add Party','openPartyModal()'))}
     </div>`;
 }
-function setPartyFilter(f){
-  const seg=document.querySelectorAll('#pg-parties .seg button');
-  seg.forEach((b,i)=>b.className=(['all','S','C'][i]===f?'act':''));
-  renderParties();
-}
+function setPartyFilter(f){partyListFilter=f;renderParties();}
 
 // ═══ PARTY DETAIL ═══
 function openPartyDetail(pid){
@@ -3388,7 +3391,7 @@ function renderBills(){
             </div>
             <div style="text-align:right">
               <div class="ba">${fmt(b.grand)}</div>
-              <div style="font-size:11px;color:${bbal<1?'var(--g)':'var(--r)'}">${bbal<1?'✓ Settled':'Due: '+fmt(bbal)}</div>
+              <div style="font-size:11px;color:${bbal<1?'var(--g)':bbal<bill.grand-0.5?'var(--o)':'var(--r)'}">${bbal<1?'✓ Settled':bbal<bill.grand-0.5?'Partial · Paid '+fmt(bill.grand-bbal)+' · Due '+fmt(bbal):'Due: '+fmt(bbal)}</div>
             </div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
@@ -3438,7 +3441,7 @@ function renderInvoices(){
             <div><span class="bdg cus">${inv.num}</span> <span style="font-size:12px;color:var(--sub);margin-left:6px">${fmtD(inv.date)}</span></div>
             <div style="text-align:right">
               <div class="ba">${fmt(inv.grand)}</div>
-              <div style="font-size:11px;color:${ibal<1?'var(--g)':'var(--r)'}">${ibal<1?'✓ Settled':'Due: '+fmt(ibal)}</div>
+              <div style="font-size:11px;color:${ibal<1?'var(--g)':ibal<inv.grand-0.5?'var(--o)':'var(--r)'}">${ibal<1?'✓ Settled':ibal<inv.grand-0.5?'Partial · Paid '+fmt(inv.grand-ibal)+' · Due '+fmt(ibal):'Due: '+fmt(ibal)}</div>
             </div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
@@ -4304,6 +4307,7 @@ function openPayModal(pid,docId,docType){
   document.getElementById('pay-mo-sub').textContent=party&&party.name||'';
   document.getElementById('pay-info').innerHTML=`Party: <strong>${esc(party&&party.name||'')}</strong> | Balance: <strong style="color:${Math.abs(bal)<1?'var(--sub)':bal>0?'var(--g)':'var(--r)'}">${Math.abs(bal)<1?'Clear':fmt(Math.abs(bal))}</strong>`;
   document.getElementById('pay-amt').value='';
+  var _ap=document.getElementById('pay-alloc-preview');if(_ap)_ap.innerHTML='';
   document.getElementById('pay-date').value=td();
   document.getElementById('pay-mode').value='NEFT';
   document.getElementById('pay-ref').value='';
@@ -4330,6 +4334,38 @@ function calcPaySplit(){
   else m+=' · <span style="color:#B91C1C">over by '+fmt(-diff)+'</span>';
   el.innerHTML=m;
 }
+// FIFO allocation: apply an amount to a party's outstanding docs, oldest first.
+// Returns {allocations:[{iid|bid,amt}], leftover}
+function allocFIFO(pid,dir,amount){
+  const d=D();const key=dir==='in'?'iid':'bid';
+  const docs=(dir==='in'?d.invoices:d.bills)
+    .filter(x=>x.pid===pid&&x.mode!=='cash')
+    .map(x=>({id:x.id,num:x.num,date:x.date,bal:dir==='in'?invBalance(x.id):billBalance(x.id)}))
+    .filter(x=>x.bal>0.5)
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const allocations=[];let left=amount;
+  for(const doc of docs){
+    if(left<=0.5)break;
+    const a=Math.min(left,doc.bal);
+    allocations.push({[key]:doc.id,amt:Math.round(a*100)/100,num:doc.num});
+    left-=a;
+  }
+  return {allocations,leftover:Math.round(left*100)/100};
+}
+function previewAlloc(){
+  const el=document.getElementById('pay-alloc-preview');if(!el)return;
+  const amt=parseFloat(document.getElementById('pay-amt').value)||0;
+  const d=D();const party=d.parties.find(p=>p.id===payTargetId);
+  if(!party||amt<=0){el.innerHTML='';return;}
+  const dir=party.type==='C'?'in':party.type==='S'?'out':'in';
+  const {allocations,leftover}=allocFIFO(payTargetId,dir,amt);
+  if(!allocations.length){el.innerHTML=leftover>0?'<span style="color:var(--sub)">No pending '+(dir==='in'?'invoices':'bills')+' — will be kept as advance / on-account.</span>':'';return;}
+  el.innerHTML='Will settle (oldest first): '+allocations.map(a=>{
+    const bal=(a.iid?invBalance(a.iid):billBalance(a.bid));
+    const full=Math.abs(a.amt-bal)<0.5;
+    return '<b>'+esc(a.num||'')+'</b> '+fmt(a.amt)+(full?' ✓':' (part)');
+  }).join(' · ')+(leftover>0.5?' · <span style="color:var(--o)">'+fmt(leftover)+' on account</span>':'');
+}
 function savePayment(){
   const d=D();
   const amt=parseFloat(document.getElementById('pay-amt').value)||0;
@@ -4353,6 +4389,9 @@ function savePayment(){
     if(Math.abs(amt-cash-bank)>0.5){alert('Cash + Bank must add up to the total amount ('+fmt(amt)+').');return;}
     pay.cashPart=cash;pay.bankPart=bank;
   }
+  // Invoice-driven outstanding: allocate FIFO so invoices/bills carry their own settlement history
+  const _al=allocFIFO(payTargetId,dir,amt);
+  if(_al.allocations.length)pay.allocations=_al.allocations.map(a=>{const c={amt:a.amt};if(a.iid)c.iid=a.iid;if(a.bid)c.bid=a.bid;return c;});
   d.payments.push(pay);
   saveToCloud();closeModal('pay');toast('✅ Payment recorded','ok');renderAll();
   if(curParty===payTargetId)openPartyDetail(payTargetId);
