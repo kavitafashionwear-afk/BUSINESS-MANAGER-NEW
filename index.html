@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R43</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R46</div>
   </nav>
 
   <!-- PAGES -->
@@ -1226,6 +1226,7 @@ function markLoadedBM(firm, cache){
   normalizeGstData(S[firm]);          // idempotent GST reclassification (totals untouched)
   reconcileCountersBM(firm);
   allocateLegacyPayments(S[firm]);    // derived FIFO allocations for pre-R41 payments (deterministic, in-memory)
+  pullGstCacheOnce();                 // merge cross-device GST library into local
   saveLocal();
   setSyncDot(cache ? (isOnline?'busy':'offline') : 'ok');
   renderAll();
@@ -2149,6 +2150,8 @@ function saveExpense(){
   }
   if(editExpId){
     const e=d.expenses.find(x=>x.id===editExpId);
+    if(e){const ch=[];_chg(ch,'Date',e.date,date);_chg(ch,'Amount',fmt(e.amount),fmt(amount));_chg(ch,'Category',e.cat,cat);_chg(ch,'Mode',e.mode,mode);
+      if(!confirmEdit('expense',ch))return;}
     if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir='out';e.cashPart=cashPart;e.bankPart=bankPart;e.attach=_expAttach||null;}
   } else {
     d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out',cashPart,bankPart,attach:_expAttach||null});
@@ -2597,7 +2600,7 @@ function renderLoans(){
   const assetRow=a=>`<div class="prow" style="cursor:default">
     <div class="pav" style="background:#0EA5E9;font-size:15px">${a.cat==='Vehicle'?'🚗':a.cat==='Machinery'?'⚙️':a.cat==='Furniture'?'🪑':a.cat==='Property'?'🏠':a.cat==='Investment / FD'?'📈':'📦'}</div>
     <div class="pi"><div class="pn" style="font-size:13px">${esc(a.name)}</div><div class="ps">${esc(a.cat||'Asset')}${a.date?' · '+fmtD(a.date):''}${a.note?' · '+esc(a.note):''}</div></div>
-    <div class="pb" style="color:#0369A1">${fmt(a.value)}<div style="font-size:10px"><button onclick="openAssetModal('${a.id}')" style="background:none;border:none;color:var(--pri2);cursor:pointer;font-size:11px">edit</button> · <button onclick="delAsset('${a.id}')" style="background:none;border:none;color:#DC2626;cursor:pointer;font-size:11px">del</button></div></div>
+    <div class="pb" style="color:#0369A1">${fmt(a.value)}<div style="font-size:10px"><button class="btn sm" onclick="openAssetModal('${a.id}')">✏️ Edit</button> <button class="btn sm red" onclick="delAsset('${a.id}')">🗑</button></div></div>
   </div>`;
   const sheetRow=(label,val,color)=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span>${label}</span><span style="font-weight:700;color:${color||'inherit'}">${fmt(val)}</span></div>`;
   // Liabilities + Equity (reserves) total — should balance against assets in proper double-entry
@@ -3280,11 +3283,91 @@ function syncPartyStateFromGstin(){
   const g=(document.getElementById('p-gstin')?.value||'').trim();
   const st=stateFromGstin(g);
   if(st){const sel=document.getElementById('p-state');if(sel){const has=[...sel.options].some(o=>o.value===st);if(has)sel.value=st;}}
+  // Auto-derive from a complete valid GSTIN: PAN (chars 3–12) → constitution follows at save
+  if(g.length===15&&validateGSTIN(g).ok){
+    const panEl=document.getElementById('p-pan');
+    if(panEl&&!panEl.value.trim()){panEl.value=g.slice(2,12);validatePartyGstLive();}
+    fetchGstinDetails(g);
+    // Duplicate GSTIN warning (same number on another party)
+    const dup=D().parties.find(x=>x.id!==editPartyId&&(x.gstin||'').toUpperCase()===g.toUpperCase());
+    const msg=document.getElementById('p-gst-msg');
+    if(dup&&msg&&!msg.textContent.includes('already')){msg.innerHTML+=(msg.innerHTML?' ':'')+'<span style="color:var(--o)">⚠ This GSTIN is already saved on "'+esc(dup.name)+'"</span>';}
+  }
+}
+// ═══ GSTIN AUTOFETCH — local cache first, API only on miss (credits are paid) ═══
+const GST_API_KEY='9MeDPCeBO5WJhvGiHvZWTxs4TCA3';
+function _gstCache(){try{return JSON.parse(localStorage.getItem('bm_gstCache')||'{}');}catch(e){return {};}}
+function _gstCacheSet(g,info){
+  try{const c=_gstCache();c[g]=info;localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}
+  // write-through to Firestore so every device shares the library (no repeat API credits)
+  try{if(ready&&uid)_col('gst_cache').doc(g).set(_clean(info)).catch(function(){});}catch(e){}
+}
+let _gstCachePulled=false;
+function pullGstCacheOnce(){
+  if(_gstCachePulled||!ready||!uid)return;_gstCachePulled=true;
+  try{
+    _col('gst_cache').get().then(function(snap){
+      const c=_gstCache();let n=0;
+      snap.forEach(function(doc){if(!c[doc.id]){c[doc.id]=doc.data();n++;}});
+      if(n){try{localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}}
+    }).catch(function(){_gstCachePulled=false;});
+  }catch(e){_gstCachePulled=false;}
+}
+function _gstFill(info,src){
+  // fill only empty fields — never overwrite what the user typed
+  const set=(id,v)=>{const el=document.getElementById(id);if(el&&!el.value.trim()&&v)el.value=v;};
+  set('p-name',info.name);set('p-addr',info.addr);set('p-city',info.city);set('p-pin',info.pin);
+  if(info.state){const sel=document.getElementById('p-state');if(sel&&!sel.value){const has=[...sel.options].some(o=>o.value===info.state);if(has)sel.value=info.state;}}
+  const msg=document.getElementById('p-gst-msg');
+  if(msg)msg.innerHTML='<span style="color:var(--g)">✓ '+esc(info.name||'Details')+' — filled from '+src+'</span>';
+}
+let _gstFetchBusy=false;
+async function fetchGstinDetails(g){
+  g=(g||'').toUpperCase();
+  // 1) local library
+  const cached=_gstCache()[g];
+  if(cached){_gstFill(cached,'saved library');return;}
+  // 2) existing parties (seed the library for free)
+  const known=D().parties.find(x=>(x.gstin||'').toUpperCase()===g&&x.name);
+  if(known){const info={name:known.name,addr:known.addr||'',city:known.city||'',pin:known.pin||'',state:known.state||''};_gstCacheSet(g,info);_gstFill(info,'saved library');return;}
+  // 3) API (uses a paid credit)
+  if(_gstFetchBusy)return;_gstFetchBusy=true;
+  const msg=document.getElementById('p-gst-msg');
+  if(msg)msg.innerHTML+=(msg.innerHTML?' ':'')+'<span style="color:var(--sub)">⏳ Fetching from GST API…</span>';
+  const _url='https://appyflow.in/api/verifyGST?gstNo='+encodeURIComponent(g)+'&key_secret='+encodeURIComponent(GST_API_KEY);
+  try{
+    let j;
+    try{const r=await fetch(_url);j=await r.json();}
+    catch(_e){ // CORS/network — retry via proxy
+      const r2=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(_url));j=await r2.json();
+    }
+    const t=j&&j.taxpayerInfo;
+    if(t&&!j.error){
+      const pr=(t.pradr&&t.pradr.addr)||{};
+      const addr=[pr.bno,pr.bnm,pr.st,pr.loc].filter(Boolean).join(', ');
+      const info={name:t.tradeNam||t.lgnm||'',legal:t.lgnm||'',addr,city:pr.dst||pr.loc||'',pin:pr.pncd||'',state:g.slice(0,2),status:t.sts||''};
+      _gstCacheSet(g,info);
+      _gstFill(info,'GST API');
+      if(t.sts&&t.sts!=='Active'&&msg)msg.innerHTML+=' <span style="color:var(--r)">⚠ GSTIN status: '+esc(t.sts)+'</span>';
+    } else if(msg)msg.innerHTML='<span style="color:var(--o)">⚠ GST API: '+esc((j&&j.message)||'no details found')+'</span>';
+  }catch(e){
+    if(msg)msg.innerHTML='<span style="color:var(--o)">⚠ Could not reach GST API (network/CORS) — enter details manually.</span>';
+  }
+  _gstFetchBusy=false;
 }
 function toggleMsme(){
   const on=(document.getElementById('p-msme')?.value)==='Yes';
   const wrap=document.getElementById('p-udyam-wrap');if(wrap)wrap.style.display=on?'':'none';
   if(!on){const u=document.getElementById('p-udyam');if(u)u.value='';}
+}
+// Confirm edits with a summary of what changes (native confirm keeps flow fast)
+function confirmEdit(kind,changes){
+  if(!changes.length)return true;
+  return confirm('Update this '+kind+'?\n\nChanges:\n'+changes.map(c=>'• '+c).join('\n'));
+}
+function _chg(list,label,oldV,newV){
+  const a=(oldV==null?'':String(oldV)),b=(newV==null?'':String(newV));
+  if(a!==b)list.push(label+': '+(a||'—')+' → '+(b||'—'));
 }
 function saveParty(){
   const name=document.getElementById('p-name').value.trim();
@@ -3324,7 +3407,10 @@ function saveParty(){
     rem:document.getElementById('p-rem').value.trim()
   };
   // Preserve any fields on the existing record we don't edit here
-  if(editPartyId){const ex=d.parties.find(x=>x.id===editPartyId);if(ex){['deleted'].forEach(k=>{if(ex[k]!==undefined)party[k]=ex[k];});}}
+  if(editPartyId){const ex=d.parties.find(x=>x.id===editPartyId);if(ex){
+    const ch=[];_chg(ch,'Name',ex.name,party.name);_chg(ch,'GSTIN',ex.gstin,party.gstin);_chg(ch,'Phone',ex.phone,party.phone);_chg(ch,'State',ex.state,party.state);_chg(ch,'Type',ex.type,party.type);_chg(ch,'City',ex.city,party.city);
+    if(!confirmEdit('party',ch))return;
+    ['deleted'].forEach(k=>{if(ex[k]!==undefined)party[k]=ex[k];});}}
   if(editPartyId){const i=d.parties.findIndex(x=>x.id===editPartyId);if(i>=0)d.parties[i]=party;}
   else{d.parties.push(party);d.pC=(d.pC||1)+1;}
   const wasEdit=editPartyId;
@@ -3711,6 +3797,9 @@ function saveBill(){
     supUploadMonth:document.getElementById('b-supup').value==='Yes'?(document.getElementById('b-supup-month').value||''):''
   };
   if(editBillId){
+    const _old=d.bills.find(b=>b.id===editBillId);
+    if(_old){const ch=[];_chg(ch,'Bill No.',_old.num,bill.num);_chg(ch,'Date',_old.date,bill.date);_chg(ch,'Total',fmt(_old.grand),fmt(bill.grand));_chg(ch,'Items',(_old.items||[]).length,(bill.items||[]).length);_chg(ch,'Mode',_old.mode,bill.mode);
+      if(!confirmEdit('purchase bill',ch))return;}
     const i=d.bills.findIndex(b=>b.id===editBillId);if(i>=0){bill.id=editBillId;d.bills[i]=bill;}editBillId=null;
   } else {
     d.bills.push(bill);d.bC=(d.bC||1)+1;
@@ -4266,6 +4355,9 @@ function saveInvoice(){
     rem:document.getElementById('i-rem').value.trim()
   };
   if(editInvId){
+    const _oldI=d.invoices.find(x=>x.id===editInvId);
+    if(_oldI){const ch=[];_chg(ch,'Invoice No.',_oldI.num,inv.num);_chg(ch,'Date',_oldI.date,inv.date);_chg(ch,'Total',fmt(_oldI.grand),fmt(inv.grand));_chg(ch,'Items',(_oldI.items||[]).length,(inv.items||[]).length);_chg(ch,'Mode',_oldI.mode,inv.mode);
+      if(!confirmEdit('invoice',ch))return;}
     const i=d.invoices.findIndex(x=>x.id===editInvId);if(i>=0){inv.id=editInvId;d.invoices[i]=inv;}editInvId=null;
   } else {
     d.invoices.push(inv);d.iC=(d.iC||1)+1;
