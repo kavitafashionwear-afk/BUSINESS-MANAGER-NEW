@@ -158,7 +158,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 /* SEARCH */
 .srch{width:100%;padding:10px 14px 10px 38px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;background:#fff;outline:none;margin-bottom:12px}
 .srch-wrap{position:relative;margin-bottom:12px}
-.srch-wrap::before{content:'🔍';position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px}
+.srch-wrap::before{content:'🔍';position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:13px;line-height:1;pointer-events:none}
+.srch-wrap .srch{margin-bottom:0}
 /* SEGMENT */
 .seg{display:flex;background:#F3F4F6;border-radius:10px;padding:3px;margin-bottom:14px;gap:3px}
 .seg button{flex:1;padding:7px;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:none;color:var(--sub)}
@@ -298,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R37</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R39</div>
   </nav>
 
   <!-- PAGES -->
@@ -1183,7 +1184,7 @@ auth.onAuthStateChanged(function(user){_resolveAuth(user||null);});
 //          users/{uid}/{firm}_meta/state  (counters, trash, bankTxns, invMeta, cfStock)
 // ═══════════════════════════════════════════════════════════════
 const FIRMS=['MI','KF'];
-const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves'];
+const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
 const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns'];
@@ -2621,7 +2622,7 @@ function renderLoans(){
           ${sheetRow('🤝 Loans',bs.liabilities.loans)}
           ${sheetRow('🏦 OD Drawn',bs.liabilities.od)}
           <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Liabilities</strong><strong style="color:#DC2626">${fmt(bs.liabilities.total)}</strong></div>
-          <div style="font-size:12px;font-weight:800;color:#7C3AED;border-bottom:2px solid #EDE9FE;padding-bottom:4px;margin:10px 0 4px">CAPITAL${info('capital')}</div>
+          <div style="font-size:12px;font-weight:800;color:#7C3AED;border-bottom:2px solid #EDE9FE;padding-bottom:4px;margin:10px 0 4px;display:flex;justify-content:space-between;align-items:center"><span>CAPITAL${info('capital')}</span><button class="btn sm" style="padding:2px 8px;font-size:10px" onclick="openCapitalModal()">+ Add / Edit</button></div>
           ${sheetRow('🏛️ Capital',bs.capital,'#7C3AED')}
           <div style="font-size:12px;font-weight:800;color:#16A34A;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin:10px 0 4px">RESERVES &amp; SURPLUS${info('reservesurplus')}</div>
           ${sheetRow('💰 Reserves & Surplus',bs.reserves,'#16A34A')}
@@ -2785,6 +2786,12 @@ function delAsset(aid){
 
 // ═══ RESERVES & SURPLUS MODAL ═══
 var editReserveId=null;
+function openCapitalModal(){
+  const cap=ensureReserves().find(r=>r.cat==='Owner Capital');
+  openReserveModal(cap?cap.id:null);
+  document.getElementById('rs-cat').value='Owner Capital';
+  if(!cap){document.getElementById('reserve-mo-title').textContent='Add Capital';document.getElementById('rs-name').value='Owner Capital';}
+}
 function openReserveModal(rid){
   ensureReserves();editReserveId=rid||null;
   const d=D();const r=rid?d.reserves.find(x=>x.id===rid):null;
@@ -4726,6 +4733,14 @@ function openModal(id){
   el.classList.add('show');
   var mb=el.querySelector('.mb');
   if(mb){ mb.style.maxHeight='90vh'; }
+  // A11y: label icon-only close buttons; focus first field (desktop only — avoids mobile keyboard pop)
+  el.querySelectorAll('.xb').forEach(function(x){if(!x.getAttribute('aria-label'))x.setAttribute('aria-label','Close');});
+  if(window.innerWidth>=600&&id!=='cf'){
+    setTimeout(function(){
+      var f=el.querySelector('.mbd input:not([type=hidden]):not([disabled]),.mbd select:not([disabled]),.mbd textarea');
+      if(f&&el.style.display!=='none')try{f.focus();}catch(e){}
+    },80);
+  }
 }
 function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}if(id==='cf'){const ok=document.getElementById('cf-ok');if(ok)ok.style.display='';}}
 // Surface any uncaught error visibly (so a failing Print/Delete shows the real reason instead of doing nothing)
