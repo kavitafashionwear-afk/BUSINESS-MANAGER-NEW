@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R47</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R49</div>
   </nav>
 
   <!-- PAGES -->
@@ -3295,7 +3295,62 @@ function syncPartyStateFromGstin(){
 // ═══ GSTIN AUTOFETCH — local cache first, API only on miss (credits are paid) ═══
 const GST_API_KEY='9MeDPCeBO5WJhvGiHvZWTxs4TCA3';
 function _gstCache(){try{return JSON.parse(localStorage.getItem('bm_gstCache')||'{}');}catch(e){return {};}}
+// Integrity-checked read: a record is only valid for the GSTIN it was fetched for.
+function _gstCacheGet(g){
+  const c=_gstCache();const info=c[g];
+  if(!info)return null;
+  if((info.gstin||'').toUpperCase()!==g){ // legacy/poisoned record — drop it
+    delete c[g];try{localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}
+    try{if(ready&&uid)_col('gst_cache').doc(g).delete().catch(function(){});}catch(e){}
+    return null;
+  }
+  return info;
+}
+// Single validated API call used by BOTH party and invoice flows.
+// Rejects any response whose taxpayer GSTIN does not echo the requested one
+// (an invalid/demo key makes the server return its sample record).
+// ═══ TEMP DEBUG MODE (remove on request) ═══
+const GST_DEBUG=true;
+let _gstDbg=null;
+function _gstDebugShow(){
+  if(!GST_DEBUG||!_gstDbg)return;
+  let raw='';try{raw=JSON.stringify(_gstDbg.raw,null,2);}catch(e){raw=String(_gstDbg.raw);}
+  if(raw.length>1800)raw=raw.slice(0,1800)+'\n…(truncated)';
+  alert('🔧 GST DEBUG\n\nGSTIN entered: '+_gstDbg.g+'\nSource: '+_gstDbg.src+'\nHTTP status: '+_gstDbg.status+'\n\nRaw response:\n'+raw);
+}
+async function _gstApiLookup(g){
+  const _url='https://appyflow.in/api/verifyGST?gstNo='+encodeURIComponent(g)+'&key_secret='+encodeURIComponent(GST_API_KEY);
+  let j,_st='?';
+  try{
+    try{const r=await fetch(_url);_st=r.status+' (direct)';j=await r.json();}
+    catch(_e){const r2=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(_url));_st=r2.status+' (via proxy)';j=await r2.json();}
+  }catch(e){_gstDbg={g,src:'API',status:_st,raw:'fetch failed: '+(e&&e.message)};_gstDebugShow();return {ok:false,error:'GST API unreachable (network/CORS) — enter details manually.'};}
+  _gstDbg={g,src:'API',status:_st,raw:j};if(GST_DEBUG)_gstDebugShow();
+  const t=j&&j.taxpayerInfo;
+  if(!t||j.error)return {ok:false,error:(j&&j.message)||'no details found'};
+  if(((t.gstin||'')+'').toUpperCase()!==g)
+    return {ok:false,error:'API returned data for a different GSTIN ('+(t.gstin||'?')+') — the API key is not being accepted (demo response). Check the key in your AppyFlow dashboard.'};
+  const pr=(t.pradr&&t.pradr.addr)||{};
+  const info={gstin:g,name:t.tradeNam||t.lgnm||'',legal:t.lgnm||'',
+    addr:[pr.bno,pr.bnm,pr.st,pr.loc].filter(Boolean).join(', '),
+    city:pr.dst||pr.loc||'',pin:pr.pncd||'',state:g.slice(0,2),status:t.sts||''};
+  _gstCacheSet(g,info);
+  return {ok:true,info};
+}
+// One-time purge of poisoned records (accepted before echo-validation existed)
+function _gstCachePurge(){
+  const c=_gstCache();let dirty=false;
+  Object.keys(c).forEach(function(g){
+    const i=c[g]||{};
+    if((i.gstin||'').toUpperCase()!==g||i.name==='AppyFlow Technologies'){
+      delete c[g];dirty=true;
+      try{if(ready&&uid)_col('gst_cache').doc(g).delete().catch(function(){});}catch(e){}
+    }
+  });
+  if(dirty){try{localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}}
+}
 function _gstCacheSet(g,info){
+  info=info||{};info.gstin=g;
   try{const c=_gstCache();c[g]=info;localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}
   // write-through to Firestore so every device shares the library (no repeat API credits)
   try{if(ready&&uid)_col('gst_cache').doc(g).set(_clean(info)).catch(function(){});}catch(e){}
@@ -3306,8 +3361,12 @@ function pullGstCacheOnce(){
   try{
     _col('gst_cache').get().then(function(snap){
       const c=_gstCache();let n=0;
-      snap.forEach(function(doc){if(!c[doc.id]){c[doc.id]=doc.data();n++;}});
+      snap.forEach(function(doc){
+        const d2=doc.data();
+        if(!c[doc.id]&&d2&&(d2.gstin||'').toUpperCase()===doc.id)  {c[doc.id]=d2;n++;}
+      });
       if(n){try{localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}}
+      _gstCachePurge();
     }).catch(function(){_gstCachePulled=false;});
   }catch(e){_gstCachePulled=false;}
 }
@@ -3330,41 +3389,29 @@ function _gstFill(info,src){
 let _gstFetchBusy=false;
 async function fetchGstinDetails(g){
   g=(g||'').toUpperCase();
-  // 1) local library
-  const cached=_gstCache()[g];
-  if(cached){_gstFill(cached,'saved library');return;}
+  // 1) local library (integrity-checked)
+  const cached=_gstCacheGet(g);
+  if(cached){_gstDbg={g,src:'Local Cache',status:'— (no request)',raw:cached};_gstDebugShow();_gstFill(cached,'saved library');return;}
   // 2) existing parties (seed the library for free)
   const known=D().parties.find(x=>(x.gstin||'').toUpperCase()===g&&x.name);
-  if(known){const info={name:known.name,addr:known.addr||'',city:known.city||'',pin:known.pin||'',state:known.state||''};_gstCacheSet(g,info);_gstFill(info,'saved library');return;}
+  if(known){const info={name:known.name,addr:known.addr||'',city:known.city||'',pin:known.pin||'',state:known.state||''};_gstCacheSet(g,info);_gstDbg={g,src:'Local Cache (from saved party)',status:'— (no request)',raw:info};_gstDebugShow();_gstFill(info,'saved library');return;}
   // 3) API (uses a paid credit)
   if(_gstFetchBusy)return;_gstFetchBusy=true;
   const msg=document.getElementById('p-gst-msg');
   if(msg)msg.innerHTML+=(msg.innerHTML?' ':'')+'<span style="color:var(--sub)">⏳ Fetching from GST API…</span>';
-  const _url='https://appyflow.in/api/verifyGST?gstNo='+encodeURIComponent(g)+'&key_secret='+encodeURIComponent(GST_API_KEY);
-  try{
-    let j;
-    try{const r=await fetch(_url);j=await r.json();}
-    catch(_e){ // CORS/network — retry via proxy
-      const r2=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(_url));j=await r2.json();
-    }
-    const t=j&&j.taxpayerInfo;
-    if(t&&!j.error){
-      const pr=(t.pradr&&t.pradr.addr)||{};
-      const addr=[pr.bno,pr.bnm,pr.st,pr.loc].filter(Boolean).join(', ');
-      const info={name:t.tradeNam||t.lgnm||'',legal:t.lgnm||'',addr,city:pr.dst||pr.loc||'',pin:pr.pncd||'',state:g.slice(0,2),status:t.sts||''};
-      _gstCacheSet(g,info);
-      _gstFill(info,'GST API');
-      if(t.sts&&t.sts!=='Active'&&msg)msg.innerHTML+=' <span style="color:var(--r)">⚠ GSTIN status: '+esc(t.sts)+'</span>';
-    } else if(msg)msg.innerHTML='<span style="color:var(--o)">⚠ GST API: '+esc((j&&j.message)||'no details found')+'</span>';
-  }catch(e){
-    if(msg)msg.innerHTML='<span style="color:var(--o)">⚠ Could not reach GST API (network/CORS) — enter details manually.</span>';
-  }
+  const res=await _gstApiLookup(g);
+  const stillG=((document.getElementById('p-gstin')?.value||'').trim().toUpperCase()===g);
+  if(res.ok&&stillG){
+    _gstFill(res.info,'GST API');
+    if(res.info.status&&res.info.status!=='Active'&&msg)msg.innerHTML+=' <span style="color:var(--r)">⚠ GSTIN status: '+esc(res.info.status)+'</span>';
+  } else if(!res.ok&&msg)msg.innerHTML='<span style="color:var(--o)">⚠ GST API: '+esc(res.error)+'</span>';
   _gstFetchBusy=false;
 }
 async function invGstAutofetch(){
   const g=(document.getElementById('i-cust-gstin')?.value||'').trim().toUpperCase();
   if(g.length!==15||!validateGSTIN(g).ok)return;
-  let info=_gstCache()[g],src='saved library';
+  let info=_gstCacheGet(g),src='saved library';
+  if(info){_gstDbg={g,src:'Local Cache',status:'— (no request)',raw:info};_gstDebugShow();}
   if(!info){
     const known=D().parties.find(x=>(x.gstin||'').toUpperCase()===g&&x.name);
     if(known){info={name:known.name,addr:known.addr||'',city:known.city||'',pin:known.pin||'',state:known.state||''};_gstCacheSet(g,info);}
@@ -3372,15 +3419,10 @@ async function invGstAutofetch(){
   if(!info){
     const msg=document.getElementById('i-cust-gstin-msg');
     if(msg)msg.innerHTML='<span style="color:var(--sub)">⏳ Fetching from GST API…</span>';
-    const _url='https://appyflow.in/api/verifyGST?gstNo='+encodeURIComponent(g)+'&key_secret='+encodeURIComponent(GST_API_KEY);
-    try{
-      let j;try{const r=await fetch(_url);j=await r.json();}catch(_e){const r2=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(_url));j=await r2.json();}
-      const t=j&&j.taxpayerInfo;
-      if(t&&!j.error){const pr=(t.pradr&&t.pradr.addr)||{};
-        info={name:t.tradeNam||t.lgnm||'',addr:[pr.bno,pr.bnm,pr.st,pr.loc].filter(Boolean).join(', '),city:pr.dst||pr.loc||'',pin:pr.pncd||'',state:g.slice(0,2)};
-        _gstCacheSet(g,info);src='GST API';}
-      else{if(msg)msg.innerHTML='<span style="color:var(--o)">⚠ No details found for this GSTIN.</span>';return;}
-    }catch(e){if(msg)msg.innerHTML='<span style="color:var(--o)">⚠ GST API unreachable.</span>';return;}
+    const res=await _gstApiLookup(g);
+    if((document.getElementById('i-cust-gstin')?.value||'').trim().toUpperCase()!==g)return; // input changed while fetching
+    if(res.ok){info=res.info;src='GST API';}
+    else{if(msg)msg.innerHTML='<span style="color:var(--o)">⚠ GST API: '+esc(res.error)+'</span>';return;}
   }
   const lines=[['Customer',info.name],['Address',info.addr],['PIN',info.pin],['State',stateName(info.state)||info.state]].filter(x=>x[1]);
   if(!lines.length)return;
