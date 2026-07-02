@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R49</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R51</div>
   </nav>
 
   <!-- PAGES -->
@@ -3310,7 +3310,7 @@ function _gstCacheGet(g){
 // Rejects any response whose taxpayer GSTIN does not echo the requested one
 // (an invalid/demo key makes the server return its sample record).
 // ═══ TEMP DEBUG MODE (remove on request) ═══
-const GST_DEBUG=true;
+const GST_DEBUG=false; // debug mode off — flip to true to re-enable popups
 let _gstDbg=null;
 function _gstDebugShow(){
   if(!GST_DEBUG||!_gstDbg)return;
@@ -3319,7 +3319,11 @@ function _gstDebugShow(){
   alert('🔧 GST DEBUG\n\nGSTIN entered: '+_gstDbg.g+'\nSource: '+_gstDbg.src+'\nHTTP status: '+_gstDbg.status+'\n\nRaw response:\n'+raw);
 }
 async function _gstApiLookup(g){
-  const _url='https://appyflow.in/api/verifyGST?gstNo='+encodeURIComponent(g)+'&key_secret='+encodeURIComponent(GST_API_KEY);
+  // If a proxy is configured (Cloudflare Worker holding the key), use it; else call Appyflow directly.
+  const _proxy=(function(){try{return localStorage.getItem('bm_gstProxy')||'';}catch(e){return '';}})();
+  const _url=_proxy
+    ? _proxy.replace(/\/$/,'')+'?gstNo='+encodeURIComponent(g)
+    : 'https://appyflow.in/api/verifyGST?gstNo='+encodeURIComponent(g)+'&key_secret='+encodeURIComponent(GST_API_KEY);
   let j,_st='?';
   try{
     try{const r=await fetch(_url);_st=r.status+' (direct)';j=await r.json();}
@@ -3329,7 +3333,9 @@ async function _gstApiLookup(g){
   const t=j&&j.taxpayerInfo;
   if(!t||j.error)return {ok:false,error:(j&&j.message)||'no details found'};
   if(((t.gstin||'')+'').toUpperCase()!==g)
-    return {ok:false,error:'API returned data for a different GSTIN ('+(t.gstin||'?')+') — the API key is not being accepted (demo response). Check the key in your AppyFlow dashboard.'};
+    return {ok:false,error:(t.tradeNam==='AppyFlow Technologies'
+      ?'API key not accepted — server returned its documentation sample. Register/verify your key_secret at gstapi.appyflow.in (Get Key), then update it here.'
+      :'API returned data for a different GSTIN ('+(t.gstin||'?')+') — response rejected.')};
   const pr=(t.pradr&&t.pradr.addr)||{};
   const info={gstin:g,name:t.tradeNam||t.lgnm||'',legal:t.lgnm||'',
     addr:[pr.bno,pr.bnm,pr.st,pr.loc].filter(Boolean).join(', '),
