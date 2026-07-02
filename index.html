@@ -97,6 +97,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .bdg.pen{background:#FEF3C7;color:#92400E}
 .bdg.par{background:#D1FAE5;color:#065F46}
 .bdg.set{background:#F3F4F6;color:#374151}
+.bdg.grn{background:#D1FAE5;color:#065F46}
+.bdg.blu{background:#DBEAFE;color:#1E40AF}
+.bdg.ora{background:#FEF3C7;color:#92400E}
+.bdg.red{background:#FEE2E2;color:#991B1B}
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;border:1.5px solid var(--bdr);background:#fff;font-size:13px;font-weight:600;cursor:pointer;color:var(--txt)}
 .btn.pri{background:var(--pri2);color:#fff;border-color:var(--pri2)}
@@ -219,6 +223,14 @@ details.adv>summary::before{content:'▸';font-size:10px;margin-right:7px;displa
 details.adv[open]>summary::before{content:'▾'}
 details.adv[open]{padding-bottom:8px}
 details.adv .fr,details.adv .fl{margin-bottom:12px}
+/* ── TABLE STANDARD ── */
+table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{position:sticky;top:0;background:var(--pri);color:#fff;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:9px 10px;text-align:left;z-index:1}
+.tbl td{padding:8px 10px;border-bottom:1px solid var(--bdr);vertical-align:top}
+.tbl tr:hover td{background:#F9FAFB}
+.tbl td.num,.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl .ctr{text-align:center}
+.tbl tr:last-child td{border-bottom:none}
 /* ── DASHBOARD QUICK ACTIONS ── */
 .qa-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
 .qa-btn{display:flex;flex-direction:column;align-items:center;gap:5px;padding:13px 4px;background:var(--card);border:1px solid var(--bdr);border-radius:12px;cursor:pointer;font-size:11px;font-weight:700;color:var(--txt);box-shadow:var(--sh-1);text-align:center;line-height:1.1}
@@ -286,7 +298,7 @@ details.adv .fr,details.adv .fl{margin-bottom:12px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R34</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R37</div>
   </nav>
 
   <!-- PAGES -->
@@ -1533,7 +1545,7 @@ function renderItemsPage(){
     <button class="btn pri sm" onclick="openItemMaster()">+ Add Item</button>
   </div>
   <div class="card">
-    <input id="itp-search" placeholder="🔎 Search items by name, code or HSN…" oninput="_searchInput('itp-search',renderItemsPage)" value="${esc(q)}" style="width:100%;margin-bottom:12px">
+    <div class="srch-wrap"><input class="srch" id="itp-search" placeholder="Search items by name, code or HSN…" oninput="_searchInput('itp-search',renderItemsPage)" value="${esc(q)}"></div>
     ${rows}
   </div>`;
   syncItemDatalist();
@@ -4739,7 +4751,25 @@ function _openPrintView(){
 }
 // Escape key always closes the print preview (extra escape hatch so it can never trap you)
 document.addEventListener('keydown',function(e){
-  if(e.key==='Escape'){var po=document.getElementById('print-overlay');if(po&&po.style.display==='block'){closePrint();}}
+  // Print overlay: Esc closes it
+  if(e.key==='Escape'){var po=document.getElementById('print-overlay');if(po&&po.style.display==='block'){closePrint();return;}}
+  // Find the topmost open modal (display set to non-none by openModal)
+  var opens=[].slice.call(document.querySelectorAll('.ov')).filter(function(o){return o.style.display&&o.style.display!=='none';});
+  var ov=opens[opens.length-1];
+  if(!ov)return;
+  // Esc → close the modal via its own ✕ handler
+  if(e.key==='Escape'){var xb=ov.querySelector('.xb');if(xb){e.preventDefault();xb.click();}return;}
+  // Enter → save, but only from a simple text input and never in line-item modals
+  if(e.key==='Enter'){
+    var t=e.target;if(!t)return;
+    var tag=(t.tagName||'').toLowerCase();
+    if(tag!=='input'||e.isComposing)return;      // ignore textareas, selects, IME
+    if(t.getAttribute('list'))return;            // datalist: let Enter pick the suggestion
+    if(ov.querySelector('#i-items-list')||ov.querySelector('#b-items-list'))return; // invoice/bill: use the button
+    var btn=ov.querySelector('[id$="-save-btn"]');
+    if(!btn){var mft=ov.querySelector('.mft');if(mft){var pris=mft.querySelectorAll('.btn.pri');btn=pris[pris.length-1];}}
+    if(btn){e.preventDefault();btn.click();}
+  }
 });
 var _printDocName='Document',_printDocMsg='';
 var _printEmails=[],_printEmailSubject='',_printEmailBody='';
@@ -7159,17 +7189,17 @@ function renderLedger(pg){
   let totDr=0,totCr=0;
   const rows=vouchers.map((v,i)=>{
     run+=v.dr-v.cr;totDr+=v.dr;totCr+=v.cr;
-    return `<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:8px;font-size:12px">${fmtD(v.date)}</td><td style="padding:8px"><span class="bdg ${v.type==='Sales'?'grn':v.type==='Receipt'?'blu':v.type==='Payment'?'ora':v.type==='Credit Note'?'red':'sup'}" style="font-size:10px">${v.type}</span></td><td style="padding:8px;font-size:12px;color:var(--sub)">${esc(v.num||'')}</td><td style="padding:8px;text-align:right;font-size:12px">${v.dr?fmt(v.dr):''}</td><td style="padding:8px;text-align:right;font-size:12px">${v.cr?fmt(v.cr):''}</td><td style="padding:8px;text-align:right;font-size:12px;font-weight:700;color:${run>=0?'var(--g)':'var(--r)'}">${fmt(Math.abs(run))} ${run>=0?'Dr':'Cr'}</td></tr>`;
+    return `<tr><td>${fmtD(v.date)}</td><td><span class="bdg ${v.type==='Sales'?'grn':v.type==='Receipt'?'blu':v.type==='Payment'?'ora':v.type==='Credit Note'?'red':'sup'}" style="font-size:10px">${v.type}</span></td><td style="color:var(--sub)">${esc(v.num||'')}</td><td class="num">${v.dr?fmt(v.dr):''}</td><td class="num">${v.cr?fmt(v.cr):''}</td><td class="num" style="font-weight:700;color:${run>=0?'var(--g)':'var(--r)'}">${fmt(Math.abs(run))} ${run>=0?'Dr':'Cr'}</td></tr>`;
   }).join('');
 
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:10px">📒 Party Ledger</h3>${sel}
   <div style="font-size:15px;font-weight:700;margin-bottom:2px">${esc(party.name)}</div>
   <div style="font-size:11px;color:var(--sub);margin-bottom:10px">${vouchers.length} voucher(s) · As on ${fmtD(td())}</div>
   <div style="display:flex;gap:6px;margin-bottom:12px"><button class="btn sm pri" onclick="exportLedgerXLSX()">⬇️ Export Ledger (Excel)</button><button class="btn sm" onclick="exportLedgerCSV()">CSV</button></div>
-  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px">
-  <thead><tr style="background:var(--n);color:#fff"><th style="padding:8px;text-align:left">Date</th><th style="padding:8px;text-align:left">Voucher</th><th style="padding:8px;text-align:left">No.</th><th style="padding:8px;text-align:right">Debit</th><th style="padding:8px;text-align:right">Credit</th><th style="padding:8px;text-align:right">Balance</th></tr></thead>
+  <div style="overflow-x:auto"><table class="tbl" style="min-width:560px">
+  <thead><tr><th>Date</th><th>Voucher</th><th>No.</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead>
   <tbody>${obRow}${rows||'<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--sub)">No vouchers</td></tr>'}
-  <tr style="background:#EFF6FF;font-weight:700"><td colspan="3" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totDr)}</td><td style="padding:8px;text-align:right">${fmt(totCr)}</td><td style="padding:8px;text-align:right;color:${run>=0?'var(--g)':'var(--r)'}">${fmt(Math.abs(run))} ${run>=0?'Dr':'Cr'}</td></tr></tbody></table></div>
+  <tr style="background:#EFF6FF;font-weight:700"><td colspan="3">TOTAL</td><td class="num">${fmt(totDr)}</td><td class="num">${fmt(totCr)}</td><td class="num" style="color:${run>=0?'var(--g)':'var(--r)'}">${fmt(Math.abs(run))} ${run>=0?'Dr':'Cr'}</td></tr></tbody></table></div>
   <div style="font-size:11px;color:var(--sub);margin-top:8px">${run>=0?'Dr balance = party owes you (receivable)':'Cr balance = you owe party (payable)'}</div></div>`;
 }
 
@@ -7227,8 +7257,8 @@ function renderOutstanding(pg){
 
   function bucketBar(buckets,color){return '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0 14px">'+buckets.map((v,i)=>`<div style="background:${v>0?(i>=2?'#FEF2F2':'#F8FAFC'):'#F8FAFC'};border:1px solid ${v>0&&i>=2?'#FECACA':'var(--bdr)'};border-radius:8px;padding:7px;text-align:center"><div style="font-size:10px;color:var(--sub)">${bNames[i]}</div><div style="font-size:12px;font-weight:700;color:${v>0&&i>=2?'var(--r)':color}">${fmt(v)}</div></div>`).join('')+'</div>';}
 
-  function tbl(list,cls){return list.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px"><thead><tr style="background:var(--n);color:#fff"><th style="padding:7px;text-align:left;font-size:11px">No.</th><th style="padding:7px;text-align:left;font-size:11px">Party</th><th style="padding:7px;text-align:left;font-size:11px">Date</th><th style="padding:7px;text-align:right;font-size:11px">Days</th><th style="padding:7px;text-align:right;font-size:11px">Total</th><th style="padding:7px;text-align:right;font-size:11px">Balance</th><th style="padding:7px;text-align:center;font-size:11px">Age</th></tr></thead><tbody>'+
-    list.map((x,i)=>`<tr style="background:${i%2?'#FAFAFA':'#fff'}"><td style="padding:7px;font-weight:600">${esc(x.num)}</td><td style="padding:7px">${esc(x.party)}</td><td style="padding:7px;color:var(--sub)">${fmtD(x.date)}</td><td style="padding:7px;text-align:right;color:${x.days>90?'var(--r)':'var(--sub)'}">${x.days}</td><td style="padding:7px;text-align:right">${fmt(x.amt)}</td><td style="padding:7px;text-align:right;font-weight:700;color:var(--${cls})">${fmt(x.bal)}</td><td style="padding:7px;text-align:center"><span style="font-size:10px;padding:2px 7px;border-radius:8px;background:${x.bk>=2?'#FEE2E2':'#F1F5F9'};color:${x.bk>=2?'#991B1B':'#475569'}">${bNames[x.bk]}</span></td></tr>`).join('')+'</tbody></table></div>':'<div style="padding:12px;text-align:center;color:var(--sub);font-size:13px">None'+(q?' matching "'+esc(osSearch)+'"':' — all clear ✓')+'</div>';}
+  function tbl(list,cls){return list.length?'<div style="overflow-x:auto"><table class="tbl" style="min-width:520px"><thead><tr><th>No.</th><th>Party</th><th>Date</th><th class="num">Days</th><th class="num">Total</th><th class="num">Balance</th><th class="ctr">Age</th></tr></thead><tbody>'+
+    list.map((x,i)=>`<tr><td style="font-weight:600">${esc(x.num)}</td><td>${esc(x.party)}</td><td style="color:var(--sub)">${fmtD(x.date)}</td><td class="num" style="color:${x.days>90?'var(--r)':'var(--sub)'}">${x.days}</td><td class="num">${fmt(x.amt)}</td><td class="num" style="font-weight:700;color:var(--${cls})">${fmt(x.bal)}</td><td class="ctr"><span class="bdg ${x.bk>=2?'red':'sup'}" style="font-size:10px">${bNames[x.bk]}</span></td></tr>`).join('')+'</tbody></table></div>':'<div style="padding:12px;text-align:center;color:var(--sub);font-size:13px">None'+(q?' matching "'+esc(osSearch)+'"':' — all clear ✓')+'</div>';}
 
   const ctrls=`<div class="card" style="margin-bottom:12px">
     <input id="os-search" value="${esc(osSearch)}" placeholder="🔎 Search party or voucher no…" oninput="osSearch=this.value;renderReports()" style="width:100%;padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;margin-bottom:8px">
@@ -7282,7 +7312,7 @@ function renderGSTSummary(pg){
   const _cap=capitalITC(repMonth);inp.taxable+=_cap.taxable;inp.igst+=_cap.igst;inp.cgst+=_cap.cgst;inp.sgst+=_cap.sgst;inp.tax+=_cap.tax;
   const net=out.tax-inp.tax;
 
-  function gstRow(label,o){return `<tr><td style="padding:8px;font-weight:600">${label}</td><td style="padding:8px;text-align:right">${fmt(o.taxable)}</td><td style="padding:8px;text-align:right">${fmt(o.igst)}</td><td style="padding:8px;text-align:right">${fmt(o.cgst)}</td><td style="padding:8px;text-align:right">${fmt(o.sgst)}</td><td style="padding:8px;text-align:right;font-weight:700">${fmt(o.tax)}</td></tr>`;}
+  function gstRow(label,o){return `<tr><td style="font-weight:600">${label}</td><td class="num">${fmt(o.taxable)}</td><td class="num">${fmt(o.igst)}</td><td class="num">${fmt(o.cgst)}</td><td class="num">${fmt(o.sgst)}</td><td class="num" style="font-weight:700">${fmt(o.tax)}</td></tr>`;}
 
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:10px">🧾 GST Summary</h3>
   <input type="month" value="${repMonth}" onchange="repMonth=this.value;renderReports()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:14px;margin-bottom:12px;font-family:inherit">
@@ -7293,8 +7323,8 @@ function renderGSTSummary(pg){
   </div>
   ${itcBasis==='upload'?`<div class="ibox blu" style="font-size:11px;margin-bottom:8px">Showing input tax only for purchases the supplier marked as uploaded in <strong>${monthLabel(repMonth)}</strong> — matches what appears in your GSTR-2B.</div>`:(pendingUpload>0?`<div class="ibox" style="font-size:11px;margin-bottom:8px;background:#FFF7ED;border:1px solid #FED7AA;color:#9A3412">⚠ ${pendingUpload} purchase bill(s) this month not yet marked as supplier-uploaded — their ITC may not be in your 2B. Switch to "Supplier upload month" to reconcile.</div>`:'')}
   <div style="font-size:11px;color:var(--sub);margin-bottom:10px">${outInvs.length} sales invoice(s) · ${inBills.length} purchase bill(s) — tax back-calculated from grand totals</div>
-  <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:520px">
-  <thead><tr style="background:var(--n);color:#fff"><th style="padding:8px;text-align:left;font-size:11px"></th><th style="padding:8px;text-align:right;font-size:11px">Taxable</th><th style="padding:8px;text-align:right;font-size:11px">IGST</th><th style="padding:8px;text-align:right;font-size:11px">CGST</th><th style="padding:8px;text-align:right;font-size:11px">SGST</th><th style="padding:8px;text-align:right;font-size:11px">Total Tax</th></tr></thead>
+  <div style="overflow-x:auto"><table class="tbl" style="min-width:520px">
+  <thead><tr><th></th><th class="num">Taxable</th><th class="num">IGST</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">Total Tax</th></tr></thead>
   <tbody>
   ${gstRow('Output (Sales)',out)}
   ${gstRow('Input (Purchases)',inp)}
