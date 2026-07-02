@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R41</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R43</div>
   </nav>
 
   <!-- PAGES -->
@@ -1225,6 +1225,7 @@ function markLoadedBM(firm, cache){
   loadedOnce=true;
   normalizeGstData(S[firm]);          // idempotent GST reclassification (totals untouched)
   reconcileCountersBM(firm);
+  allocateLegacyPayments(S[firm]);    // derived FIFO allocations for pre-R41 payments (deterministic, in-memory)
   saveLocal();
   setSyncDot(cache ? (isOnline?'busy':'offline') : 'ok');
   renderAll();
@@ -2985,10 +2986,10 @@ function openPartyDetail(pid){
         <div><span class="bdg sup">${b.num}</span> <span style="font-size:12px;color:var(--sub)">${fmtD(b.date)}</span>${b.jw?'<span class="bdg ora" style="margin-left:4px">Job Work</span>':''}</div>
         <div>
           <div class="ba">${fmt(b.grand)}</div>
-          <div style="font-size:11px;text-align:right;color:${bbal<1?'var(--g)':'var(--r)'}">${bbal<1?'Settled':'Due: '+fmt(bbal)}</div>
+          <div style="font-size:11px;text-align:right">${bbal<1?'<span class="bdg grn">Settled</span>':bbal<b.grand-0.5?'<span class="bdg ora">Partial</span> <span style="color:var(--r)">Due '+fmt(bbal)+'</span>':'<span class="bdg red">Pending</span> <span style="color:var(--r)">'+fmt(bbal)+'</span>'}</div>
         </div>
       </div>
-      <div class="bm">${b.items.map(it=>esc(it.desc)).join(', ')}</div>
+      <div class="bm" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${b.items.map(it=>esc(it.desc)).join(', ')}</span>${bbal>0.5?`<button class="btn sm" style="flex-shrink:0" onclick="event.stopPropagation();openPayModal('${pid}','${b.id}','bill')">₹ Settle</button>`:''}</div>
     </div>`;
   }).join('');
 
@@ -2999,18 +3000,20 @@ function openPartyDetail(pid){
         <div><span class="bdg cus">${inv.num}</span> <span style="font-size:12px;color:var(--sub)">${fmtD(inv.date)}</span></div>
         <div>
           <div class="ba">${fmt(inv.grand)}</div>
-          <div style="font-size:11px;text-align:right;color:${ibal<1?'var(--g)':'var(--r)'}">${ibal<1?'Settled':'Due: '+fmt(ibal)}</div>
+          <div style="font-size:11px;text-align:right">${ibal<1?'<span class="bdg grn">Settled</span>':ibal<inv.grand-0.5?'<span class="bdg ora">Partial</span> <span style="color:var(--r)">Due '+fmt(ibal)+'</span>':'<span class="bdg red">Pending</span> <span style="color:var(--r)">'+fmt(ibal)+'</span>'}</div>
         </div>
       </div>
-      <div class="bm">${inv.items.map(it=>esc(it.desc)).join(', ')}</div>
+      <div class="bm" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${inv.items.map(it=>esc(it.desc)).join(', ')}</span>${ibal>0.5?`<button class="btn sm" style="flex-shrink:0" onclick="event.stopPropagation();openPayModal('${pid}','${inv.id}','inv')">₹ Settle</button>`:''}</div>
     </div>`;
   }).join('');
 
+  const _docNum={};pinvs.forEach(i=>_docNum[i.id]=i.num);pbills.forEach(b=>_docNum[b.id]=b.num);
   const payRows=ppays.slice().reverse().map(p=>`<div class="prow" style="cursor:default">
     <div class="pav" style="background:${p.dir==='in'?'#059669':'#1E40AF'};font-size:18px">${p.dir==='in'?'↙':'↗'}</div>
     <div class="pi">
       <div class="pn" style="color:${p.dir==='in'?'var(--g)':'var(--r)'}">₹${new Intl.NumberFormat('en-IN').format(p.amt)}</div>
       <div class="ps">${fmtD(p.date)} · ${p.mode}${p.ref?' · '+esc(p.ref):''}</div>
+      ${(p.allocations&&p.allocations.length)?`<div class="ps" style="color:var(--sub)">→ ${p.allocations.map(a=>esc(_docNum[a.iid||a.bid]||'')+' '+fmt(a.amt)).join(' · ')}</div>`:(p.iid||p.bid)?`<div class="ps" style="color:var(--sub)">→ ${esc(_docNum[p.iid||p.bid]||'')}</div>`:''}
     </div>
     <button class="btn sm red" onclick="delPayment('${p.id}')">🗑</button>
   </div>`).join('');
@@ -4299,8 +4302,10 @@ function saveCF(){
 }
 
 // ═══ PAYMENT ═══
+let payTargetDoc=null; // {id,type:'inv'|'bill'} — settle-this-doc-first; remainder FIFO
 function openPayModal(pid,docId,docType){
   payTargetId=pid;
+  payTargetDoc=docId?{id:docId,type:docType}:null;
   const d=D();const party=d.parties.find(p=>p.id===pid);
   const bal=partyBalance(pid);
   document.getElementById('pay-mo-title').textContent=party&&party.type==='C'||party&&party.type==='B'?'Record Receipt':'Record Payment';
@@ -4308,6 +4313,15 @@ function openPayModal(pid,docId,docType){
   document.getElementById('pay-info').innerHTML=`Party: <strong>${esc(party&&party.name||'')}</strong> | Balance: <strong style="color:${Math.abs(bal)<1?'var(--sub)':bal>0?'var(--g)':'var(--r)'}">${Math.abs(bal)<1?'Clear':fmt(Math.abs(bal))}</strong>`;
   document.getElementById('pay-amt').value='';
   var _ap=document.getElementById('pay-alloc-preview');if(_ap)_ap.innerHTML='';
+  if(payTargetDoc){
+    const doc=(payTargetDoc.type==='inv'?d.invoices:d.bills).find(x=>x.id===payTargetDoc.id);
+    const dbal=payTargetDoc.type==='inv'?invBalance(payTargetDoc.id):billBalance(payTargetDoc.id);
+    if(doc&&dbal>0.5){
+      document.getElementById('pay-info').innerHTML+=`<br>Against <strong>${esc(doc.num)}</strong> · Due ${fmt(dbal)} <span style="color:var(--sub)">(extra amount settles other bills FIFO)</span>`;
+      document.getElementById('pay-amt').value=Math.round(dbal*100)/100;
+      setTimeout(previewAlloc,0);
+    } else payTargetDoc=null;
+  }
   document.getElementById('pay-date').value=td();
   document.getElementById('pay-mode').value='NEFT';
   document.getElementById('pay-ref').value='';
@@ -4334,16 +4348,61 @@ function calcPaySplit(){
   else m+=' · <span style="color:#B91C1C">over by '+fmt(-diff)+'</span>';
   el.innerHTML=m;
 }
+// Legacy payments (pre-allocation model) get deterministic FIFO allocations at load time.
+// Pure derivation — same result on every device; nothing needs to sync.
+function allocateLegacyPayments(d){
+  if(!d||!d.payments||!d.payments.length)return;
+  const bal={}; // doc id -> remaining balance after direct links + existing allocations
+  (d.invoices||[]).forEach(i=>{if(i.mode!=='cash')bal[i.id]=i.grand;});
+  (d.bills||[]).forEach(b=>{if(b.mode!=='cash')bal[b.id]=b.grand;});
+  d.payments.forEach(p=>{
+    if(p.iid&&bal[p.iid]!=null)bal[p.iid]-=p.amt;
+    if(p.bid&&bal[p.bid]!=null)bal[p.bid]-=p.amt;
+    (p.allocations||[]).forEach(a=>{const k=a.iid||a.bid;if(bal[k]!=null)bal[k]-=a.amt;});
+  });
+  const legacy=d.payments
+    .filter(p=>!p.iid&&!p.bid&&!(p.allocations&&p.allocations.length))
+    .sort((a,b)=>(((a.date||'')+a.id)).localeCompare((b.date||'')+b.id));
+  legacy.forEach(p=>{
+    const key=p.dir==='in'?'iid':'bid';
+    const docs=(p.dir==='in'?d.invoices:d.bills)
+      .filter(x=>x.pid===p.pid&&x.mode!=='cash'&&(bal[x.id]||0)>0.5)
+      .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    let left=p.amt;const allocs=[];
+    for(const doc of docs){
+      if(left<=0.5)break;
+      const a=Math.min(left,bal[doc.id]);
+      allocs.push({[key]:doc.id,amt:Math.round(a*100)/100});
+      bal[doc.id]-=a;left-=a;
+    }
+    if(allocs.length)p.allocations=allocs;
+  });
+}
 // FIFO allocation: apply an amount to a party's outstanding docs, oldest first.
 // Returns {allocations:[{iid|bid,amt}], leftover}
-function allocFIFO(pid,dir,amount){
+function allocFIFO(pid,dir,amount,targetDoc){
   const d=D();const key=dir==='in'?'iid':'bid';
+  const allocations=[];let left=amount;
+  if(targetDoc){
+    const tbal=dir==='in'?invBalance(targetDoc.id):billBalance(targetDoc.id);
+    const tdoc=(dir==='in'?d.invoices:d.bills).find(x=>x.id===targetDoc.id);
+    if(tdoc&&tbal>0.5&&left>0.5){
+      const a=Math.min(left,tbal);
+      allocations.push({[key]:targetDoc.id,amt:Math.round(a*100)/100,num:tdoc.num});
+      left-=a;
+    }
+  }
+  return _allocFIFOrest(pid,dir,left,allocations,key);
+}
+function _allocFIFOrest(pid,dir,amount,allocations,key){
+  const d=D();
+  const already={};allocations.forEach(a=>{already[a[key]]=(already[a[key]]||0)+a.amt;});
   const docs=(dir==='in'?d.invoices:d.bills)
     .filter(x=>x.pid===pid&&x.mode!=='cash')
-    .map(x=>({id:x.id,num:x.num,date:x.date,bal:dir==='in'?invBalance(x.id):billBalance(x.id)}))
+    .map(x=>({id:x.id,num:x.num,date:x.date,bal:(dir==='in'?invBalance(x.id):billBalance(x.id))-(already[x.id]||0)}))
     .filter(x=>x.bal>0.5)
     .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  const allocations=[];let left=amount;
+  let left=amount;
   for(const doc of docs){
     if(left<=0.5)break;
     const a=Math.min(left,doc.bal);
@@ -4358,7 +4417,7 @@ function previewAlloc(){
   const d=D();const party=d.parties.find(p=>p.id===payTargetId);
   if(!party||amt<=0){el.innerHTML='';return;}
   const dir=party.type==='C'?'in':party.type==='S'?'out':'in';
-  const {allocations,leftover}=allocFIFO(payTargetId,dir,amt);
+  const {allocations,leftover}=allocFIFO(payTargetId,dir,amt,payTargetDoc);
   if(!allocations.length){el.innerHTML=leftover>0?'<span style="color:var(--sub)">No pending '+(dir==='in'?'invoices':'bills')+' — will be kept as advance / on-account.</span>':'';return;}
   el.innerHTML='Will settle (oldest first): '+allocations.map(a=>{
     const bal=(a.iid?invBalance(a.iid):billBalance(a.bid));
@@ -4390,7 +4449,7 @@ function savePayment(){
     pay.cashPart=cash;pay.bankPart=bank;
   }
   // Invoice-driven outstanding: allocate FIFO so invoices/bills carry their own settlement history
-  const _al=allocFIFO(payTargetId,dir,amt);
+  const _al=allocFIFO(payTargetId,dir,amt,payTargetDoc);
   if(_al.allocations.length)pay.allocations=_al.allocations.map(a=>{const c={amt:a.amt};if(a.iid)c.iid=a.iid;if(a.bid)c.bid=a.bid;return c;});
   d.payments.push(pay);
   saveToCloud();closeModal('pay');toast('✅ Payment recorded','ok');renderAll();
