@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R51</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R52</div>
   </nav>
 
   <!-- PAGES -->
@@ -1045,6 +1045,7 @@ const BIZ={
     bank:'17942600004640',
     ifsc:'DCBL0000179',
     invPfx:'MI',
+    invSeed:369,
     color:'#1A3A6B',
     color2:'#2563EB',
     color3:'#EFF6FF'
@@ -1058,9 +1059,23 @@ const BIZ={
     ifsc:'DCBL0000179',
     deals:'Mfg. of Leggings & Kurti',
     invPfx:'KF',
+    invSeed:653,
     color:'#7C2D12',
     color2:'#DC2626',
     color3:'#FFF7ED'
+  },
+  TEST:{
+    name:'Test Mode (Sandbox)',
+    gstin:'',
+    addr:'Sandbox — not a real firm. For testing only.',
+    phone:'',
+    bank:'',
+    ifsc:'',
+    invPfx:'TEST',
+    invSeed:0,
+    color:'#374151',
+    color2:'#6B7280',
+    color3:'#F3F4F6'
   }
 };
 
@@ -1184,7 +1199,7 @@ auth.onAuthStateChanged(function(user){_resolveAuth(user||null);});
 //  Layout: users/{uid}/{firm}_{entity}/{id}
 //          users/{uid}/{firm}_meta/state  (counters, trash, bankTxns, invMeta, cfStock)
 // ═══════════════════════════════════════════════════════════════
-const FIRMS=['MI','KF'];
+const FIRMS=['MI','KF','TEST']; // TEST = isolated sandbox: own Firestore docs (TEST_*), never mixes with real books
 const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
@@ -1210,11 +1225,11 @@ function ensureFirm(firm){
 }
 
 const LS_KEY=function(){return 'bizmgr_backup_'+(uid||'anon');};
-function saveLocal(){ try{ localStorage.setItem(LS_KEY(), JSON.stringify({MI:S.MI,KF:S.KF})); }catch(e){} }
+function saveLocal(){ try{ localStorage.setItem(LS_KEY(), JSON.stringify({MI:S.MI,KF:S.KF,TEST:S.TEST})); }catch(e){} }
 function loadLocal(){
   try{ var raw=localStorage.getItem(LS_KEY()); if(!raw)return false;
     var d=JSON.parse(raw);
-    if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF;
+    if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF; if(d.TEST)S.TEST=d.TEST;
     return !!(d.MI||d.KF);
   }catch(e){ return false; }
 }
@@ -1378,15 +1393,25 @@ function migrateLegacyIfNeeded(done){
 
 // ═══ BUSINESS TOGGLE ═══
 function applyBiz(){
+  if(!BIZ[curBiz])curBiz='MI';
   const biz=BIZ[curBiz];
-  const bn=document.getElementById('biz-name');if(bn)bn.textContent=biz.name;
+  const bn=document.getElementById('biz-name');if(bn)bn.textContent=(curBiz==='TEST'?'🧪 ':'')+biz.name;
   const db2=document.getElementById('drawer-biz');if(db2)db2.textContent=biz.name;
   document.documentElement.style.setProperty('--pri',biz.color);
   document.documentElement.style.setProperty('--pri2',biz.color2);
   document.documentElement.style.setProperty('--pri3',biz.color3);
+  // Red TEST MODE banner — impossible to miss
+  var tb=document.getElementById('test-banner');
+  if(!tb){
+    tb=document.createElement('div');tb.id='test-banner';
+    tb.style.cssText='display:none;background:#DC2626;color:#fff;text-align:center;font-weight:800;font-size:12px;padding:6px 10px;letter-spacing:.5px';
+    tb.textContent='🧪 TEST MODE — sandbox data only. Real MI / KF books are untouched.';
+    var pg=document.getElementById('pg-app');if(pg)pg.insertBefore(tb,pg.firstChild);
+  }
+  tb.style.display=curBiz==='TEST'?'block':'none';
 }
 function toggleBiz(){
-  curBiz=curBiz==='MI'?'KF':'MI';
+  curBiz=curBiz==='MI'?'KF':(curBiz==='KF'?'TEST':'MI'); // MI → KF → TEST → MI
   try{ localStorage.setItem('bm_curBiz', curBiz); }catch(e){}
   applyBiz();
   renderAll();
@@ -4019,16 +4044,78 @@ function _confirmDelInv_OLD(iid){
   };openModal('cf');
 }
 
+// ═══ INVOICE NUMBERING (seeded, derived — R52) ═══════════════════════════
+// Serial continues after the manual books: MI seed 369 → next 370; KF seed 653 → next 654.
+// Next serial = max(seed, highest serial among ACTIVE invoices) + 1 — computed at read time,
+// never stored. Trash doesn't count, so deleting a dummy bill frees its number instantly.
+function fyLabel(dateStr){
+  var dt=dateStr?new Date(dateStr+'T00:00:00'):new Date();
+  if(isNaN(dt))dt=new Date();
+  var y=dt.getFullYear(),m=dt.getMonth()+1;
+  var a=(m>=4)?y:y-1; // Indian FY: Apr–Mar
+  return String(a).slice(2)+String(a+1).slice(2);
+}
+function invSerialOf(inv){
+  var n=((inv&&inv.num)||'').trim();
+  var m=/\/(\d+)\s*$/.exec(n)||/^(\d+)$/.exec(n); // 'MI-2627/370' → 370, plain '653' → 653; 'INV-xxx' ignored
+  return m?parseInt(m[1],10):0;
+}
+function nextInvSerial(d){
+  var seed=(BIZ[curBiz]&&BIZ[curBiz].invSeed)||0;
+  var mx=seed;
+  (d.invoices||[]).forEach(function(i){var s=invSerialOf(i);if(s>mx)mx=s;});
+  return mx+1;
+}
+function genInvNum(d){
+  return BIZ[curBiz].invPfx+'-'+fyLabel()+'/'+String(nextInvSerial(d)).padStart(3,'0');
+}
+// One-time renumber of already-created invoices so they run consecutively after the manual
+// books, ordered by date (tie-break: existing serial, then id). Payments link by invoice id,
+// so allocations/ledgers are unaffected. Guarded by invMeta.renumV1 (synced via meta doc).
+function renumberInvoicesSeed(){
+  var d=D();var biz=BIZ[curBiz];
+  if(curBiz==='TEST'){toast('Not applicable in Test Mode','warn');return;}
+  if(d.invMeta&&d.invMeta.renumV1){toast('Already renumbered on this firm','warn');return;}
+  var seed=biz.invSeed||0;
+  var list=(d.invoices||[]).slice().sort(function(a,b){
+    if((a.date||'')!==(b.date||''))return (a.date||'')<(b.date||'')?-1:1;
+    var sa=invSerialOf(a),sb=invSerialOf(b);
+    if(sa!==sb)return sa-sb;
+    return String(a.id||'').localeCompare(String(b.id||''));
+  });
+  if(!list.length){toast('No invoices to renumber','warn');return;}
+  var first=seed+1,last=seed+list.length;
+  if(!confirm('Renumber '+list.length+' invoice(s) of '+biz.name+' by date?\n\nNew series: '+biz.invPfx+'-…/'+String(first).padStart(3,'0')+' → '+biz.invPfx+'-…/'+String(last).padStart(3,'0')+'\n(continues after manual book no. '+seed+')\n\n⚠ Any number already printed/shared with a party will change.\nThis runs ONCE per firm.'))return;
+  var n=seed;
+  list.forEach(function(inv){n++;inv.num=biz.invPfx+'-'+fyLabel(inv.date)+'/'+String(n).padStart(3,'0');});
+  if(!d.invMeta)d.invMeta={};
+  d.invMeta.renumV1={done:true,at:new Date().toISOString(),count:list.length,from:first,to:last};
+  saveToCloud().then(function(){renderAll();});
+  toast('✅ '+list.length+' invoice(s) renumbered: '+first+' → '+last,'ok');
+}
+// Clone a snapshot of a real firm into the TEST sandbox (real data is never touched).
+function cloneIntoTest(src){
+  if(curBiz!=='TEST'){toast('Switch to Test Mode first (⇄ Switch)','warn');return;}
+  if(src!=='MI'&&src!=='KF')return;
+  if(!S[src]){toast('No data loaded for '+src+' yet','warn');return;}
+  if(!confirm('Replace ALL Test Mode data with a copy of '+BIZ[src].name+'?\n\nReal '+src+' books are NOT touched. Existing test data will be overwritten.'))return;
+  var copy=JSON.parse(JSON.stringify(S[src]));
+  ensureFirm('TEST');
+  ENTITIES.forEach(function(e){S.TEST[e]=copy[e]||[];});
+  META_FIELDS.forEach(function(f){ if(copy[f]!==undefined) S.TEST[f]=JSON.parse(JSON.stringify(copy[f])); });
+  saveToCloud().then(function(){renderAll();});
+  toast('🧪 Test Mode now holds a copy of '+BIZ[src].name,'ok');
+}
+
 // ═══ INVOICE MODAL ═══
 function openInvModal(pid){
   editInvId=null;invItemCount=0;
   var _it=document.getElementById('inv-mo-title');if(_it)_it.textContent='New Sales Invoice';
   var _ibn=document.getElementById('inv-save-btn');if(_ibn)_ibn.textContent='Create Invoice';
   const d=D();const biz=BIZ[curBiz];
-  // Auto invoice number
-  const y=new Date().getFullYear().toString().slice(2);
-  const ny=(parseInt(y)+1).toString();
-  const num=biz.invPfx+'-'+y+ny+'/'+String(d.iC||1).padStart(3,'0');
+  // Auto invoice number — derived from data (seed = last manual book no.), never a stored counter.
+  // Deleting an invoice automatically frees its number.
+  const num=genInvNum(d);
   document.getElementById('i-num').value=num;
   document.getElementById('i-date').value=td();
   document.getElementById('i-cust').value='';
@@ -4413,7 +4500,10 @@ function saveInvoice(){
   if(roundMode==='round'){roundAdj=Math.round(grand)-grand;grand=Math.round(grand);}
   else if(roundMode==='floor'){roundAdj=Math.floor(grand)-grand;grand=Math.floor(grand);}
   else if(roundMode==='ceil'){roundAdj=Math.ceil(grand)-grand;grand=Math.ceil(grand);}
-  const num=document.getElementById('i-num').value;
+  let num=document.getElementById('i-num').value;
+  // New invoice: if the previewed number got taken while the modal was open
+  // (another device / another tab), regenerate so the series never duplicates.
+  if(!editInvId && d.invoices.some(x=>x.num===num)) num=genInvNum(d);
   const selMode=document.getElementById('i-mode').value;
   // 'partial' is stored as a credit invoice with a separate cash receipt
   const storeMode=selMode==='cash'?'cash':'credit';
@@ -7328,7 +7418,23 @@ function renderReports(){
   if(repView==='export')return renderAccountantExport(pg);
   // MENU
   pg.innerHTML=`
-  <div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">📊 Reports</h3><div style="font-size:12px;color:var(--sub)">Tally-style books of accounts for ${curBiz==='MI'?'Modrobe Impex':'Kavita Fashion Wear'}</div></div>
+  <div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">📊 Reports</h3><div style="font-size:12px;color:var(--sub)">Tally-style books of accounts for ${esc(BIZ[curBiz].name)}</div></div>
+  ${curBiz!=='TEST'&&!(D().invMeta&&D().invMeta.renumV1)?`
+  <div class="card" style="cursor:pointer;padding:14px 18px;border:2px dashed #D97706;background:#FFFBEB;margin-bottom:12px" onclick="renumberInvoicesSeed()">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:26px">🔢</div>
+      <div><div style="font-weight:800;font-size:14px;color:#92400E">Renumber invoices after manual books</div><div style="font-size:11px;color:#B45309;margin-top:2px">One-time: sorts existing invoices by date and continues the series after ${curBiz==='MI'?'MI book no. 369 (next: 370)':'KF book no. 653 (next: 654)'}</div></div>
+    </div>
+  </div>`:''}
+  ${curBiz==='TEST'?`
+  <div class="card" style="padding:14px 18px;border:2px dashed #DC2626;background:#FEF2F2;margin-bottom:12px">
+    <div style="font-weight:800;font-size:14px;color:#991B1B">🧪 Test Mode tools</div>
+    <div style="font-size:11px;color:#B91C1C;margin:4px 0 10px">Copy a snapshot of a real firm here to test safely. Real books are never touched.</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn" style="flex:1" onclick="cloneIntoTest('MI')">Clone Modrobe Impex</button>
+      <button class="btn" style="flex:1" onclick="cloneIntoTest('KF')">Clone Kavita Fashion Wear</button>
+    </div>
+  </div>`:''}
   <div class="card" style="cursor:pointer;padding:18px;background:linear-gradient(135deg,#047857,#065F46);color:#fff;margin-bottom:12px" onclick="repView='export';renderReports()">
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-size:30px">📤</div>
