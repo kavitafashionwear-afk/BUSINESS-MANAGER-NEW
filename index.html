@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R52</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R55</div>
   </nav>
 
   <!-- PAGES -->
@@ -1059,7 +1059,7 @@ const BIZ={
     ifsc:'DCBL0000179',
     deals:'Mfg. of Leggings & Kurti',
     invPfx:'KF',
-    invSeed:653,
+    invSeed:641,
     color:'#7C2D12',
     color2:'#DC2626',
     color3:'#FFF7ED'
@@ -4057,7 +4057,9 @@ function fyLabel(dateStr){
 }
 function invSerialOf(inv){
   var n=((inv&&inv.num)||'').trim();
-  var m=/\/(\d+)\s*$/.exec(n)||/^(\d+)$/.exec(n); // 'MI-2627/370' → 370, plain '653' → 653; 'INV-xxx' ignored
+  var m=/^(?:MI|KF|KW|TEST)-(?:\d{4}\/)?(\d+)$/i.exec(n) // MI-370, KF-654, old MI-2627/370
+       ||/\/(\d+)\s*$/.exec(n)                            // anything…/370
+       ||/^(\d+)$/.exec(n);                                // plain 653
   return m?parseInt(m[1],10):0;
 }
 function nextInvSerial(d){
@@ -4067,7 +4069,7 @@ function nextInvSerial(d){
   return mx+1;
 }
 function genInvNum(d){
-  return BIZ[curBiz].invPfx+'-'+fyLabel()+'/'+String(nextInvSerial(d)).padStart(3,'0');
+  return BIZ[curBiz].invPfx+'-'+fyLabel()+'/'+String(nextInvSerial(d)).padStart(3,'0'); // MI-2627/370, KF-2627/654
 }
 // One-time renumber of already-created invoices so they run consecutively after the manual
 // books, ordered by date (tie-break: existing serial, then id). Payments link by invoice id,
@@ -4075,7 +4077,8 @@ function genInvNum(d){
 function renumberInvoicesSeed(){
   var d=D();var biz=BIZ[curBiz];
   if(curBiz==='TEST'){toast('Not applicable in Test Mode','warn');return;}
-  if(d.invMeta&&d.invMeta.renumV1){toast('Already renumbered on this firm','warn');return;}
+  var flagKey=(curBiz==='KF')?'renumV2':'renumV1'; // KF seed corrected 653→641, needs one re-run
+  if(d.invMeta&&d.invMeta[flagKey]){toast('Already renumbered on this firm','warn');return;}
   var seed=biz.invSeed||0;
   var list=(d.invoices||[]).slice().sort(function(a,b){
     if((a.date||'')!==(b.date||''))return (a.date||'')<(b.date||'')?-1:1;
@@ -4089,7 +4092,7 @@ function renumberInvoicesSeed(){
   var n=seed;
   list.forEach(function(inv){n++;inv.num=biz.invPfx+'-'+fyLabel(inv.date)+'/'+String(n).padStart(3,'0');});
   if(!d.invMeta)d.invMeta={};
-  d.invMeta.renumV1={done:true,at:new Date().toISOString(),count:list.length,from:first,to:last};
+  d.invMeta[flagKey]={done:true,at:new Date().toISOString(),count:list.length,from:first,to:last,seed:seed};
   saveToCloud().then(function(){renderAll();});
   toast('✅ '+list.length+' invoice(s) renumbered: '+first+' → '+last,'ok');
 }
@@ -7419,11 +7422,11 @@ function renderReports(){
   // MENU
   pg.innerHTML=`
   <div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">📊 Reports</h3><div style="font-size:12px;color:var(--sub)">Tally-style books of accounts for ${esc(BIZ[curBiz].name)}</div></div>
-  ${curBiz!=='TEST'&&!(D().invMeta&&D().invMeta.renumV1)?`
+  ${curBiz!=='TEST'&&!(D().invMeta&&D().invMeta[curBiz==='KF'?'renumV2':'renumV1'])?`
   <div class="card" style="cursor:pointer;padding:14px 18px;border:2px dashed #D97706;background:#FFFBEB;margin-bottom:12px" onclick="renumberInvoicesSeed()">
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-size:26px">🔢</div>
-      <div><div style="font-weight:800;font-size:14px;color:#92400E">Renumber invoices after manual books</div><div style="font-size:11px;color:#B45309;margin-top:2px">One-time: sorts existing invoices by date and continues the series after ${curBiz==='MI'?'MI book no. 369 (next: 370)':'KF book no. 653 (next: 654)'}</div></div>
+      <div><div style="font-weight:800;font-size:14px;color:#92400E">Renumber invoices after manual books</div><div style="font-size:11px;color:#B45309;margin-top:2px">One-time: sorts existing invoices by date and continues the series after ${BIZ[curBiz].invPfx} book no. ${BIZ[curBiz].invSeed} (next: ${BIZ[curBiz].invSeed+1})</div></div>
     </div>
   </div>`:''}
   ${curBiz==='TEST'?`
