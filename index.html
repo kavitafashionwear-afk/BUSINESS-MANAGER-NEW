@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R55</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R56</div>
   </nav>
 
   <!-- PAGES -->
@@ -1063,26 +1063,13 @@ const BIZ={
     color:'#7C2D12',
     color2:'#DC2626',
     color3:'#FFF7ED'
-  },
-  TEST:{
-    name:'Test Mode (Sandbox)',
-    gstin:'',
-    addr:'Sandbox — not a real firm. For testing only.',
-    phone:'',
-    bank:'',
-    ifsc:'',
-    invPfx:'TEST',
-    invSeed:0,
-    color:'#374151',
-    color2:'#6B7280',
-    color3:'#F3F4F6'
   }
 };
 
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;if(!b.invMeta)b.invMeta={};return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;if(!b.invMeta)b.invMeta={};if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[];return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -1199,11 +1186,11 @@ auth.onAuthStateChanged(function(user){_resolveAuth(user||null);});
 //  Layout: users/{uid}/{firm}_{entity}/{id}
 //          users/{uid}/{firm}_meta/state  (counters, trash, bankTxns, invMeta, cfStock)
 // ═══════════════════════════════════════════════════════════════
-const FIRMS=['MI','KF','TEST']; // TEST = isolated sandbox: own Firestore docs (TEST_*), never mixes with real books
+const FIRMS=['MI','KF'];
 const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
-const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns'];
+const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns','cancelledInvs'];
 
 let unsubscribe=null;
 let _saving=false;
@@ -1219,17 +1206,17 @@ function ensureFirm(firm){
   if(!Array.isArray(b.trash)) b.trash=[];
   if(b.pC==null)b.pC=1; if(b.bC==null)b.bC=1; if(b.iC==null)b.iC=1; if(b.nC==null)b.nC=1;
   if(b.loanC==null)b.loanC=1; if(b.assetC==null)b.assetC=1; if(b.reserveC==null)b.reserveC=1;
-  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={};
+  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={}; if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[];
   if(!_lastSaved[firm]) _lastSaved[firm]={};
   return b;
 }
 
 const LS_KEY=function(){return 'bizmgr_backup_'+(uid||'anon');};
-function saveLocal(){ try{ localStorage.setItem(LS_KEY(), JSON.stringify({MI:S.MI,KF:S.KF,TEST:S.TEST})); }catch(e){} }
+function saveLocal(){ try{ localStorage.setItem(LS_KEY(), JSON.stringify({MI:S.MI,KF:S.KF})); }catch(e){} }
 function loadLocal(){
   try{ var raw=localStorage.getItem(LS_KEY()); if(!raw)return false;
     var d=JSON.parse(raw);
-    if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF; if(d.TEST)S.TEST=d.TEST;
+    if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF;
     return !!(d.MI||d.KF);
   }catch(e){ return false; }
 }
@@ -1393,25 +1380,17 @@ function migrateLegacyIfNeeded(done){
 
 // ═══ BUSINESS TOGGLE ═══
 function applyBiz(){
-  if(!BIZ[curBiz])curBiz='MI';
+  if(!BIZ[curBiz])curBiz='MI'; // guard: stale 'TEST' in localStorage from removed sandbox
   const biz=BIZ[curBiz];
-  const bn=document.getElementById('biz-name');if(bn)bn.textContent=(curBiz==='TEST'?'🧪 ':'')+biz.name;
+  const bn=document.getElementById('biz-name');if(bn)bn.textContent=biz.name;
   const db2=document.getElementById('drawer-biz');if(db2)db2.textContent=biz.name;
   document.documentElement.style.setProperty('--pri',biz.color);
   document.documentElement.style.setProperty('--pri2',biz.color2);
   document.documentElement.style.setProperty('--pri3',biz.color3);
-  // Red TEST MODE banner — impossible to miss
-  var tb=document.getElementById('test-banner');
-  if(!tb){
-    tb=document.createElement('div');tb.id='test-banner';
-    tb.style.cssText='display:none;background:#DC2626;color:#fff;text-align:center;font-weight:800;font-size:12px;padding:6px 10px;letter-spacing:.5px';
-    tb.textContent='🧪 TEST MODE — sandbox data only. Real MI / KF books are untouched.';
-    var pg=document.getElementById('pg-app');if(pg)pg.insertBefore(tb,pg.firstChild);
-  }
-  tb.style.display=curBiz==='TEST'?'block':'none';
+  var tb=document.getElementById('test-banner');if(tb)tb.style.display='none';
 }
 function toggleBiz(){
-  curBiz=curBiz==='MI'?'KF':(curBiz==='KF'?'TEST':'MI'); // MI → KF → TEST → MI
+  curBiz=curBiz==='MI'?'KF':'MI';
   try{ localStorage.setItem('bm_curBiz', curBiz); }catch(e){}
   applyBiz();
   renderAll();
@@ -3545,6 +3524,13 @@ function confirmDelParty(pid){
     d.bills=d.bills.filter(b=>b.pid!==pid);
     d.invoices=d.invoices.filter(i=>i.pid!==pid);
     d.payments=d.payments.filter(p=>p.pid!==pid);
+    // Block numbers that are no longer the top of the series (GST chronology).
+    // Serials above every surviving/cancelled number stay reusable (draft region).
+    (function(){var blockMax=Math.max((BIZ[curBiz]&&BIZ[curBiz].invSeed)||0,_maxActiveSerial(d,null),_maxCancelledSerial(d));
+      partyInvs.forEach(function(inv){
+        var s=invSerialOf(inv);
+        if(s>0&&s<=blockMax)recordCancelledInv(d,inv,'Party deleted');
+      });})();
     closeModal('cf');
     saveToCloud().then(function(){goTab('parties');renderAll();});toast('🗑 Party moved to Recycle Bin','warn');
   };
@@ -4021,13 +4007,19 @@ function editInvoice(iid){
 function confirmDelInv(iid){
   const d=D();
   const inv=d.invoices.find(i=>i.id===iid);if(!inv){alert('Invoice not found.');return;}
-  if(!confirm('Move sales invoice '+(inv.num||'')+' to Recycle Bin?\n\nYou can restore it anytime from the Recycle Bin.'))return;
+  const reuse=canReuseLastInvoice(d,inv);
+  const msg=reuse
+    ?('Move sales invoice '+(inv.num||'')+' to Recycle Bin?\n\nThis is your LATEST invoice — its number will be REUSED for the next invoice.\n\nYou can restore it anytime from the Recycle Bin.')
+    :('Move sales invoice '+(inv.num||'')+' to Recycle Bin?\n\n⚠ A newer invoice already exists, so this number will be PERMANENTLY CANCELLED (GST series stays chronological) and recorded in the Cancelled Invoice Register. It will never be reused.\n\nYou can still restore the invoice itself from the Recycle Bin.');
+  if(!confirm(msg))return;
   const invPayments=d.payments.filter(p=>p.iid===iid);
   if(!d.trash)d.trash=[];
   d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
+  if(!reuse)recordCancelledInv(d,inv,'Deleted/Cancelled');
   d.invoices=d.invoices.filter(i=>i.id!==iid);
   d.payments=d.payments.filter(p=>p.iid!==iid);
-  saveToCloud().then(function(){renderAll();});toast('🗑 Invoice moved to Recycle Bin','warn');
+  saveToCloud().then(function(){renderAll();});
+  toast(reuse?('🗑 Invoice deleted — number '+(inv.num||'')+' freed for reuse'):('🚫 '+(inv.num||'')+' cancelled permanently (see Reports → Cancelled Invoices)'),'warn');
 }
 function _confirmDelInv_OLD(iid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this sales invoice to Recycle Bin? You can restore it anytime.</div>';
@@ -4037,6 +4029,7 @@ function _confirmDelInv_OLD(iid){
     const invPayments=d.payments.filter(p=>p.iid===iid);
     if(!d.trash)d.trash=[];
     d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
+    if(!canReuseLastInvoice(d,inv))recordCancelledInv(d,inv,'Deleted/Cancelled');
     d.invoices=d.invoices.filter(i=>i.id!==iid);
     d.payments=d.payments.filter(p=>p.iid!==iid);
     closeModal('cf');
@@ -4044,10 +4037,55 @@ function _confirmDelInv_OLD(iid){
   };openModal('cf');
 }
 
-// ═══ INVOICE NUMBERING (seeded, derived — R52) ═══════════════════════════
-// Serial continues after the manual books: MI seed 369 → next 370; KF seed 653 → next 654.
-// Next serial = max(seed, highest serial among ACTIVE invoices) + 1 — computed at read time,
-// never stored. Trash doesn't count, so deleting a dummy bill frees its number instantly.
+// ═══ INVOICE NUMBERING (GST chronological — R56) ═════════════════════════
+// Serial continues after the manual books (MI seed 369, KF seed 641).
+// Next serial = max(seed, highest ACTIVE serial, highest CANCELLED serial) + 1.
+//  • Deleting the LATEST invoice (nothing newer, nothing cancelled above it) frees
+//    its number — the next invoice reuses it (it was only a draft).
+//  • Deleting any OTHER invoice permanently blocks its number via the Cancelled
+//    Invoice Register (GST series must stay chronological, no silent gaps).
+// Works independently per firm. Payments/ledgers link by invoice id, never by number.
+function invSerialOf(inv){
+  var n=((inv&&inv.num)||'').trim();
+  var m=/^(?:MI|KF)-(?:\d{4}\/)?(\d+)$/i.exec(n)   // MI-2627/370, KF-2627/642, MI-370
+       ||/\/(\d+)\s*$/.exec(n)                      // anything…/370
+       ||/^(\d+)$/.exec(n);                          // plain 653
+  return m?parseInt(m[1],10):0;
+}
+function _maxActiveSerial(d,exceptId){
+  var mx=0;(d.invoices||[]).forEach(function(i){if(exceptId&&i.id===exceptId)return;var s=invSerialOf(i);if(s>mx)mx=s;});return mx;
+}
+function _maxCancelledSerial(d){
+  var mx=0;(d.cancelledInvs||[]).forEach(function(c){var s=c.serial||invSerialOf(c);if(s>mx)mx=s;});return mx;
+}
+function nextInvSerial(d){
+  var seed=(BIZ[curBiz]&&BIZ[curBiz].invSeed)||0;
+  return Math.max(seed,_maxActiveSerial(d,null),_maxCancelledSerial(d))+1;
+}
+function genInvNum(d){
+  return BIZ[curBiz].invPfx+'-'+fyLabel()+'/'+String(nextInvSerial(d)).padStart(3,'0');
+}
+// TRUE ⇢ this invoice is the current highest number (nothing newer exists, active or
+// cancelled) — deleting it frees the number. FALSE ⇢ number must be cancelled forever.
+function canReuseLastInvoice(d,inv){
+  var s=invSerialOf(inv);
+  if(!s)return true; // unnumbered/foreign format — nothing to block
+  var seed=(BIZ[curBiz]&&BIZ[curBiz].invSeed)||0;
+  return s>_maxActiveSerial(d,inv.id) && s>_maxCancelledSerial(d) && s>seed;
+}
+// Permanently block a deleted invoice's number in the Cancelled Invoice Register.
+function recordCancelledInv(d,inv,reason){
+  if(!Array.isArray(d.cancelledInvs))d.cancelledInvs=[];
+  var s=invSerialOf(inv);
+  if(!s)return; // no serial to block
+  if(d.cancelledInvs.some(function(c){return c.iid===inv.id&&c.serial===s;}))return; // idempotent
+  var p=(d.parties||[]).find(function(x){return x.id===inv.pid;});
+  d.cancelledInvs.push({
+    iid:inv.id, num:inv.num||'', serial:s, date:inv.date||'',
+    party:(p&&p.name)||inv.ship||'', amount:inv.grand||0,
+    reason:reason||'Deleted/Cancelled', at:new Date().toISOString()
+  });
+}
 function fyLabel(dateStr){
   var dt=dateStr?new Date(dateStr+'T00:00:00'):new Date();
   if(isNaN(dt))dt=new Date();
@@ -4055,28 +4093,11 @@ function fyLabel(dateStr){
   var a=(m>=4)?y:y-1; // Indian FY: Apr–Mar
   return String(a).slice(2)+String(a+1).slice(2);
 }
-function invSerialOf(inv){
-  var n=((inv&&inv.num)||'').trim();
-  var m=/^(?:MI|KF|KW|TEST)-(?:\d{4}\/)?(\d+)$/i.exec(n) // MI-370, KF-654, old MI-2627/370
-       ||/\/(\d+)\s*$/.exec(n)                            // anything…/370
-       ||/^(\d+)$/.exec(n);                                // plain 653
-  return m?parseInt(m[1],10):0;
-}
-function nextInvSerial(d){
-  var seed=(BIZ[curBiz]&&BIZ[curBiz].invSeed)||0;
-  var mx=seed;
-  (d.invoices||[]).forEach(function(i){var s=invSerialOf(i);if(s>mx)mx=s;});
-  return mx+1;
-}
-function genInvNum(d){
-  return BIZ[curBiz].invPfx+'-'+fyLabel()+'/'+String(nextInvSerial(d)).padStart(3,'0'); // MI-2627/370, KF-2627/654
-}
 // One-time renumber of already-created invoices so they run consecutively after the manual
 // books, ordered by date (tie-break: existing serial, then id). Payments link by invoice id,
-// so allocations/ledgers are unaffected. Guarded by invMeta.renumV1 (synced via meta doc).
+// so allocations/ledgers are unaffected. Guarded per firm via invMeta (synced via meta doc).
 function renumberInvoicesSeed(){
   var d=D();var biz=BIZ[curBiz];
-  if(curBiz==='TEST'){toast('Not applicable in Test Mode','warn');return;}
   var flagKey=(curBiz==='KF')?'renumV2':'renumV1'; // KF seed corrected 653→641, needs one re-run
   if(d.invMeta&&d.invMeta[flagKey]){toast('Already renumbered on this firm','warn');return;}
   var seed=biz.invSeed||0;
@@ -4093,21 +4114,9 @@ function renumberInvoicesSeed(){
   list.forEach(function(inv){n++;inv.num=biz.invPfx+'-'+fyLabel(inv.date)+'/'+String(n).padStart(3,'0');});
   if(!d.invMeta)d.invMeta={};
   d.invMeta[flagKey]={done:true,at:new Date().toISOString(),count:list.length,from:first,to:last,seed:seed};
+  d.cancelledInvs=[]; // renumber = fresh baseline; old blocked numbers no longer apply
   saveToCloud().then(function(){renderAll();});
   toast('✅ '+list.length+' invoice(s) renumbered: '+first+' → '+last,'ok');
-}
-// Clone a snapshot of a real firm into the TEST sandbox (real data is never touched).
-function cloneIntoTest(src){
-  if(curBiz!=='TEST'){toast('Switch to Test Mode first (⇄ Switch)','warn');return;}
-  if(src!=='MI'&&src!=='KF')return;
-  if(!S[src]){toast('No data loaded for '+src+' yet','warn');return;}
-  if(!confirm('Replace ALL Test Mode data with a copy of '+BIZ[src].name+'?\n\nReal '+src+' books are NOT touched. Existing test data will be overwritten.'))return;
-  var copy=JSON.parse(JSON.stringify(S[src]));
-  ensureFirm('TEST');
-  ENTITIES.forEach(function(e){S.TEST[e]=copy[e]||[];});
-  META_FIELDS.forEach(function(f){ if(copy[f]!==undefined) S.TEST[f]=JSON.parse(JSON.stringify(copy[f])); });
-  saveToCloud().then(function(){renderAll();});
-  toast('🧪 Test Mode now holds a copy of '+BIZ[src].name,'ok');
 }
 
 // ═══ INVOICE MODAL ═══
@@ -6216,6 +6225,18 @@ function renderTrash(){
   document.getElementById('pg-trash').innerHTML=html;
 }
 
+// Restoring a trashed invoice: its Cancelled-Register entry (if any) is removed —
+// the number returns with its own invoice (it was blocked, so nobody else used it).
+// If the number WAS reused meanwhile (it had been freed as latest), give the restored
+// invoice the next free number instead — numbers must stay unique.
+function _restoreInvSafely(d,inv){
+  if(Array.isArray(d.cancelledInvs))d.cancelledInvs=d.cancelledInvs.filter(function(c){return c.iid!==inv.id;});
+  if(inv.num&&d.invoices.some(function(x){return x.num===inv.num;})){
+    var old=inv.num;inv.num=genInvNum(d);
+    toast('⚠ '+old+' was reused meanwhile — restored invoice renumbered to '+inv.num,'warn');
+  }
+  d.invoices.push(inv);
+}
 function restoreTrashItem(idx){
   const d=D();if(!d.trash||!d.trash[idx])return;
   const t=d.trash[idx];
@@ -6224,7 +6245,7 @@ function restoreTrashItem(idx){
     (t.payments||[]).forEach(p=>d.payments.push(p));
     alert('✅ Bill '+t.bill.num+' restored!');
   } else if(t.type==='invoice'){
-    d.invoices.push(t.invoice);
+    _restoreInvSafely(d,t.invoice);
     (t.payments||[]).forEach(p=>d.payments.push(p));
     alert('✅ Invoice '+t.invoice.num+' restored!');
   } else if(t.type==='expense'){
@@ -6234,7 +6255,7 @@ function restoreTrashItem(idx){
   } else if(t.type==='party'){
     d.parties.push(t.party);
     (t.bills||[]).forEach(b=>d.bills.push(b));
-    (t.invoices||[]).forEach(i=>d.invoices.push(i));
+    (t.invoices||[]).forEach(i=>_restoreInvSafely(d,i));
     (t.payments||[]).forEach(p=>d.payments.push(p));
     alert('✅ Party "'+t.party.name+'" and all data restored!');
   }
@@ -7419,23 +7440,15 @@ function renderReports(){
   if(repView==='balsheet')return renderBalanceSheetReport(pg);
   if(repView==='package')return renderAccountantPackage(pg);
   if(repView==='export')return renderAccountantExport(pg);
+  if(repView==='cancelinv')return renderCancelledReg(pg);
   // MENU
   pg.innerHTML=`
   <div class="card" style="margin-bottom:12px"><h3 style="margin-bottom:4px">📊 Reports</h3><div style="font-size:12px;color:var(--sub)">Tally-style books of accounts for ${esc(BIZ[curBiz].name)}</div></div>
-  ${curBiz!=='TEST'&&!(D().invMeta&&D().invMeta[curBiz==='KF'?'renumV2':'renumV1'])?`
+  ${!(D().invMeta&&D().invMeta[curBiz==='KF'?'renumV2':'renumV1'])?`
   <div class="card" style="cursor:pointer;padding:14px 18px;border:2px dashed #D97706;background:#FFFBEB;margin-bottom:12px" onclick="renumberInvoicesSeed()">
     <div style="display:flex;align-items:center;gap:12px">
       <div style="font-size:26px">🔢</div>
       <div><div style="font-weight:800;font-size:14px;color:#92400E">Renumber invoices after manual books</div><div style="font-size:11px;color:#B45309;margin-top:2px">One-time: sorts existing invoices by date and continues the series after ${BIZ[curBiz].invPfx} book no. ${BIZ[curBiz].invSeed} (next: ${BIZ[curBiz].invSeed+1})</div></div>
-    </div>
-  </div>`:''}
-  ${curBiz==='TEST'?`
-  <div class="card" style="padding:14px 18px;border:2px dashed #DC2626;background:#FEF2F2;margin-bottom:12px">
-    <div style="font-weight:800;font-size:14px;color:#991B1B">🧪 Test Mode tools</div>
-    <div style="font-size:11px;color:#B91C1C;margin:4px 0 10px">Copy a snapshot of a real firm here to test safely. Real books are never touched.</div>
-    <div style="display:flex;gap:8px">
-      <button class="btn" style="flex:1" onclick="cloneIntoTest('MI')">Clone Modrobe Impex</button>
-      <button class="btn" style="flex:1" onclick="cloneIntoTest('KF')">Clone Kavita Fashion Wear</button>
     </div>
   </div>`:''}
   <div class="card" style="cursor:pointer;padding:18px;background:linear-gradient(135deg,#047857,#065F46);color:#fff;margin-bottom:12px" onclick="repView='export';renderReports()">
@@ -7454,6 +7467,7 @@ function renderReports(){
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='preg';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📥</div><div style="font-weight:700;font-size:14px">Purchase Register</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Input GST · all bills by month</div></div>
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='sreg';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📤</div><div style="font-weight:700;font-size:14px">Sales Register</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Output GST · all invoices by month</div></div>
+    <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='cancelinv';renderReports()"><div style="font-size:28px;margin-bottom:6px">🚫</div><div style="font-weight:700;font-size:14px">Cancelled Invoices</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Permanently blocked invoice numbers</div></div>
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gstr1';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">📋</div><div style="font-weight:700;font-size:14px">GSTR-1</div><div style="font-size:11px;color:var(--sub);margin-top:3px">B2B, B2C & HSN summary</div></div>
     <div class="card" style="cursor:pointer;text-align:center;padding:20px 12px" onclick="repView='gstr3b';repMonth=null;renderReports()"><div style="font-size:28px;margin-bottom:6px">🧮</div><div style="font-weight:700;font-size:14px">GSTR-3B</div><div style="font-size:11px;color:var(--sub);margin-top:3px">Monthly return summary</div></div>
   </div>
@@ -7621,6 +7635,44 @@ function renderRepDaybook(pg){
 
 /* ── OUTSTANDING with AGING ── */
 var osSearch='',osSort='days',osDir='desc',osShow='both';
+// ═══ CANCELLED INVOICE REGISTER (R56) ═══
+function renderCancelledReg(pg){
+  const d=D();const biz=BIZ[curBiz];
+  const list=(d.cancelledInvs||[]).slice().sort((a,b)=>(a.serial||0)-(b.serial||0));
+  const rows=list.map(c=>`<tr>
+    <td style="padding:8px 10px;border-bottom:1px solid var(--bdr);font-weight:700">${esc(c.num||'')}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid var(--bdr)">${c.date?fmtD(c.date):'—'}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid var(--bdr)">${esc(c.party||'—')}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid var(--bdr);text-align:right">${fmt(c.amount||0)}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid var(--bdr)">${esc(c.reason||'Deleted/Cancelled')}</td>
+    <td style="padding:8px 10px;border-bottom:1px solid var(--bdr);font-size:11px;color:var(--sub)">${c.at?new Date(c.at).toLocaleString('en-IN'):''}</td>
+  </tr>`).join('');
+  pg.innerHTML=`
+  <button class="btn sm" onclick="repView='menu';renderReports()" style="margin-bottom:10px">← Back</button>
+  <div class="card" style="margin-bottom:12px">
+    <h3 style="margin-bottom:4px">🚫 Cancelled Invoice Register</h3>
+    <div style="font-size:12px;color:var(--sub)">${esc(biz.name)} · These invoice numbers were cancelled after a newer invoice already existed. They are permanently blocked and will never be issued again (GST series stays chronological).</div>
+  </div>
+  ${list.length?`
+  <div class="card" style="padding:0;overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:560px">
+      <thead><tr style="background:var(--pri3)">
+        <th style="padding:8px 10px;text-align:left">Invoice No.</th>
+        <th style="padding:8px 10px;text-align:left">Date</th>
+        <th style="padding:8px 10px;text-align:left">Party</th>
+        <th style="padding:8px 10px;text-align:right">Amount</th>
+        <th style="padding:8px 10px;text-align:left">Reason</th>
+        <th style="padding:8px 10px;text-align:left">Cancelled at</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`:`
+  <div class="card" style="text-align:center;padding:32px 16px;color:var(--sub)">
+    <div style="font-size:34px;margin-bottom:8px">✅</div>
+    <div style="font-weight:700;color:var(--txt)">No cancelled invoices</div>
+    <div style="font-size:12px;margin-top:4px">Your invoice series is unbroken. Numbers only get cancelled when an invoice is deleted after a newer one already exists.</div>
+  </div>`}`;
+}
 function renderOutstanding(pg){
   const d=D();const now=new Date(td()+'T00:00:00');
   function daysOf(dt){return Math.round((now-new Date(dt+'T00:00:00'))/864e5);}
