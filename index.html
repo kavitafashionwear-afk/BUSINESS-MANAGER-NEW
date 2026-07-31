@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R59</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R61</div>
   </nav>
 
   <!-- PAGES -->
@@ -1069,7 +1069,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;if(!b.invMeta)b.invMeta={};if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[];return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;if(!b.invMeta)b.invMeta={};if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[];if(!Array.isArray(b.bankAliases))b.bankAliases=[];return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -1190,7 +1190,7 @@ const FIRMS=['MI','KF'];
 const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
-const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns','cancelledInvs'];
+const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns','cancelledInvs','bankAliases'];
 
 let unsubscribe=null;
 let _saving=false;
@@ -1206,7 +1206,7 @@ function ensureFirm(firm){
   if(!Array.isArray(b.trash)) b.trash=[];
   if(b.pC==null)b.pC=1; if(b.bC==null)b.bC=1; if(b.iC==null)b.iC=1; if(b.nC==null)b.nC=1;
   if(b.loanC==null)b.loanC=1; if(b.assetC==null)b.assetC=1; if(b.reserveC==null)b.reserveC=1;
-  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={}; if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[];
+  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={}; if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[]; if(!Array.isArray(b.bankAliases))b.bankAliases=[];
   if(!_lastSaved[firm]) _lastSaved[firm]={};
   return b;
 }
@@ -1232,6 +1232,7 @@ function markLoadedBM(firm, cache){
   saveLocal();
   setSyncDot(cache ? (isOnline?'busy':'offline') : 'ok');
   renderAll();
+  if(!window._bm2Boot){window._bm2Boot=1;setTimeout(function(){try{bm2Recheck({notify:true});if(typeof renderBank==='function')renderBank();}catch(e){}},1200);}
 }
 
 function subscribeData(){
@@ -3503,6 +3504,7 @@ function saveParty(){
   else{d.parties.push(party);d.pC=(d.pC||1)+1;}
   const wasEdit=editPartyId;
   saveToCloud();closeModal('party');toast(editPartyId?'✅ Party updated':'✅ Party created','ok');renderAll();
+  try{bm2Recheck({notify:true});}catch(e){}
   if(curParty===wasEdit)openPartyDetail(wasEdit);
 }
 function confirmDelParty(pid){
@@ -3901,7 +3903,7 @@ function saveBill(){
     if(bill.mode==='cash'){d.payments.push({id:'PAY'+uid4(),pid:supplier.id,bid:bill.id,amt:grand,date:bill.date,mode:'Cash',dir:'out',ref:'Cash Bill',rem:''}); }
   }
   saveToCloud();closeModal('bill');toast('✅ Purchase bill saved','ok');renderAll();
-  if(curParty===supplier.id)openPartyDetail(supplier.id);
+  if(curParty===supplier.id)openPartyDetail(supplier.id);  try{bm2Recheck({notify:true});}catch(e){}
 }
 
 // ═══ EDIT / DELETE BILL ═══
@@ -4558,7 +4560,7 @@ function saveInvoice(){
     }
   }
   saveToCloud();closeModal('inv');toast('✅ Invoice saved','ok');printInvoice(inv.id);renderAll();
-  if(curParty===customer.id)openPartyDetail(customer.id);
+  if(curParty===customer.id)openPartyDetail(customer.id);  try{bm2Recheck({notify:true});}catch(e){}
 }
 
 
@@ -6677,7 +6679,8 @@ function renderBank(){
       </div>
     </div>
     <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
-      <button class="btn sm" onclick="autoMatchBank()" style="background:#EFF6FF;color:#1E40AF">⚡ Auto-Match</button>
+      <button class="btn sm pri" onclick="bm2ShowReview()" style="font-size:12px">🧠 Review Matches${BM2.sugs.length?' ('+BM2.sugs.length+')':''}</button>
+      <button class="btn sm" onclick="autoMatchBank();bm2Recheck({notify:true});renderBank();toast('🔄 '+BM2.sugs.length+' suggestion(s) after re-check','ok')" style="background:#EFF6FF;color:#1E40AF">🔄 Re-check Bank Matches</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
       <button class="btn sm" onclick="repairPaymentDirections()" style="background:#FFF7ED;color:#92400E">🔧 Fix Receipt/Payment Mix-ups</button>
       <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
@@ -6707,8 +6710,19 @@ function renderBank(){
       else if(t.assigned==='asset'){const as=d.assets?d.assets.find(x=>x.id===t.assignedAsset):null;statusLine=`<div style="font-size:11px;color:#0369A1;margin-top:3px">🏭 Asset: ${esc(as?as.name:'asset')}</div>`;}
       else if(t.assigned==='reserve'){const rs=d.reserves?d.reserves.find(x=>x.id===t.assignedReserve):null;statusLine=`<div style="font-size:11px;color:#166534;margin-top:3px">💰 Reserve: ${esc(rs?rs.name:'account')}</div>`;}
       else if(t.matchId)statusLine=`<div style="font-size:11px;color:#059669;margin-top:3px">✅ ${esc(party?party.name:'Unknown')} — ${fmt(pay?pay.amt:0)} · ${esc(pay?pay.mode:'')}${t.autoCreated?' · auto-settled':''}</div>`;
-      else statusLine=`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— unidentified entry —</div>`;
-      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.assigned==='reserve'?'#16A34A':t.matchId?'#059669':'#DC2626'}">
+      else if(t.cls==='SWEEP'){
+        statusLine=`<div style="font-size:11px;color:#0369A1;margin-top:3px">⇄ Sweep / Internal Transfer${t.transferGroupId?' · 🔗 paired leg':''} — internal bank movement</div>`;
+      }
+      else if(t.cls==='SWEEP?'){
+        statusLine=`<div style="font-size:11px;color:#B45309;margin-top:3px">⚠ Possible Internal Transfer — confirm below</div>`;
+      }
+      else{
+        const _sug=BM2.sugs.find(x=>x.ti===i);
+        statusLine=_sug
+          ?`<div style="font-size:11px;margin-top:3px;color:${_sug.level==='high'?'#059669':_sug.level==='likely'?'#B45309':'#6B7280'}">${_sug.level==='high'?'✓':'⚠'} Suggested: <b>${esc(_sug.best.pname)}</b> · <a href="javascript:bm2ShowReview()" style="color:var(--pri2)">Review</a></div>`
+          :`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— unidentified entry —</div>`;
+      }
+      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.assigned==='reserve'?'#16A34A':t.matchId?'#059669':t.cls==='SWEEP'?'#0369A1':t.cls==='SWEEP?'?'#D97706':'#DC2626'}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--sub);margin-bottom:2px">${fmtD(t.date)}</div>
@@ -6721,17 +6735,31 @@ function renderBank(){
           </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          ${t.cls==='SWEEP'&&!t.matchId&&!t.assigned?`
+          <button class="btn sm" onclick="bmNotSweep(${i})" style="font-size:11px;background:#EFF6FF;color:#1E40AF">👥 Not a sweep — Match Party</button>
+          <button class="btn sm" onclick="deleteBankTxn(${i})" style="font-size:11px;background:#FEF2F2;color:#DC2626;margin-left:auto">🗑 Delete</button>
+          `:t.cls==='SWEEP?'&&!t.matchId&&!t.assigned?`
+          <button class="btn sm pri" onclick="bmConfirmSweep(${i})" style="font-size:11px">✓ Confirm Sweep</button>
+          <button class="btn sm" onclick="bmNotSweep(${i})" style="font-size:11px;background:#EFF6FF;color:#1E40AF">👥 Match Party Instead</button>
+          <button class="btn sm" onclick="deleteBankTxn(${i})" style="font-size:11px;background:#FEF2F2;color:#DC2626;margin-left:auto">🗑 Delete</button>
+          `:`
           ${misc?`<button class="btn sm pri" onclick="openAssign(${i})" style="font-size:11px">➕ Assign (Party / Expense)</button>`:''}
           <button class="btn sm" onclick="openBankMatch(${i})" style="font-size:11px">${t.matchId?'🔗 Change Match':'🔗 Match Payment'}</button>
           <button class="btn sm" onclick="flipTxnDir(${i})" style="font-size:11px;background:#FFF7ED;color:#92400E">🔄 Mark as ${t.type==='CR'?'OUT (Debit)':'IN (Credit)'}</button>
           ${!misc?`<button class="btn sm" onclick="unassignTxn(${i})" style="font-size:11px;background:#FEF3C7;color:#92400E">↩ Unassign / Send back</button>`:''}
           <button class="btn sm" onclick="deleteBankTxn(${i})" style="font-size:11px;background:#FEF2F2;color:#DC2626;margin-left:auto">🗑 Delete</button>
+          `}
         </div>
       </div>`;
     }
 
-    const miscTxns=[],doneTxns=[];
-    bankTxns.forEach((t,i)=>{if(!_bankInRange(t))return;(t.matchId||t.assigned)?doneTxns.push(i):miscTxns.push(i);});
+    const miscTxns=[],doneTxns=[],sweepTxns=[];
+    bankTxns.forEach((t,i)=>{
+      if(!_bankInRange(t))return;
+      if(t.matchId||t.assigned){doneTxns.push(i);return;}
+      if(t.cls==='SWEEP'){sweepTxns.push(i);return;}   // ambiguous 'SWEEP?' stays in Miscellaneous with options
+      miscTxns.push(i);
+    });
 
     if(filtActive&&!miscTxns.length&&!doneTxns.length){
       html+=`<div style="margin:8px 16px;padding:18px;text-align:center;color:var(--sub);background:#F8FAFC;border:1px dashed var(--bdr);border-radius:10px;font-size:13px">No bank entries in the selected date range.</div>`;
@@ -6740,6 +6768,13 @@ function renderBank(){
     if(miscTxns.length){
       html+=`<div style="margin:0 16px 4px"><div style="font-size:14px;font-weight:700;color:#DC2626;margin-bottom:8px">❓ Miscellaneous — needs your action (${miscTxns.length})</div></div><div style="margin:0 16px">`;
       miscTxns.forEach(i=>{html+=txnCard(bankTxns[i],i,true);});
+      html+=`</div>`;
+    }
+    if(sweepTxns.length){
+      const swCr=sweepTxns.reduce((s2,i)=>s2+(bankTxns[i].type==='CR'?bankTxns[i].amount:0),0);
+      const swDr=sweepTxns.reduce((s2,i)=>s2+(bankTxns[i].type==='DR'?bankTxns[i].amount:0),0);
+      html+=`<div style="margin:8px 16px 4px"><div style="font-size:14px;font-weight:700;color:#0369A1;margin-bottom:2px">⇄ Sweep / Internal Transfers (${sweepTxns.length})</div><div style="font-size:11px;color:var(--sub);margin-bottom:8px">In ${fmt(swCr)} · Out ${fmt(swDr)} — internal bank movements. Counted in the bank balance, excluded from customer/supplier matching and outstanding.</div></div><div style="margin:0 16px">`;
+      sweepTxns.forEach(i=>{html+=txnCard(bankTxns[i],i,false);});
       html+=`</div>`;
     }
     if(doneTxns.length){
@@ -7356,6 +7391,7 @@ function bseImport(withWarnings){
     (skipped?'\n⚠ '+skipped+' warning row(s) skipped':'')+
     (m.dup?'\n✓ '+m.dup+' duplicate(s) skipped':'')+
     '\n✓ Auto-matching completed'+
+    (BM2.sugs.length?'\n🧠 '+BM2.sugs.length+' match suggestion(s) ready — press Review Matches in the Bank tab':'')+
     (unk?'\n⚠ '+unk+' entry(ies) need CR/DR classification — see the ❓ Miscellaneous section':''));
 }
 
@@ -7415,6 +7451,7 @@ function parseBankCSV(csv){
 
 function flipTxnDir(idx){
   const d=D();const t=bankTxns[idx];if(!t)return;
+  setTimeout(function(){try{bm2Recheck({notify:false});renderBank();}catch(e){}},0);
   // Toggle CR<->DR (also resolves an UNK by picking the opposite of nothing → default to CR first tap)
   t.type=t.type==='CR'?'DR':'CR';
   // If a payment is linked, sync its direction too so balances stay correct
@@ -7538,7 +7575,7 @@ function unassignTxn(idx){
     }
   }
   // Clear all assignment flags → entry returns to the "needs action" list
-  t.matchId=null;t.assigned=null;t.assignedLoan=null;t.assignedAsset=null;t.assignedReserve=null;t.autoCreated=null;t.createdId=null;
+  t.matchId=null;delete t.matchMeta;delete t.skipMatch;t.assigned=null;t.assignedLoan=null;t.assignedAsset=null;t.assignedReserve=null;t.autoCreated=null;t.createdId=null;
   d.bankTxns=bankTxns;
   saveToCloud();renderAll();renderBank();
 }
@@ -7612,52 +7649,384 @@ function findPartyForTxn(t){
   });
   return best;
 }
+/* ══════════════════════════════════════════════════════════════════════
+   SMART BANK MATCHING (BM2) — R60
+   Bank details are OPTIONAL. Primary evidence: narration + party name +
+   invoice/bill number + amount + date + outstanding + learned aliases.
+   Account/UPI/IFSC are extra high-confidence signals when available.
+   Flow is always: AUTO-SUGGEST → USER CONFIRMS → POST. Never silent entries.
+   ══════════════════════════════════════════════════════════════════════ */
+var BM2={sugs:[],seen:(typeof WeakSet!=='undefined'?new WeakSet():{add:function(){},has:function(){return false;}})};
+var BM2_STOP={NEFT:1,RTGS:1,IMPS:1,UPI:1,TRF:1,TRANSFER:1,PAYMENT:1,PAY:1,PAID:1,RECEIVED:1,REC:1,FROM:1,TO:1,BY:1,REF:1,REFERENCE:1,UTR:1,TXN:1,TRANSACTION:1,BANK:1,BRANCH:1,AC:1,ACCOUNT:1,MB:1,INB:1,NET:1,MOB:1,MOBILE:1,SWEEP:1,CHG:1,CHGS:1,CHARGES:1,GST:1,INV:1,INVOICE:1,BILL:1,NO:1,MR:1,MS:1,THE:1,AND:1,FOR:1,ICIC:1,HDFC:1,SBIN:1,UBIN:1,KKBK:1,PUNB:1,BARB:1,UTIB:1,COSB:1,IBKL:1,DCBL:1,SMCB:1,STATE:1,LTD:1,LIMITED:1,PVT:1,PRIVATE:1,LLP:1};
+var BM2_SUFFIX=/\b(PRIVATE|PVT|LIMITED|LTD|LLP|M\/S|MS)\b\.?/g;
+
+function bm2Norm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9@ ]/g,' ').replace(/\s+/g,' ').trim();}
+function bm2Compact(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function bm2Tokens(narr){
+  return bm2Norm(narr).split(' ').filter(function(w){
+    return w&&!BM2_STOP[w]&&!/^\d+$/.test(w)&&w.length>=2;
+  });
+}
+function bm2SigNameTokens(name){
+  return bm2Norm(String(name||'').replace(BM2_SUFFIX,' ')).split(' ').filter(function(w){return w.length>=3&&!/^\d+$/.test(w);});
+}
+/* fuzzy-ish token equality: exact, or one starts with the other (GARMENT/GARMENTS, SHREE/SHRI handled below) */
+function bm2TokEq(a,b){
+  if(a===b)return true;
+  var pairs={SHREE:'SHRI',SHRI:'SHREE'};
+  if(pairs[a]===b)return true;
+  if(a.length>=4&&b.length>=4&&(a.indexOf(b)===0||b.indexOf(a)===0))return true;
+  return false;
+}
+/* party-name evidence in narration → 0 / 50 / 55 / 60 */
+function bm2NameScore(party,narrTokens,narrCompact){
+  var sig=bm2SigNameTokens(party.name);
+  if(!sig.length)return 0;
+  var nameCompact=bm2Compact(String(party.name||'').replace(BM2_SUFFIX,' '));
+  if(nameCompact.length>=6&&narrCompact.indexOf(nameCompact)>=0)return 60; // UPI/RAHULFASHIONHOUSE style
+  var matched=0;
+  sig.forEach(function(tok){ if(narrTokens.some(function(n){return bm2TokEq(n,tok);}))matched++; });
+  if(matched===sig.length&&matched>=2)return 60;
+  if(matched>=2&&matched/sig.length>=0.6)return 55;
+  if(sig.length===1&&matched===1&&sig[0].length>=5)return 50;
+  if(matched===sig.length&&matched===1&&sig[0].length>=5)return 50;
+  // two-token compact (RAHULFASHION inside UPIRAHULFASHION)
+  if(sig.length>=2){
+    var two=bm2Compact(sig[0]+sig[1]);
+    if(two.length>=8&&narrCompact.indexOf(two)>=0)return 55;
+  }
+  return 0;
+}
+/* learned alias evidence */
+function bm2AliasHit(d,party,narrCompact){
+  var list=(d.bankAliases||[]).filter(function(a){return a.pid===party.id;});
+  for(var i=0;i<list.length;i++){
+    var c=bm2Compact(list[i].a);
+    if(c.length>=5&&narrCompact.indexOf(c)>=0)return list[i].a;
+  }
+  return null;
+}
+/* optional bank-detail evidence (account / UPI / last-6 / IFSC) */
+function bm2BankScore(party,t){
+  var descCompact=bm2Compact(t.desc)+bm2Compact(t.reference||'');
+  var best=0,why='';
+  (partyBanks(party)||[]).forEach(function(b){
+    if(b.acNo){
+      var ac=String(b.acNo).replace(/\D/g,'');
+      if(ac.length>=8&&descCompact.indexOf(ac)>=0){if(best<90){best=90;why='Bank account matched';}}
+      else if(ac.length>=6&&descCompact.indexOf(ac.slice(-6))>=0){if(best<75){best=75;why='Account last digits matched';}}
+    }
+    if(b.upi){String(b.upi).split(/[,\s]+/).forEach(function(u){var uu=bm2Compact(u);if(uu.length>=6&&descCompact.indexOf(uu)>=0&&best<90){best=90;why='UPI matched';}});}
+    if(b.ifsc){var f=bm2Compact(b.ifsc);if(f.length>=8&&descCompact.indexOf(f)>=0&&best<15){best=Math.max(best,15);why=why||'IFSC matched';}}
+  });
+  return {score:best,why:why};
+}
+/* explicit / contextual invoice-bill number references in the narration.
+   Prefixed (INV/BILL/#) refs stand alone; bare 3–5 digit serials count only
+   when the party is already evidenced (nameOk) — never UTR-length numbers. */
+function bm2DocRefs(t,docs,nameOk){
+  var raw=String(t.desc||'')+' '+String(t.reference||'');
+  var nums={};var m;
+  var reP=/\b(?:INV(?:OICE)?|BILL)(?:\s*NO\.?)?\s*[\-\/\.#:]?\s*(\d{1,5})\b/gi;
+  while((m=reP.exec(raw))!==null)nums[parseInt(m[1],10)]='pfx';
+  var reH=/#(\d{1,5})\b/g;
+  while((m=reH.exec(raw))!==null)nums[parseInt(m[1],10)]='pfx';
+  var reF=/\b(?:MI|KF)-(?:\d{4}\/)?(\d{1,5})\b/gi;                     // own formats in narration
+  while((m=reF.exec(raw))!==null)nums[parseInt(m[1],10)]='pfx';
+  if(nameOk){
+    var reB=/(?:^|[\s\/])(\d{3,5})(?=$|[\s\/])/g;                       // bare serial, party already matched
+    var amtDigits=String(Math.round(t.amount||0));
+    while((m=reB.exec(raw))!==null){var n=parseInt(m[1],10);if(String(n)!==amtDigits&&nums[n]==null)nums[n]='bare';}
+  }
+  var hits=[];
+  docs.forEach(function(doc){
+    var ser=invSerialOf(doc);
+    var tail=(String(doc.num||'').match(/(\d{1,5})\s*$/)||[])[1];
+    Object.keys(nums).forEach(function(k){
+      var n=parseInt(k,10);
+      if((ser&&ser===n)||(tail&&parseInt(tail,10)===n))hits.push({doc:doc,kind:nums[k]});
+    });
+  });
+  return hits;
+}
+function bm2DateScore(docDate,txnDate){
+  if(!docDate||!txnDate)return 0;
+  var days=Math.abs(new Date(txnDate)-new Date(docDate))/864e5;
+  if(days<1)return 25;
+  if(days<=3)return 20;
+  if(days<=7)return 15;
+  if(days<=15)return 8;
+  return 0;
+}
+/* score one party for one transaction → null or evidence object */
+function bm2ScoreParty(d,t,party,narrTokens,narrCompact){
+  if(party.deleted)return null;
+  var dir=t.type==='CR'?'in':'out';
+  var sideDocs=(dir==='in'?d.invoices:d.bills).filter(function(x){return x.pid===party.id&&x.mode!=='cash';});
+  var reasons=[];var s=0;
+  var nameS=bm2NameScore(party,narrTokens,narrCompact);
+  var alias=bm2AliasHit(d,party,narrCompact);
+  var bank=bm2BankScore(party,t);
+  var refs=bm2DocRefs(t,sideDocs,nameS>0||!!alias||bank.score>=75);
+  // gate: require at least one identity signal — amounts alone never identify a party
+  if(!nameS&&!alias&&bank.score<75&&!refs.length)return null;
+  if(refs.length){s+=100;reasons.push((refs[0].kind==='pfx'?'Invoice/bill number in narration':'Bill serial in narration')+' ('+esc(refs[0].doc.num||'')+')');}
+  if(alias){s+=90;reasons.push('Learned alias “'+esc(alias)+'”');}
+  if(bank.score){s+=bank.score;reasons.push(bank.why);}
+  if(nameS){s+=nameS;reasons.push('Party name matched');}
+  // previous user-confirmed bank relationship
+  var prevRel=(d.payments||[]).some(function(p){return p.pid===party.id&&p.matchedBy==='user-confirmed';});
+  if(prevRel&&(nameS||alias||refs.length)){s+=30;reasons.push('Previously confirmed relationship');}
+  // allocation
+  var target=refs.length?{id:refs[0].doc.id}:null;
+  var al=allocFIFO(party.id,dir,t.amount,target);
+  var allocated=al.allocations.reduce(function(a,x){return a+x.amt;},0);
+  var advanceAmt=Math.max(0,Math.round((t.amount-allocated)*100)/100);
+  if(al.allocations.length){
+    if(advanceAmt<=0.5){
+      if(al.allocations.length===1){
+        var docBal=dir==='in'?invBalance(al.allocations[0].iid)+al.allocations[0].amt*0:null; // balance pre-alloc known via alloc amt
+        var full=(dir==='in'?d.invoices:d.bills).find(function(x){return x.id===(al.allocations[0].iid||al.allocations[0].bid);});
+        var bal=dir==='in'?invBalance(al.allocations[0].iid):billBalance(al.allocations[0].bid);
+        if(Math.abs(bal-t.amount)<=0.5){s+=40;reasons.push('Exact outstanding amount');}
+        else{s+=30;reasons.push('Partial payment against outstanding');}
+      }else{s+=35;reasons.push('Multiple documents total exactly');}
+    }else{
+      s+=al.allocations.length?20:0;
+      reasons.push('Covers outstanding; '+fmt(advanceAmt)+' extra as advance');
+    }
+    s+=bm2DateScore((dir==='in'?d.invoices:d.bills).find(function(x){return x.id===(al.allocations[0].iid||al.allocations[0].bid);})?.date,t.date);
+  }else{
+    reasons.push('No outstanding — would record as advance');
+  }
+  return {pid:party.id,pname:party.name,score:s,reasons:reasons,dir:dir,allocs:al.allocations,advance:advanceAmt,hasRef:!!refs.length};
+}
+/* ── SWEEP / INTERNAL TRANSFER CLASSIFICATION (R61) ─────────────────────
+   Runs BEFORE party matching. Sweeps stay in bankTxns (bank balance still
+   reconciles exactly) but are excluded from party/bill matching and never
+   create payments, advances, or outstanding changes. t.type stays CR/DR so
+   balance math is untouched; classification lives in t.cls. */
+function bmSweepTier(t){
+  if(t.clsUser==='no')return 0;                       // user said: not a sweep
+  var u=bm2Norm((t.desc||'')+' '+(t.reference||''));
+  if(/\bSWEEP\b/.test(u))return 2;                   // SWEEP / AUTO SWEEP / SWEEP TRF / REVERSE SWEEP…
+  if(/\bFD (CREATION|CLOSURE|BOOKED|CLOSED|OPENED)\b/.test(u))return 2;
+  if(/\b(AUTO )?(TRF|TRANSFER) (TO|FROM) (FD|FIXED DEPOSIT|DEPOSIT)\b/.test(u))return 2;
+  if(/\b(OWN|SELF|LINKED) (AC|ACCT|ACCOUNT)\b/.test(u)&&/\b(TRF|TRANSFER|IFT|MBIFT)\b/.test(u))return 1; // uncertain
+  return 0;
+}
+function bmClassifySweeps(d){
+  (d.bankTxns||[]).forEach(function(t){
+    if(t.matchId||t.assigned)return;                  // already settled — leave untouched
+    if(t.clsUser==='sweep'){t.cls='SWEEP';return;}    // user-confirmed
+    if(t.clsUser==='no'){if(t.cls==='SWEEP'||t.cls==='SWEEP?')t.cls=null;return;}
+    var tier=bmSweepTier(t);
+    if(tier===2)t.cls='SWEEP';
+    else if(tier===1){if(t.cls!=='SWEEP')t.cls='SWEEP?';}
+    else if(t.cls==='SWEEP'||t.cls==='SWEEP?')t.cls=null;
+  });
+  // pair opposite legs: same date, same amount, opposite direction
+  var sw=(d.bankTxns||[]).map(function(t,i){return {t:t,i:i};}).filter(function(x){return x.t.cls==='SWEEP';});
+  sw.forEach(function(a){
+    if(a.t.transferGroupId)return;
+    var mate=sw.find(function(b){return !b.t.transferGroupId&&b.i!==a.i&&b.t.date===a.t.date&&Math.abs(b.t.amount-a.t.amount)<0.5&&b.t.type!==a.t.type;});
+    if(mate){var g='SWG'+uid4();a.t.transferGroupId=g;mate.t.transferGroupId=g;}
+  });
+}
+function bmConfirmSweep(i){
+  var t=bankTxns[i];if(!t)return;
+  t.clsUser='sweep';t.cls='SWEEP';delete t.skipMatch;
+  bmClassifySweeps(D());saveToCloud();bm2Recheck({notify:false});renderBank();
+  var ov=document.getElementById('bm2-review');if(ov)bm2ShowReview();
+  toast('⇄ Marked as Sweep / Internal Transfer','ok');
+}
+function bmNotSweep(i){
+  var t=bankTxns[i];if(!t)return;
+  t.clsUser='no';t.cls=null;delete t.transferGroupId;
+  saveToCloud();bm2Recheck({notify:true});renderBank();
+  var ov=document.getElementById('bm2-review');if(ov)bm2ShowReview();
+}
+/* build/refresh all suggestions */
+function bm2Recheck(opts){
+  opts=opts||{};
+  var d=D();if(!Array.isArray(d.bankTxns))d.bankTxns=[];
+  bankTxns=d.bankTxns;
+  bmClassifySweeps(d);                                // classification FIRST (sweeps never enter party matching)
+  var sugs=[];var fresh=0;
+  bankTxns.forEach(function(t,ti){
+    if(t.matchId||t.assigned)return;
+    if(t.cls==='SWEEP'||t.cls==='SWEEP?')return;      // internal bank movements — no party/invoice matching
+    if(t.type!=='CR'&&t.type!=='DR')return;
+    if(t.skipMatch&&!opts.force)return;
+    var narrTokens=bm2Tokens((t.desc||'')+' '+(t.reference||''));
+    var narrCompact=bm2Compact(t.desc)+bm2Compact(t.reference||'');
+    var cands=[];
+    (d.parties||[]).forEach(function(p){
+      var r=bm2ScoreParty(d,t,p,narrTokens,narrCompact);
+      if(r)cands.push(r);
+    });
+    if(!cands.length)return;
+    cands.sort(function(a,b){return b.score-a.score;});
+    var best=cands[0],second=cands[1];
+    var ambiguous=!!(second&&best.score-second.score<12&&!best.hasRef); // e.g. Rahul Fashion House vs Rahul Fashion Hub
+    var level=best.score>=110?'high':best.score>=70?'likely':best.score>=40?'possible':null;
+    if(!level)return;
+    if(ambiguous&&level==='high')level='likely';
+    sugs.push({ti:ti,level:level,ambiguous:ambiguous,cands:cands.slice(0,3),best:best,skipped:!!t.skipMatch});
+    if(!BM2.seen.has(t)){fresh++;BM2.seen.add(t);}
+  });
+  var order={high:0,likely:1,possible:2};
+  sugs.sort(function(a,b){return order[a.level]-order[b.level]||b.best.score-a.best.score;});
+  BM2.sugs=sugs;
+  if(opts.notify&&fresh>0){
+    toast('🔔 '+fresh+' new bank match'+(fresh>1?'es':'')+' found — Review in the Bank tab','ok');
+  }
+  return {total:sugs.length,fresh:fresh};
+}
+/* ── review overlay ── */
+function bm2LevelBadge(l,amb){
+  if(l==='high')return '<span style="background:#D1FAE5;color:#065F46;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:800">✓ HIGH CONFIDENCE</span>';
+  if(l==='likely')return '<span style="background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:800">⚠ LIKELY MATCH'+(amb?' · 2 candidates':'')+'</span>';
+  return '<span style="background:#F3F4F6;color:#374151;padding:2px 8px;border-radius:8px;font-size:10px;font-weight:800">? POSSIBLE</span>';
+}
+function bm2ShowReview(){
+  bm2Recheck({force:false});
+  var d=D();var sugs=BM2.sugs;
+  var hi=sugs.filter(s=>s.level==='high'),li=sugs.filter(s=>s.level==='likely'),po=sugs.filter(s=>s.level==='possible');
+  var unmatchedCount=bankTxns.filter(function(t){return !t.matchId&&!t.assigned&&t.cls!=='SWEEP'&&t.cls!=='SWEEP?'&&(t.type==='CR'||t.type==='DR');}).length;
+  var sweepCount=bankTxns.filter(function(t){return t.cls==='SWEEP'&&!t.matchId&&!t.assigned;}).length;
+  function card(s,si){
+    var t=bankTxns[s.ti];var b=s.best;
+    var allocRows=b.allocs.map(function(a){
+      var doc=(b.dir==='in'?d.invoices:d.bills).find(function(x){return x.id===(a.iid||a.bid);});
+      return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0"><span>'+(b.dir==='in'?'🧾':'📥')+' '+esc(doc?doc.num:'')+' <span style="color:#6B7280">('+fmtD(doc?doc.date:'')+')</span></span><b>'+fmt(a.amt)+'</b></div>';
+    }).join('');
+    if(b.advance>0.5)allocRows+='<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:#92400E"><span>💠 Advance</span><b>'+fmt(b.advance)+'</b></div>';
+    if(!b.allocs.length&&b.advance>0.5)allocRows='<div style="font-size:12px;color:#92400E;padding:3px 0">💠 No outstanding documents — record as <b>advance '+fmt(b.advance)+'</b></div>';
+    var altBtns=s.ambiguous?s.cands.slice(0,2).map(function(c,ci){
+      return '<button class="btn sm '+(ci===0?'pri':'')+'" style="font-size:11px" onclick="bm2Confirm('+si+','+ci+')">✓ '+esc(c.pname)+'</button>';
+    }).join(''):'<button class="btn sm pri" style="font-size:11px" onclick="bm2Confirm('+si+',0)">✓ CONFIRM</button>';
+    return '<div class="card" style="padding:12px;margin-bottom:10px;border-left:3px solid '+(s.level==='high'?'#059669':s.level==='likely'?'#D97706':'#9CA3AF')+'">'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'+
+        '<div style="min-width:0"><div style="font-weight:800;font-size:14px">'+esc(b.pname)+(s.skipped?' <span style="font-size:10px;color:#9CA3AF">(skipped earlier)</span>':'')+'</div>'+
+        '<div style="font-size:11px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.desc)+'</div>'+
+        '<div style="font-size:12px;margin-top:2px">'+fmtD(t.date)+' · <b style="color:'+(t.type==='CR'?'#059669':'#DC2626')+'">'+(t.type==='CR'?'+':'−')+fmt(t.amount)+'</b> '+(t.type==='CR'?'(receipt)':'(payment)')+'</div></div>'+
+        '<div>'+bm2LevelBadge(s.level,s.ambiguous)+'</div>'+
+      '</div>'+
+      '<div style="background:#F9FAFB;border-radius:8px;padding:8px 10px;margin-top:8px">'+allocRows+'</div>'+
+      '<div style="font-size:11px;color:#059669;margin-top:6px">'+b.reasons.map(function(r){return '✓ '+r;}).join(' &nbsp; ')+'</div>'+
+      '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+altBtns+
+        '<button class="btn sm" style="font-size:11px" onclick="bm2Change('+si+')">✎ CHANGE</button>'+
+        '<button class="btn sm" style="font-size:11px;background:#F3F4F6" onclick="bm2Skip('+si+')">SKIP</button>'+
+      '</div>'+
+    '</div>';
+  }
+  var ov=document.getElementById('bm2-review');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='bm2-review';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:760px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.3)">'+
+    '<div style="padding:14px 18px;border-bottom:1px solid #E5E7EB">'+
+      '<div style="font-weight:800;font-size:16px">🧠 Bank Reconciliation — Suggested Matches</div>'+
+      '<div style="font-size:12px;color:#6B7280;margin-top:4px">'+unmatchedCount+' open bank entr'+(unmatchedCount===1?'y':'ies')+' · '+BM2.sugs.length+' possible match'+(BM2.sugs.length===1?'':'es')+' — '+hi.length+' high confidence · '+li.length+' likely · '+po.length+' need review'+(sweepCount?' · ⇄ '+sweepCount+' sweep/internal transfer(s) excluded':'')+'<br><span style="color:#92400E">Nothing is posted until you confirm.</span></div>'+
+      (hi.filter(s=>!s.ambiguous).length?'<button class="btn sm pri" style="margin-top:8px" onclick="bm2ConfirmAllHigh()">✓ Confirm All High Confidence ('+hi.filter(s=>!s.ambiguous).length+')</button>':'')+
+    '</div>'+
+    '<div style="overflow:auto;flex:1;padding:12px 16px">'+
+      (sugs.length?sugs.map(card).join(''):'<div style="text-align:center;color:#6B7280;padding:30px">No suggestions right now. Add or edit parties, invoices, or bills and matches re-run automatically — or press 🔄 Re-check.</div>')+
+    '</div>'+
+    '<div style="padding:10px 18px;border-top:1px solid #E5E7EB;display:flex;gap:8px">'+
+      '<button class="btn sm" onclick="bm2Recheck({force:true});bm2ShowReview()">🔄 Re-check (incl. skipped)</button>'+
+      '<div style="flex:1"></div>'+
+      '<button class="btn" onclick="document.getElementById(\'bm2-review\').remove();renderBank()">Close</button>'+
+    '</div></div>';
+  document.body.appendChild(ov);
+}
+/* learn a narration alias for a confirmed party (also called from manual assignment) */
+function bm2LearnAlias(d,t,pid,manual){
+  try{
+    if(!Array.isArray(d.bankAliases))d.bankAliases=[];
+    var party=(d.parties||[]).find(function(p){return p.id===pid;});if(!party)return;
+    var toks=bm2Norm((t.desc||'')).split(' ').filter(function(w){return w&&!BM2_STOP[w]&&!/^\d+$/.test(w);});
+    var sig=bm2SigNameTokens(party.name);
+    var pick;
+    if(manual)pick=toks.slice(0,4);                                     // user explicitly chose the party
+    else pick=toks.filter(function(w){return sig.some(function(x){return bm2TokEq(w,x);});});
+    var alias=pick.join(' ').trim();
+    if(alias.length<4)return;
+    var c=bm2Compact(alias);
+    if((d.bankAliases||[]).some(function(a){return a.pid===pid&&bm2Compact(a.a)===c;}))return;
+    // never store an alias that equals a DIFFERENT party's compact name
+    if((d.parties||[]).some(function(p){return p.id!==pid&&bm2Compact(String(p.name||'').replace(BM2_SUFFIX,' '))===c;}))return;
+    var mine=(d.bankAliases||[]).filter(function(a){return a.pid===pid;});
+    if(mine.length>=12)return;
+    d.bankAliases.push({a:alias,pid:pid,at:new Date().toISOString()});
+  }catch(e){}
+}
+/* confirm suggestion si using candidate ci */
+function bm2Confirm(si,ci,silent){
+  var d=D();var s=BM2.sugs[si];if(!s)return;
+  var t=bankTxns[s.ti];if(!t||t.matchId||t.assigned)return;             // never duplicate
+  var b=s.cands[ci||0]||s.best;
+  // re-derive allocation for the chosen candidate at confirm time (state may have moved)
+  var target=b.allocs.length?{id:(b.allocs[0].iid||b.allocs[0].bid)}:null;
+  var al=allocFIFO(b.pid,b.dir,t.amount,target);
+  var refNum=al.allocations.length?al.allocations[0].num:'';
+  var pay={id:'PAY'+uid4(),pid:b.pid,amt:t.amount,date:t.date,mode:'NEFT',dir:b.dir,
+    ref:refNum||'Bank stmt',rem:String(t.desc||'').substring(0,80)+' (bank match)',
+    matchSource:'bank-auto',matchConfidence:b.score,matchReason:b.reasons.join('; '),
+    matchedAt:new Date().toISOString(),matchedBy:'user-confirmed'};
+  if(al.allocations.length)pay.allocations=al.allocations.map(function(a){var c={amt:a.amt};if(a.iid)c.iid=a.iid;if(a.bid)c.bid=a.bid;return c;});
+  d.payments.push(pay);
+  t.matchId=pay.id;t.autoCreated=true;delete t.skipMatch;
+  t.matchMeta={src:'bank-auto',conf:b.score,reason:b.reasons.join('; '),at:pay.matchedAt,by:'user-confirmed'};
+  bm2LearnAlias(d,t,b.pid,false);
+  if(!silent){
+    saveToCloud();
+    toast('✅ '+esc(b.pname)+' — '+fmt(t.amount)+' posted'+(al.allocations.length?' against '+al.allocations.length+' document(s)':' as advance'),'ok');
+    bm2ShowReview();renderBank();
+  }
+}
+function bm2ConfirmAllHigh(){
+  var list=BM2.sugs.map(function(s,i){return {s:s,i:i};}).filter(function(x){return x.s.level==='high'&&!x.s.ambiguous;});
+  var n=0;
+  list.forEach(function(x){var t=bankTxns[x.s.ti];if(t&&!t.matchId&&!t.assigned){bm2Confirm(x.i,0,true);n++;}});
+  saveToCloud();
+  toast('✅ '+n+' high-confidence match'+(n===1?'':'es')+' posted','ok');
+  bm2ShowReview();renderBank();
+}
+function bm2Change(si){
+  var s=BM2.sugs[si];if(!s)return;
+  var ov=document.getElementById('bm2-review');if(ov)ov.remove();
+  goTab('bank');
+  openAssign(s.ti);
+}
+function bm2Skip(si){
+  var s=BM2.sugs[si];if(!s)return;
+  var t=bankTxns[s.ti];if(t)t.skipMatch=true;
+  saveToCloud();
+  bm2ShowReview();
+}
+
 function autoMatchBank(){
+  // Auto-LINK only: connect bank lines to payments that are ALREADY recorded in the books
+  // (exact amount + same direction + within 5 days, unique). This creates nothing.
+  // Everything else becomes a SUGGESTION via the smart matcher (BM2) — user confirms, then post.
   const d=D();
+  bmClassifySweeps(d);
   bankTxns.forEach(t=>{
     if(t.matchId||t.assigned)return;
-    if(t.type==='UNK')return; // unclassified — let the user set CR/DR first
+    if(t.cls==='SWEEP'||t.cls==='SWEEP?')return;      // internal movements never link to party payments
+    if(t.type==='UNK')return;
     const wantDir=t.type==='CR'?'in':'out';
-    // 1) Match against recorded payments: exact amount + date within 5 days + SAME direction.
     const candidates=d.payments.filter(p=>{
       if(p.amt!==t.amount)return false;
       if(p.dir&&p.dir!==wantDir)return false;
       const diff=Math.abs(new Date(p.date)-new Date(t.date))/(864e5);
       return diff<=5;
     });
-    if(candidates.length===1){t.matchId=candidates[0].id;return;}
-    // 1.5) Multi-signal party match: account no / IFSC / UPI / name in the narration.
-    const hit=findPartyForTxn(t);
-    if(hit){
-      const p=hit.party;
-      const pay={id:'PAY'+uid4(),pid:p.id,amt:t.amount,date:t.date,mode:'NEFT',dir:wantDir,ref:'Bank stmt',rem:t.desc.substring(0,60)+' ('+hit.reason+' match)'};
-      d.payments.push(pay);
-      t.matchId=pay.id;t.autoCreated=true;t.matchReason=hit.reason;
-      return;
-    }
-    // 2) DR txns: match against unpaid purchase bills by exact amount → auto-create payment
-    if(t.type==='DR'){
-      const billCands=d.bills.filter(b=>!b.jw&&Math.abs(billBalance(b.id)-t.amount)<0.5);
-      if(billCands.length===1){
-        const b=billCands[0];
-        const pay={id:'PAY'+uid4(),pid:b.pid,bid:b.id,amt:t.amount,date:t.date,mode:'NEFT',dir:'out',ref:b.num,rem:'Auto-created from bank statement'};
-        d.payments.push(pay);
-        t.matchId=pay.id;
-        t.autoCreated=true;
-      }
-    }
-    // 3) CR txns: match against unpaid sales invoices by exact amount → auto-create receipt
-    if(!t.matchId&&t.type==='CR'){
-      const invCands=d.invoices.filter(i=>Math.abs(invBalance(i.id)-t.amount)<0.5);
-      if(invCands.length===1){
-        const i2=invCands[0];
-        const pay={id:'PAY'+uid4(),pid:i2.pid,iid:i2.id,amt:t.amount,date:t.date,mode:'NEFT',dir:'in',ref:i2.num,rem:'Auto-created from bank statement'};
-        d.payments.push(pay);
-        t.matchId=pay.id;
-        t.autoCreated=true;
-      }
-    }
+    const free=candidates.filter(p=>!bankTxns.some(x=>x.matchId===p.id));
+    if(free.length===1)t.matchId=free[0].id;
   });
+  bm2Recheck({notify:false});
   saveToCloud();
   renderBank();
 }
@@ -7824,7 +8193,7 @@ function assignToParty(){
   if(!pid){alert('Select a party');return;}
   const pay={id:'PAY'+uid4(),pid:pid,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60)};
   d.payments.push(pay);
-  t.matchId=pay.id;t.assigned='party';t.createdId=pay.id;
+  (function(){try{bm2LearnAlias(D(),t,pid,true);}catch(e){}})();t.matchId=pay.id;t.assigned='party';t.createdId=pay.id;
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
 function assignToExpense(){
@@ -8936,7 +9305,7 @@ function renderBankReport(pg){
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🏦 Bank Report</h3>${repMonthInput()}
     <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${r.month.length} txn(s)</div>
     ${repActionBar("printBankReport()",null)}
-    <div class="stats"><div class="stat"><div class="sl">Money In</div><div class="sv grn" style="font-size:16px">${fmt(r.inT)}</div></div><div class="stat"><div class="sl">Money Out</div><div class="sv red" style="font-size:16px">${fmt(r.outT)}</div></div><div class="stat" style="grid-column:1/-1"><div class="sl">Net Movement</div><div class="sv" style="color:${r.net>=0?'var(--g)':'var(--r)'}">${fmt(r.net)}</div></div></div>
+    <div class="stats"><div class="stat"><div class="sl">Money In</div><div class="sv grn" style="font-size:16px">${fmt(r.inT)}</div></div><div class="stat"><div class="sl">Money Out</div><div class="sv red" style="font-size:16px">${fmt(r.outT)}</div></div><div class="stat" style="grid-column:1/-1"><div class="sl">Net Movement</div><div class="sv" style="color:${r.net>=0?'var(--g)':'var(--r)'}">${fmt(r.net)}</div></div>${(()=>{const swI=r.month.filter(t=>t.cls==='SWEEP'&&t.type==='CR').reduce((a,t)=>a+t.amount,0),swO=r.month.filter(t=>t.cls==='SWEEP'&&t.type==='DR').reduce((a,t)=>a+t.amount,0);return (swI||swO)?`<div class="stat" style="grid-column:1/-1"><div class="sl">⇄ of which Sweep / Internal Transfers</div><div class="sv" style="font-size:13px;color:#0369A1">In ${fmt(swI)} · Out ${fmt(swO)} <span style="font-size:10px;color:var(--sub)">(bank balance includes these; business totals do not)</span></div></div>`:'';})()}</div>
     <div class="card" style="padding:0 14px">${rows}</div></div>`;
 }
 function printBankReport(){const r=bankReportData(repMonth);const body=`<div style="margin-bottom:10px"><strong>Money In:</strong> ₹${m2(r.inT)} · <strong>Money Out:</strong> ₹${m2(r.outT)} · <strong>Net:</strong> ₹${m2(r.net)}</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Description</th><th style="padding:5px;border:1px solid #ccc;text-align:right">In</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Out</th></tr></thead><tbody>${r.month.map(t=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(t.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc((t.desc||'').slice(0,80))}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${t.type==='CR'?m2(t.amount):''}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${t.type==='DR'?m2(t.amount):''}</td></tr>`).join('')}</tbody></table>`;printReport('Bank Report — '+monthLabel(repMonth),body);}
