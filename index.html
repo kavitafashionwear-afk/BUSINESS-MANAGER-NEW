@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R65</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R66</div>
   </nav>
 
   <!-- PAGES -->
@@ -1001,12 +1001,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 <div id="print-overlay" style="display:none;position:fixed;inset:0;background:#fff;z-index:9999;overflow:auto">
   <button onclick="closePrint()" aria-label="Close" style="position:fixed;top:10px;right:10px;z-index:10001;width:46px;height:46px;border-radius:50%;border:none;background:#DC2626;color:#fff;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.4);line-height:1">✕</button>
   <div id="print-toolbar" style="position:sticky;top:0;background:#1A3A6B;padding:10px 60px 10px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;z-index:1">
+    <button onclick="sharePdfSmart()" style="padding:10px 22px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:800;background:#25D366;color:#fff">📤 Share PDF</button>
     <button onclick="window.print()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1A3A6B">🖨️ Print / Save PDF</button>
-    <button onclick="shareWA()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#25D366;color:#fff">📲 WhatsApp (PDF)</button>
-    <button onclick="emailDoc()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1A3A6B">✉️ Email (PDF)</button>
     <button onclick="downloadPDF()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:700;background:#fff;color:#1A3A6B">📄 Download PDF</button>
     <button onclick="closePrint()" style="padding:9px 18px;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:rgba(255,255,255,.15);color:#fff">✕ Close</button>
-    <div style="width:100%;font-size:11px;color:#B0C4DE">On desktop: tap 📄 Download PDF, then drag/attach it in WhatsApp Web. On phone: 📲 WhatsApp (PDF) attaches it directly.</div>
+    <div style="width:100%;font-size:11px;color:#B0C4DE">📤 Share opens your device's share sheet (WhatsApp, Gmail, etc.) with the PDF attached. If sharing isn't available here, the PDF downloads automatically — just attach it with 📎 in WhatsApp / Email.</div>
   </div>
   <div id="print-body" style="max-width:800px;margin:0 auto;padding:24px 16px 80px;overflow-x:auto"></div>
 </div>
@@ -4946,7 +4945,7 @@ function printInvoice(iid){
     </div>
     <div style="text-align:center;font-size:10px;color:#AAA;margin-top:12px;border-top:1px solid #F0F0F0;padding-top:8px">This is a computer generated invoice · ${esc(biz.name)} · GSTIN: ${esc(biz.gstin)}</div>
   </div>`;
-  _printDocName='Invoice_'+String(inv.num||inv.id||'').replace(/[^\w\-]+/g,'_');
+  _printDocName=('Invoice-'+String(inv.num||inv.id||'')+(party?'-'+String(party.name||''):'')).replace(/[^\w]+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
   _printDocMsg='*'+biz.name+'*\nInvoice: '+(inv.num||'')+(party?'\nParty: '+party.name:'')+'\nTotal: '+fmt(inv.grand);
   _printEmails=(party&&Array.isArray(party.emails))?party.emails.slice():[];
   _printEmailSubject='Invoice '+(inv.num||'')+' from '+biz.name;
@@ -5228,30 +5227,41 @@ document.addEventListener('keydown',function(e){
 });
 var _printDocName='Document',_printDocMsg='';
 var _printEmails=[],_printEmailSubject='',_printEmailBody='';
-// "Email Invoice" (item 7): build the PDF, share it where supported (PDF attaches
-// directly), and always open a pre-addressed email draft to the party's saved emails.
-async function emailDoc(){
+/* ── SINGLE SMART SHARE (R66) ─────────────────────────────────────────────
+   One utility for every document type in the print overlay. Reuses the same
+   html2pdf blob as Download — no second PDF path. Order:
+   1) Web Share API with the FILE attached (phones + Windows share sheet):
+      user picks WhatsApp / Gmail / anything, PDF already attached.
+   2) Not supported or share fails (not user-cancel): automatic DOWNLOAD with
+      a deterministic filename + short non-blocking guidance.
+   User cancelling the share sheet is fine and does nothing. */
+async function sharePdfSmart(){
   const body=document.getElementById('print-body');if(!body)return;
   const name=(_printDocName||'Document')+'.pdf';
-  const to=(_printEmails||[]).join(',');
-  if(!to){alert('No email address saved for this party.\nAdd one in the party\'s details (✉️ Email Addresses), then try again.');return;}
-  const mailto='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(_printEmailSubject||name)+'&body='+encodeURIComponent((_printEmailBody||'')+'\n\n(Please attach the downloaded PDF: '+name+')');
+  const msg=_printDocMsg||('*'+BIZ[curBiz].name+'*');
+  let blob;
   try{
     _shareBusy(true);
-    const blob=await _makePdfBlob();
+    blob=await _makePdfBlob();
     _shareBusy(false);
-    const file=new File([blob],name,{type:'application/pdf'});
-    // On phones / supported browsers, share sheet lets them pick Gmail with the PDF attached.
-    if(navigator.canShare&&navigator.canShare({files:[file]})){
-      try{await navigator.share({files:[file],title:name.replace(/\.pdf$/,''),text:_printEmailBody||''});return;}catch(e){/* user cancelled → fall through to mailto */}
-    }
-    // Desktop fallback: download the PDF + open a pre-addressed draft to attach it.
-    _downloadBlob(blob,name);
-    window.location.href=mailto;
   }catch(e){
     _shareBusy(false);
-    window.location.href=mailto;
+    alert('Could not build the PDF ('+(e&&e.message||'error')+').\nUse "🖨️ Print / Save PDF" instead.');
+    return;
   }
+  const file=new File([blob],name,{type:'application/pdf'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:name.replace(/\.pdf$/,''),text:msg});
+      toast('📤 Shared '+name,'ok');
+      return;
+    }catch(err){
+      if(err&&err.name==='AbortError')return;      // user closed the share sheet — do nothing
+      // real failure → fall through to download fallback
+    }
+  }
+  _downloadBlob(blob,name);
+  toast('📄 '+name+' downloaded — attach it with 📎 in WhatsApp / Email','ok');
 }
 var _html2pdfReady=null;
 function ensureHtml2pdf(){
@@ -5295,32 +5305,6 @@ async function downloadPDF(){
   const name=(_printDocName||'Document')+'.pdf';
   try{ _shareBusy(true); const blob=await _makePdfBlob(); _shareBusy(false); _downloadBlob(blob,name); }
   catch(e){ _shareBusy(false); alert('Could not build the PDF ('+(e&&e.message||'error')+').\nUse "🖨️ Print / Save PDF" instead.'); }
-}
-async function shareWA(){
-  const body=document.getElementById('print-body');
-  if(!body)return;
-  const name=(_printDocName||'Document')+'.pdf';
-  const msg=_printDocMsg||('*'+BIZ[curBiz].name+'*');
-  try{
-    _shareBusy(true);
-    const blob=await _makePdfBlob();
-    _shareBusy(false);
-    const file=new File([blob],name,{type:'application/pdf'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      try{ await navigator.share({files:[file],title:name.replace(/\.pdf$/,''),text:msg}); return; }
-      catch(err){ if(err&&err.name==='AbortError')return; /* user cancelled */ }
-    }
-    // Fallback (typical on desktop): download the PDF + open WhatsApp to attach manually
-    _downloadBlob(blob,name);
-    alert('On desktop, WhatsApp can\'t receive the file directly from the browser, so the invoice PDF was downloaded.\n\nWhatsApp Web will open next — drag the downloaded PDF into the chat, or use the 📎 attach button.');
-    window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
-  }catch(e){
-    _shareBusy(false);
-    console.warn('PDF share failed; falling back to text:',e);
-    alert('Could not build the PDF ('+(e&&e.message||'error')+'). Sending a text summary instead.');
-    const text=msg+'\n\n'+((body.innerText||body.textContent||'').slice(0,500));
-    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
-  }
 }
 // Close modal on overlay click
 document.addEventListener('click',e=>{
