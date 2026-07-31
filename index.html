@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R61</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R64</div>
   </nav>
 
   <!-- PAGES -->
@@ -3045,7 +3045,7 @@ function openPartyDetail(pid){
       <div class="dn">${esc(party.name)}</div>
       <div class="ds">${party.city?esc(party.city)+' · ':''}${party.phone?'📞 '+esc(party.phone):''}${party.gstin?' · GSTIN: '+esc(party.gstin):''}</div>
       ${(party.constitution||party.msme==='Yes')?`<div class="ds" style="font-size:11px">${party.constitution?'🏷️ '+esc(party.constitution):''}${party.msme==='Yes'?(party.constitution?' · ':'')+'🟢 MSME'+(party.udyam?': '+esc(party.udyam):' registered'):''}</div>`:''}
-      ${(()=>{const bks=partyBanks(party);return bks.length?`<div style="font-size:11px;opacity:.85;margin-top:6px;line-height:1.5">${bks.map(b=>'🏦 '+[b.bankName,b.branch,b.acNo,b.ifsc,b.upi].filter(Boolean).map(esc).join(' · ')).join('<br>')}</div>`:'';})()}
+      ${(()=>{const bks=partyBanks(party);return bks.length?`<div style="font-size:11px;opacity:.85;margin-top:6px;line-height:1.5">${bks.map(b=>'🏦 '+[b.bankName,b.branch,bmMaskAc(b.acNo),b.ifsc,b.upi].filter(Boolean).map(esc).join(' · ')+' '+bmVerBadge(b)).join('<br>')}</div>`:'';})()}
     </div>
     <div class="stats">
       <div class="stat" style="grid-column:1/-1">
@@ -3121,6 +3121,58 @@ function ensureBankList(){
   dl.dataset.filled='1';
 }
 // Razorpay's free, CORS-enabled IFSC directory — no API key needed.
+/* bank-name comparison for verification: token-normalized, suffix words stripped */
+function bmBankNameEq(a,b){
+  function norm(x){return String(x||'').toUpperCase().replace(/\b(BANK|LTD|LIMITED|THE|CO OPERATIVE|CO-OPERATIVE|COOPERATIVE|SAHAKARI)\b/g,' ').replace(/[^A-Z ]/g,' ').replace(/\s+/g,' ').trim();}
+  var na=norm(a),nb=norm(b);
+  if(!na||!nb)return null;                        // can't compare
+  if(na===nb)return true;
+  var ta=na.split(' ')[0],tb=nb.split(' ')[0];
+  return ta===tb||na.indexOf(nb)>=0||nb.indexOf(na)>=0;
+}
+/* classify one saved bank account: 🟢 ok / 🟡 warn (unverified) / 🔴 bad.
+   Never claims ownership — verifies IFSC existence + bank-name consistency only. */
+async function verifyBankAccount(b){
+  b.verAt=new Date().toISOString();
+  var ifsc=String(b.ifsc||'').trim().toUpperCase();
+  b.ifsc=ifsc;
+  if(!ifsc){b.ver=b.acNo||b.upi?'warn':'warn';b.verNote='No IFSC to verify';return b;}
+  if(!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)){b.ver='bad';b.verNote='Invalid IFSC format';return b;}
+  try{
+    var r=await fetch('https://ifsc.razorpay.com/'+ifsc);
+    if(!r.ok)throw new Error('nf');
+    var j=await r.json();
+    b.verBank=j.BANK||'';b.verBranch=j.BRANCH||'';
+    var eq=bmBankNameEq(b.bankName,j.BANK);
+    if(eq===false){b.ver='bad';b.verNote='Bank / IFSC mismatch: IFSC belongs to '+(j.BANK||'another bank');}
+    else{b.ver='ok';b.verNote='IFSC verified'+(j.BANK?' — '+j.BANK:'')+(j.BRANCH?', '+j.BRANCH:'');if(eq===null&&j.BANK&&!b.bankName)b.bankName=j.BANK;}
+  }catch(e){
+    b.ver='warn';b.verNote='Unverified — IFSC directory unavailable or IFSC not found';
+  }
+  return b;
+}
+/* fire-and-forget: verify a party's accounts that changed or were never verified */
+function verifyPartyBanksAsync(pid){
+  try{
+    var d=D();var p=(d.parties||[]).find(function(x){return x.id===pid;});if(!p||!Array.isArray(p.banks))return;
+    var todo=p.banks.filter(function(b){return (b.ifsc||b.bankName)&&(!b.verAt||b.verIfsc!==String(b.ifsc||'').toUpperCase());});
+    if(!todo.length)return;
+    Promise.all(todo.map(function(b){b.verIfsc=String(b.ifsc||'').toUpperCase();return verifyBankAccount(b);})).then(function(){
+      saveToCloud();
+      if(typeof curParty!=='undefined'&&curParty===pid&&typeof openPartyDetail==='function')try{openPartyDetail(pid);}catch(e){}
+    });
+  }catch(e){}
+}
+function bmVerBadge(b){
+  if(b.ver==='ok')return '<span title="'+esc(b.verNote||'IFSC verified')+'" style="background:#D1FAE5;color:#065F46;padding:0 6px;border-radius:6px;font-size:9px;font-weight:800">&#128994; VERIFIED</span>';
+  if(b.ver==='bad')return '<span title="'+esc(b.verNote||'Mismatch')+'" style="background:#FEE2E2;color:#991B1B;padding:0 6px;border-radius:6px;font-size:9px;font-weight:800">&#128308; INVALID / MISMATCH</span>';
+  return '<span title="'+esc(b.verNote||'Not yet verified')+'" style="background:#FEF3C7;color:#92400E;padding:0 6px;border-radius:6px;font-size:9px;font-weight:800">&#128993; UNVERIFIED</span>';
+}
+function bmMaskAc(acNo){
+  var a=String(acNo||'');if(!a)return '';
+  var digits=a.replace(/\D/g,'');
+  return digits.length>4?'XXXX'+digits.slice(-4):a;
+}
 async function ifscLookup(el){
   const row=el.closest('.bankrow');if(!row)return;
   const ifsc=(el.value||'').trim().toUpperCase();
@@ -3157,7 +3209,11 @@ function bankRowHtml(b){
     <div class="fl"><label>UPI ID(s) <span style="font-weight:400;color:var(--sub)">— comma-separate multiple</span></label><input class="bk-upi" placeholder="e.g. party@okhdfc, 99999@ybl" value="${esc(b.upi||'')}"></div>
   </div>`;
 }
-function addBankRow(b){document.getElementById('p-banks-list').insertAdjacentHTML('beforeend',bankRowHtml(b));}
+function addBankRow(b){
+  document.getElementById('p-banks-list').insertAdjacentHTML('beforeend',bankRowHtml(b));
+  if(b&&b.verAt){const rows=document.querySelectorAll('#p-banks-list .bankrow');const last=rows[rows.length-1];
+    if(last)last.dataset.prevver=JSON.stringify({ifsc:String(b.ifsc||'').toUpperCase(),ver:b.ver,verNote:b.verNote,verBank:b.verBank,verBranch:b.verBranch,verAt:b.verAt,verIfsc:b.verIfsc});}
+}
 // ═══ PARTY EMAILS (Batch 2: item 7) ═════════════════════════════════════════
 function emailRowHtml(v){
   return `<div class="emailrow" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
@@ -3252,7 +3308,12 @@ function getBankRows(){
     const branch=(r.querySelector('.bk-branch')?.value||'').trim();
     const city=(r.querySelector('.bk-city')?.value||'').trim();
     const state=(r.querySelector('.bk-state')?.value||'').trim();
-    if(bankName||acNo||ifsc||upi)rows.push({bankName,acNo,ifsc,upi,branch,city,state});
+    if(bankName||acNo||ifsc||upi){
+      const row={bankName,acNo:String(acNo),ifsc,upi,branch,city,state};   // acNo always a STRING (leading zeroes preserved)
+      const prev=(r.dataset.prevver?JSON.parse(r.dataset.prevver):null);
+      if(prev&&prev.ifsc===ifsc){row.ver=prev.ver;row.verNote=prev.verNote;row.verBank=prev.verBank;row.verBranch=prev.verBranch;row.verAt=prev.verAt;row.verIfsc=prev.verIfsc;}
+      rows.push(row);
+    }
   });
   return rows;
 }
@@ -3505,6 +3566,7 @@ function saveParty(){
   const wasEdit=editPartyId;
   saveToCloud();closeModal('party');toast(editPartyId?'✅ Party updated':'✅ Party created','ok');renderAll();
   try{bm2Recheck({notify:true});}catch(e){}
+  try{verifyPartyBanksAsync(editPartyId||party.id);}catch(e){}
   if(curParty===wasEdit)openPartyDetail(wasEdit);
 }
 function confirmDelParty(pid){
@@ -7664,8 +7726,54 @@ function bm2Norm(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9@ ]/g,' 
 function bm2Compact(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
 function bm2Tokens(narr){
   return bm2Norm(narr).split(' ').filter(function(w){
-    return w&&!BM2_STOP[w]&&!/^\d+$/.test(w)&&w.length>=2;
+    return w&&!BM2_STOP[w]&&!/^\d+$/.test(w)&&!/^XX\d+$/.test(w)&&!/\d{6,}/.test(w)&&w.length>=2; // drop UTR-shaped tokens (SBINN52026…)
   });
+}
+/* stable identity features of a narration — channel/bank/suffix are learned as
+   SUPPORTING evidence only; UTRs and amounts are transaction-specific, never stored */
+function bm2NarrFeatures(t){
+  var u=String((t.desc||'')+' '+(t.reference||'')).toUpperCase();
+  var ch=(u.match(/\b(IMPS|NEFT|RTGS|INRTGS|UPI|NACH|MBIFT|IFT|ACH)\b/)||[])[1]||'';
+  if(ch==='INRTGS')ch='RTGS';
+  var bank=(u.match(/\b(SBIN|UBIN|KKBK|PUNB|BARB|UTIB|COSB|IBKL|DCBL|SMCB|HDFC|ICIC|IDIB|CNRB|IOBA|MAHB|YESB|INDB|FDRL|KVBL|CIUB|TMBL|PYTM|RATN)\b/)||[])[1]||'';
+  var sfx=(u.match(/\bXX\d{3,6}\b/)||[])[0]||'';
+  // account last-4: masked patterns only (XX0132 / XXXX0132 / A/C XXXX0132) — an
+  // X-run guarantees this is an account mask, never a UTR/date/amount/IFSC/cheque no.
+  var l4m=u.match(/(?:^|[^A-Z0-9])X{2,8}(\d{3,4})(?![0-9])/);
+  var l4=l4m?l4m[1].slice(-4):'';
+  return {ch:ch,bank:bank,sfx:sfx,l4:l4,toks:bm2Tokens((t.desc||'')+' '+(t.reference||''))};
+}
+/* learned relationships (token-overlap generalization). Confirmations strengthen,
+   rejections damp. Channel/bank/suffix only ADD to an alias hit — alone they never
+   identify a party. */
+function bm2LearnedScore(d,party,feat){
+  var rels=(d.bankAliases||[]).filter(function(r){return r.pid===party.id;});
+  var best=null;
+  rels.forEach(function(r){
+    var aToks=bm2Tokens(r.a);
+    if(!aToks.length)aToks=bm2Norm(r.a).split(' ').filter(Boolean);
+    if(!aToks.length)return;
+    var hitCount=aToks.filter(function(tok){return feat.toks.some(function(n){return bm2TokEq(n,tok);});}).length;
+    var full=hitCount===aToks.length;
+    var partial=!full&&aToks.length>1&&hitCount>=Math.ceil(aToks.length/2);
+    if(!full&&!partial)return;
+    var cc=r.cc||1,rc=r.rc||0;
+    var base=(full?90:60)*(cc/(cc+rc+0.5));
+    base=Math.min(98,base+Math.min(8,(cc-1)*2));
+    var ex=[];var mism=null;
+    var rl4=r.l4||((r.sfx||'').replace(/\D/g,'').slice(-4));
+    if(r.ch&&feat.ch&&r.ch===feat.ch){base+=3;ex.push('Same channel ('+r.ch+')');}
+    if(r.bank&&feat.bank&&r.bank===feat.bank){base+=5;ex.push('Same bank ('+r.bank+')');}
+    if(rl4&&feat.l4){
+      if(rl4===feat.l4){base+=8;ex.push('Account ending '+feat.l4+' previously confirmed');}
+      else{mism={expected:rl4,got:feat.l4};base=Math.min(base,70);} // narration fits, account differs — flag, do not hide
+    }
+    var sc=Math.min(120,Math.round(base));
+    if(sc<25)return;
+    if(!best||sc>best.score)best={score:sc,rel:r,full:full,extras:ex,mism:mism,
+      why:'Learned alias pattern "'+r.a+'" - confirmed '+cc+'x'+(rc?', rejected '+rc+'x':'')};
+  });
+  return best;
 }
 function bm2SigNameTokens(name){
   return bm2Norm(String(name||'').replace(BM2_SUFFIX,' ')).split(' ').filter(function(w){return w.length>=3&&!/^\d+$/.test(w);});
@@ -7707,10 +7815,21 @@ function bm2AliasHit(d,party,narrCompact){
   return null;
 }
 /* optional bank-detail evidence (account / UPI / last-6 / IFSC) */
-function bm2BankScore(party,t){
+function bm2BankScore(party,t,feat){
   var descCompact=bm2Compact(t.desc)+bm2Compact(t.reference||'');
   var best=0,why='';
   (partyBanks(party)||[]).forEach(function(b){
+    // masked account-ending evidence from the party master (XX0132 in narration):
+    // last-4 + matching bank code = 60; last-4 alone = 25 — neither can pass the
+    // identity gate (75) by itself, so a random last-4 never identifies a party.
+    if(feat&&feat.l4&&b.acNo){
+      var al4=String(b.acNo).replace(/\D/g,'').slice(-4);
+      if(al4&&al4===feat.l4){
+        var bc=String(b.ifsc||'').toUpperCase().slice(0,4);
+        if(bc&&feat.bank&&bc===feat.bank){if(best<60){best=60;why='Account ending '+feat.l4+' + bank '+bc+' match party bank details';}}
+        else if(best<25){best=25;why='Account ending '+feat.l4+' matches party bank details';}
+      }
+    }
     if(b.acNo){
       var ac=String(b.acNo).replace(/\D/g,'');
       if(ac.length>=8&&descCompact.indexOf(ac)>=0){if(best<90){best=90;why='Bank account matched';}}
@@ -7765,18 +7884,21 @@ function bm2ScoreParty(d,t,party,narrTokens,narrCompact){
   var sideDocs=(dir==='in'?d.invoices:d.bills).filter(function(x){return x.pid===party.id&&x.mode!=='cash';});
   var reasons=[];var s=0;
   var nameS=bm2NameScore(party,narrTokens,narrCompact);
-  var alias=bm2AliasHit(d,party,narrCompact);
-  var bank=bm2BankScore(party,t);
-  var refs=bm2DocRefs(t,sideDocs,nameS>0||!!alias||bank.score>=75);
-  // gate: require at least one identity signal — amounts alone never identify a party
-  if(!nameS&&!alias&&bank.score<75&&!refs.length)return null;
+  var feat=bm2NarrFeatures(t);
+  var learned=bm2LearnedScore(d,party,feat);
+  var bank=bm2BankScore(party,t,feat);
+  var refs=bm2DocRefs(t,sideDocs,nameS>0||!!learned||bank.score>=75);
+  // gate: meaningful IDENTITY evidence required — amount, date, channel, bank code,
+  // or UTR patterns alone NEVER identify a party
+  if(!nameS&&!learned&&bank.score<75&&!refs.length)return null;
   if(refs.length){s+=100;reasons.push((refs[0].kind==='pfx'?'Invoice/bill number in narration':'Bill serial in narration')+' ('+esc(refs[0].doc.num||'')+')');}
-  if(alias){s+=90;reasons.push('Learned alias “'+esc(alias)+'”');}
+  if(learned){s+=learned.score;reasons.push(learned.why);learned.extras.forEach(function(x){reasons.push(x);});
+    if(learned.mism)reasons.push('Account ending '+learned.mism.got+' differs from previously confirmed '+learned.mism.expected);}
   if(bank.score){s+=bank.score;reasons.push(bank.why);}
   if(nameS){s+=nameS;reasons.push('Party name matched');}
   // previous user-confirmed bank relationship
   var prevRel=(d.payments||[]).some(function(p){return p.pid===party.id&&p.matchedBy==='user-confirmed';});
-  if(prevRel&&(nameS||alias||refs.length)){s+=30;reasons.push('Previously confirmed relationship');}
+  if(prevRel&&(nameS||learned||refs.length)){s+=30;reasons.push('Previously confirmed relationship');}
   // allocation
   var target=refs.length?{id:refs[0].doc.id}:null;
   var al=allocFIFO(party.id,dir,t.amount,target);
@@ -7799,7 +7921,9 @@ function bm2ScoreParty(d,t,party,narrTokens,narrCompact){
   }else{
     reasons.push('No outstanding — would record as advance');
   }
-  return {pid:party.id,pname:party.name,score:s,reasons:reasons,dir:dir,allocs:al.allocations,advance:advanceAmt,hasRef:!!refs.length};
+  return {pid:party.id,pname:party.name,score:s,reasons:reasons,dir:dir,allocs:al.allocations,advance:advanceAmt,hasRef:!!refs.length,
+    learned:learned?{cc:(learned.rel.cc||1),rc:(learned.rel.rc||0),a:learned.rel.a,strong:learned.score>=80&&!learned.mism}:null,
+    acctMismatch:learned&&learned.mism?learned.mism:null};
 }
 /* ── SWEEP / INTERNAL TRANSFER CLASSIFICATION (R61) ─────────────────────
    Runs BEFORE party matching. Sweeps stay in bankTxns (bank balance still
@@ -7852,11 +7976,13 @@ function bm2Recheck(opts){
   var d=D();if(!Array.isArray(d.bankTxns))d.bankTxns=[];
   bankTxns=d.bankTxns;
   bmClassifySweeps(d);                                // classification FIRST (sweeps never enter party matching)
+  bm2LearnBoot(d);                                    // one-time: seed learning from clearly user-handled history
   var sugs=[];var fresh=0;
   bankTxns.forEach(function(t,ti){
     if(t.matchId||t.assigned)return;
     if(t.cls==='SWEEP'||t.cls==='SWEEP?')return;      // internal bank movements — no party/invoice matching
     if(t.type!=='CR'&&t.type!=='DR')return;
+    if(t.noMatch)return;                              // user chose "never suggest"
     if(t.skipMatch&&!opts.force)return;
     var narrTokens=bm2Tokens((t.desc||'')+' '+(t.reference||''));
     var narrCompact=bm2Compact(t.desc)+bm2Compact(t.reference||'');
@@ -7868,10 +7994,11 @@ function bm2Recheck(opts){
     if(!cands.length)return;
     cands.sort(function(a,b){return b.score-a.score;});
     var best=cands[0],second=cands[1];
-    var ambiguous=!!(second&&best.score-second.score<12&&!best.hasRef); // e.g. Rahul Fashion House vs Rahul Fashion Hub
+    var ambiguous=!!(second&&best.score-second.score<12&&!best.hasRef&&!(best.learned&&best.learned.strong)); // refs or strong learning disambiguate
     var level=best.score>=110?'high':best.score>=70?'likely':best.score>=40?'possible':null;
     if(!level)return;
     if(ambiguous&&level==='high')level='likely';
+    if(best.acctMismatch&&level==='high')level='likely'; // account mismatch is never a clean HIGH
     sugs.push({ti:ti,level:level,ambiguous:ambiguous,cands:cands.slice(0,3),best:best,skipped:!!t.skipMatch});
     if(!BM2.seen.has(t)){fresh++;BM2.seen.add(t);}
   });
@@ -7905,19 +8032,22 @@ function bm2ShowReview(){
     if(!b.allocs.length&&b.advance>0.5)allocRows='<div style="font-size:12px;color:#92400E;padding:3px 0">💠 No outstanding documents — record as <b>advance '+fmt(b.advance)+'</b></div>';
     var altBtns=s.ambiguous?s.cands.slice(0,2).map(function(c,ci){
       return '<button class="btn sm '+(ci===0?'pri':'')+'" style="font-size:11px" onclick="bm2Confirm('+si+','+ci+')">✓ '+esc(c.pname)+'</button>';
-    }).join(''):'<button class="btn sm pri" style="font-size:11px" onclick="bm2Confirm('+si+',0)">✓ CONFIRM</button>';
+    }).join(''):'<button class="btn sm pri" style="font-size:11px" onclick="bm2Confirm('+si+',0)">✓ '+(s.best.acctMismatch?'CONFIRM ANYWAY':'CONFIRM')+'</button>';
     return '<div class="card" style="padding:12px;margin-bottom:10px;border-left:3px solid '+(s.level==='high'?'#059669':s.level==='likely'?'#D97706':'#9CA3AF')+'">'+
       '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'+
-        '<div style="min-width:0"><div style="font-weight:800;font-size:14px">'+esc(b.pname)+(s.skipped?' <span style="font-size:10px;color:#9CA3AF">(skipped earlier)</span>':'')+'</div>'+
+        '<div style="min-width:0"><div style="font-weight:800;font-size:14px">'+(b.learned?'&#129504; ':'')+esc(b.pname)+(s.skipped?' <span style="font-size:10px;color:#9CA3AF">(skipped earlier)</span>':'')+'</div>'+
+        (b.learned?'<div style="font-size:10px;color:#7C3AED;font-weight:700">Learned Match &middot; previously confirmed '+b.learned.cc+'&times;'+(b.learned.rc?' &middot; rejected '+b.learned.rc+'&times;':'')+'</div>':'')+
         '<div style="font-size:11px;color:#6B7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(t.desc)+'</div>'+
         '<div style="font-size:12px;margin-top:2px">'+fmtD(t.date)+' · <b style="color:'+(t.type==='CR'?'#059669':'#DC2626')+'">'+(t.type==='CR'?'+':'−')+fmt(t.amount)+'</b> '+(t.type==='CR'?'(receipt)':'(payment)')+'</div></div>'+
         '<div>'+bm2LevelBadge(s.level,s.ambiguous)+'</div>'+
       '</div>'+
+      (b.acctMismatch?'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:11px;color:#991B1B"><b>&#9888; ACCOUNT MISMATCH</b> — narration resembles '+esc(b.pname)+', but the account ending ('+esc(b.acctMismatch.got)+') differs from the previously confirmed account ('+esc(b.acctMismatch.expected)+').</div>':'')+
       '<div style="background:#F9FAFB;border-radius:8px;padding:8px 10px;margin-top:8px">'+allocRows+'</div>'+
       '<div style="font-size:11px;color:#059669;margin-top:6px">'+b.reasons.map(function(r){return '✓ '+r;}).join(' &nbsp; ')+'</div>'+
       '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+altBtns+
         '<button class="btn sm" style="font-size:11px" onclick="bm2Change('+si+')">✎ CHANGE</button>'+
         '<button class="btn sm" style="font-size:11px;background:#F3F4F6" onclick="bm2Skip('+si+')">SKIP</button>'+
+        '<a href="javascript:bm2Never('+si+')" style="font-size:10px;color:#9CA3AF;align-self:center" title="Never suggest a match for this entry">never</a>'+
       '</div>'+
     '</div>';
   }
@@ -7933,6 +8063,17 @@ function bm2ShowReview(){
     '<div style="overflow:auto;flex:1;padding:12px 16px">'+
       (sugs.length?sugs.map(card).join(''):'<div style="text-align:center;color:#6B7280;padding:30px">No suggestions right now. Add or edit parties, invoices, or bills and matches re-run automatically — or press 🔄 Re-check.</div>')+
     '</div>'+
+    ((D().bankAliases||[]).length?'<div style="border-top:1px solid #E5E7EB;padding:10px 18px;max-height:180px;overflow:auto">'+
+      '<div style="font-weight:800;font-size:12px;margin-bottom:6px">&#129504; Learned Bank Relationships ('+D().bankAliases.length+')</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="color:#6B7280;text-align:left"><th style="padding:2px 4px">Bank Pattern</th><th style="padding:2px 4px">Party</th><th style="padding:2px 4px;text-align:right">Conf.</th><th style="padding:2px 4px;text-align:right">Rej.</th><th style="padding:2px 4px;text-align:right">Confidence</th><th></th></tr></thead><tbody>'+
+      D().bankAliases.map(function(r,ri){var p=(D().parties||[]).find(function(x){return x.id===r.pid;});
+        return '<tr style="border-top:1px solid #F3F4F6"><td style="padding:3px 4px;font-weight:700">'+esc(r.a)+((r.ch||r.bank||r.sfx||r.l4)?' <span style="color:#9CA3AF;font-weight:400">'+esc([r.ch,r.bank,r.sfx||(r.l4?'XX'+r.l4:'')].filter(Boolean).join(' &middot; '))+'</span>':'')+'</td>'+
+        '<td style="padding:3px 4px">'+esc(p?p.name:'?')+'</td>'+
+        '<td style="padding:3px 4px;text-align:right">'+(r.cc||1)+'</td>'+
+        '<td style="padding:3px 4px;text-align:right">'+(r.rc||0)+'</td>'+
+        '<td style="padding:3px 4px;text-align:right;font-weight:700;color:'+(bm2RelConf(r)>=85?'#059669':'#B45309')+'">'+bm2RelConf(r)+'%</td>'+
+        '<td style="padding:3px 4px;text-align:right;white-space:nowrap"><a href="javascript:bm2EditRel('+ri+')" style="font-size:10px;color:var(--pri2)">Edit</a> &middot; <a href="javascript:bm2Forget('+ri+')" style="font-size:10px;color:#DC2626">Forget</a></td></tr>';}).join('')+
+      '</tbody></table></div>':'')+
     '<div style="padding:10px 18px;border-top:1px solid #E5E7EB;display:flex;gap:8px">'+
       '<button class="btn sm" onclick="bm2Recheck({force:true});bm2ShowReview()">🔄 Re-check (incl. skipped)</button>'+
       '<div style="flex:1"></div>'+
@@ -7945,27 +8086,104 @@ function bm2LearnAlias(d,t,pid,manual){
   try{
     if(!Array.isArray(d.bankAliases))d.bankAliases=[];
     var party=(d.parties||[]).find(function(p){return p.id===pid;});if(!party)return;
-    var toks=bm2Norm((t.desc||'')).split(' ').filter(function(w){return w&&!BM2_STOP[w]&&!/^\d+$/.test(w);});
+    var feat=bm2NarrFeatures(t);
     var sig=bm2SigNameTokens(party.name);
     var pick;
-    if(manual)pick=toks.slice(0,4);                                     // user explicitly chose the party
-    else pick=toks.filter(function(w){return sig.some(function(x){return bm2TokEq(w,x);});});
+    if(manual){
+      // user explicitly chose the party — keep even 1-letter tokens ('R FASHION')
+      pick=bm2Norm(t.desc||'').split(' ').filter(function(w){
+        return w&&!BM2_STOP[w]&&!/^\d+$/.test(w)&&!/^XX\d+$/.test(w)&&!/\d{6,}/.test(w);
+      }).slice(0,4);
+    }
+    else pick=feat.toks.filter(function(w){return sig.some(function(x){return bm2TokEq(w,x);});});
     var alias=pick.join(' ').trim();
     if(alias.length<4)return;
     var c=bm2Compact(alias);
-    if((d.bankAliases||[]).some(function(a){return a.pid===pid&&bm2Compact(a.a)===c;}))return;
-    // never store an alias that equals a DIFFERENT party's compact name
     if((d.parties||[]).some(function(p){return p.id!==pid&&bm2Compact(String(p.name||'').replace(BM2_SUFFIX,' '))===c;}))return;
+    // same alias + same account (or account unknown on either side) = same relationship;
+    // same alias + DIFFERENT account ending = a NEW additional verified account (§multiple accounts)
+    var rel=(d.bankAliases||[]).find(function(a){
+      if(a.pid!==pid||bm2Compact(a.a)!==c)return false;
+      var al4=a.l4||'';
+      return !al4||!feat.l4||al4===feat.l4;
+    });
+    var now=new Date().toISOString();
+    if(rel){
+      rel.cc=(rel.cc||1)+1;rel.lastC=now;
+      if(!rel.ch&&feat.ch)rel.ch=feat.ch;
+      if(!rel.bank&&feat.bank)rel.bank=feat.bank;
+      if(!rel.sfx&&feat.sfx)rel.sfx=feat.sfx;
+      if(!rel.l4&&feat.l4)rel.l4=feat.l4;
+      rel.src=rel.src||'user-confirmed';
+      return;
+    }
     var mine=(d.bankAliases||[]).filter(function(a){return a.pid===pid;});
-    if(mine.length>=12)return;
-    d.bankAliases.push({a:alias,pid:pid,at:new Date().toISOString()});
+    if(mine.length>=16)return;
+    d.bankAliases.push({a:alias,pid:pid,at:now,lastC:now,cc:1,rc:0,
+      ch:feat.ch||'',bank:feat.bank||'',sfx:feat.sfx||'',l4:feat.l4||'',src:'user-confirmed'});
   }catch(e){}
+}
+/* negative learning: user redirected this narration to a different party — damp
+   patterns pointing at the wrong suggestion. Statistics kept, nothing deleted,
+   historical payments untouched. */
+function bm2Reject(d,t,wrongPid){
+  try{
+    if(!wrongPid)return;
+    var feat=bm2NarrFeatures(t);
+    var hit=bm2LearnedScore(d,{id:wrongPid},feat);
+    var now=new Date().toISOString();
+    if(hit&&hit.rel){hit.rel.rc=(hit.rel.rc||0)+1;hit.rel.lastR=now;return;}
+    (d.bankAliases||[]).filter(function(r){return r.pid===wrongPid;}).forEach(function(r){
+      var aToks=bm2Tokens(r.a);
+      if(aToks.length&&aToks.some(function(tok){return feat.toks.some(function(n){return bm2TokEq(n,tok);});})){r.rc=(r.rc||0)+1;r.lastR=now;}
+    });
+  }catch(e){}
+}
+function bm2RelConf(r){var cc=r.cc||1,rc=r.rc||0;return Math.min(98,Math.round(100*cc/(cc+rc+0.3)));}
+function bm2Forget(idx){
+  var d=D();if(!d.bankAliases||!d.bankAliases[idx])return;
+  var r=d.bankAliases[idx];
+  if(!confirm('Forget learned relationship "'+r.a+'"?\n\nHistorical bank transactions and payments are NOT affected - only future suggestions.'))return;
+  d.bankAliases.splice(idx,1);
+  saveToCloud();bm2Recheck({notify:false});bm2ShowReview();
+}
+function bm2EditRel(idx){
+  var d=D();if(!d.bankAliases||!d.bankAliases[idx])return;
+  var r=d.bankAliases[idx];
+  var v=prompt('Edit the learned bank pattern for this party:',r.a);
+  if(v==null)return;v=v.trim();
+  if(v.length<4){toast('Pattern too short','warn');return;}
+  r.a=v;saveToCloud();bm2Recheck({notify:false});bm2ShowReview();
+}
+function bm2Never(si){
+  var s2=BM2.sugs[si];if(!s2)return;
+  var t=bankTxns[s2.ti];if(!t)return;
+  if(!confirm('Never suggest a party match for this bank entry again?'))return;
+  t.noMatch=true;delete t.skipMatch;
+  saveToCloud();bm2ShowReview();renderBank();
+}
+/* one-time bootstrap: seed learning from clearly user-handled history only —
+   manual party assignments and previously user-confirmed bank matches.
+   Never learns from automatic suggestions. */
+function bm2LearnBoot(d){
+  if(d.invMeta&&d.invMeta.bmLearnBootV1)return;
+  (d.bankTxns||[]).forEach(function(t){
+    if(!t.matchId)return;
+    var pay=(d.payments||[]).find(function(p){return p.id===t.matchId;});
+    if(!pay||!pay.pid)return;
+    var confirmed=(t.assigned==='party')||pay.matchedBy==='user-confirmed';
+    if(!confirmed)return;
+    bm2LearnAlias(d,t,pay.pid,t.assigned==='party');
+  });
+  if(!d.invMeta)d.invMeta={};
+  d.invMeta.bmLearnBootV1={done:true,at:new Date().toISOString()};
 }
 /* confirm suggestion si using candidate ci */
 function bm2Confirm(si,ci,silent){
   var d=D();var s=BM2.sugs[si];if(!s)return;
   var t=bankTxns[s.ti];if(!t||t.matchId||t.assigned)return;             // never duplicate
   var b=s.cands[ci||0]||s.best;
+  if((ci||0)>0&&s.cands[0]&&s.cands[0].pid!==b.pid)bm2Reject(d,t,s.cands[0].pid); // user corrected the top suggestion
   // re-derive allocation for the chosen candidate at confirm time (state may have moved)
   var target=b.allocs.length?{id:(b.allocs[0].iid||b.allocs[0].bid)}:null;
   var al=allocFIFO(b.pid,b.dir,t.amount,target);
@@ -7978,7 +8196,30 @@ function bm2Confirm(si,ci,silent){
   d.payments.push(pay);
   t.matchId=pay.id;t.autoCreated=true;delete t.skipMatch;
   t.matchMeta={src:'bank-auto',conf:b.score,reason:b.reasons.join('; '),at:pay.matchedAt,by:'user-confirmed'};
-  bm2LearnAlias(d,t,b.pid,false);
+  // learning: confirming a LEARNED suggestion strengthens that exact relationship;
+  // otherwise learn a fresh name-based alias from the narration
+  if(b.acctMismatch){
+    // CONFIRM ANYWAY on a new account ending: learn it as an ADDITIONAL verified
+    // relationship for this party; the previously confirmed account is kept untouched.
+    var f1=bm2NarrFeatures(t);
+    d.bankAliases.push({a:b.learned?b.learned.a:'',pid:b.pid,at:pay.matchedAt,lastC:pay.matchedAt,cc:1,rc:0,
+      ch:f1.ch||'',bank:f1.bank||'',sfx:f1.sfx||'',l4:f1.l4||'',src:'user-confirmed'});
+  }else if(b.learned){
+    var f0=bm2NarrFeatures(t);
+    var lrel=(d.bankAliases||[]).find(function(r){
+      if(r.pid!==b.pid||bm2Compact(r.a)!==bm2Compact(b.learned.a))return false;
+      var rl=r.l4||'';return !rl||!f0.l4||rl===f0.l4;
+    });
+    if(lrel){
+      lrel.cc=(lrel.cc||1)+1;lrel.lastC=pay.matchedAt;
+      if(!lrel.ch&&f0.ch)lrel.ch=f0.ch;
+      if(!lrel.bank&&f0.bank)lrel.bank=f0.bank;
+      if(!lrel.sfx&&f0.sfx)lrel.sfx=f0.sfx;
+      if(!lrel.l4&&f0.l4)lrel.l4=f0.l4;
+    }
+  }else{
+    bm2LearnAlias(d,t,b.pid,false);
+  }
   if(!silent){
     saveToCloud();
     toast('✅ '+esc(b.pname)+' — '+fmt(t.amount)+' posted'+(al.allocations.length?' against '+al.allocations.length+' document(s)':' as advance'),'ok');
@@ -7995,6 +8236,7 @@ function bm2ConfirmAllHigh(){
 }
 function bm2Change(si){
   var s=BM2.sugs[si];if(!s)return;
+  window._bm2Pending={ti:s.ti,pid:s.best.pid};        // manual pick of a different party corrects learning
   var ov=document.getElementById('bm2-review');if(ov)ov.remove();
   goTab('bank');
   openAssign(s.ti);
@@ -8193,7 +8435,12 @@ function assignToParty(){
   if(!pid){alert('Select a party');return;}
   const pay={id:'PAY'+uid4(),pid:pid,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60)};
   d.payments.push(pay);
-  (function(){try{bm2LearnAlias(D(),t,pid,true);}catch(e){}})();t.matchId=pay.id;t.assigned='party';t.createdId=pay.id;
+  (function(){try{
+    bm2LearnAlias(D(),t,pid,true);
+    var pend=window._bm2Pending;
+    if(pend&&bankTxns[pend.ti]===t&&pend.pid&&pend.pid!==pid)bm2Reject(D(),t,pend.pid);
+    window._bm2Pending=null;
+  }catch(e){}})();t.matchId=pay.id;t.assigned='party';t.createdId=pay.id;
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
 }
 function assignToExpense(){
