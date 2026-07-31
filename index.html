@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R64</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R65</div>
   </nav>
 
   <!-- PAGES -->
@@ -6640,7 +6640,7 @@ function mergeBankTxns(newTxns){
   const keyOf=t=>String(t.date||'')+'|'+Math.round((parseFloat(t.amount)||0)*100)+'|'+(t.type||'')+'|'+String(t.desc||'').replace(/\s+/g,' ').trim().toLowerCase().slice(0,40);
   const seen=new Set(existing.map(keyOf));
   let added=0,dup=0;
-  (newTxns||[]).forEach(t=>{const k=keyOf(t);if(seen.has(k)){dup++;return;}seen.add(k);existing.push(t);added++;});
+  (newTxns||[]).forEach(t=>{const k=keyOf(t);if(seen.has(k)){dup++;return;}seen.add(k);if(!t.id)t.id='BTX'+uid4();existing.push(t);added++;});
   existing.sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
   d.bankTxns=existing;bankTxns=d.bankTxns;
   return {added,dup,total:existing.length};
@@ -6745,6 +6745,7 @@ function renderBank(){
       <button class="btn sm" onclick="autoMatchBank();bm2Recheck({notify:true});renderBank();toast('🔄 '+BM2.sugs.length+' suggestion(s) after re-check','ok')" style="background:#EFF6FF;color:#1E40AF">🔄 Re-check Bank Matches</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
       <button class="btn sm" onclick="repairPaymentDirections()" style="background:#FFF7ED;color:#92400E">🔧 Fix Receipt/Payment Mix-ups</button>
+      <button class="btn sm" onclick="bmBankHealth()" style="background:#F0FDF4;color:#166534">🩺 Data Health</button>
       <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
     </div>
     <div style="padding:0 16px 10px">
@@ -7532,23 +7533,35 @@ function flipTxnDir(idx){
 // Delete a single bank statement entry, reversing any side-effects it created.
 function deleteBankTxn(idx){
   const d=D();const t=bankTxns[idx];if(!t)return;
+  if(!t.id)t.id='BTX'+uid4();
+  // BANK ENTRY = SOURCE OF TRUTH: everything this entry created gets reversed with it.
+  const summary=bmSettlementSummary(d,t);
   let extra='';
-  if(t.matchId&&t.autoCreated)extra='\n\nThe payment/receipt this entry auto-created will also be removed.';
-  else if(t.matchId)extra='\n\nThis will unlink the matched payment (the payment itself is kept).';
+  if(summary){
+    extra='\n\n⚠ DELETE BANK ENTRY — this entry has already been used for settlement.'
+      +'\nParty: '+(summary.party?summary.party.name:'—')
+      +'\nAmount: '+fmt(t.amount)
+      +(summary.lines.length?'\n\nAllocated to:\n  '+summary.lines.join('\n  '):'')
+      +'\n\nDeleting this bank entry will also REVERSE its payment and all allocations.'
+      +'\nInvoices/bills return to their previous outstanding. Advance created by this entry is removed.'
+      +'\n(Learned matching patterns are kept — use Forget in Review Matches to remove those.)';
+  }
+  else if(t.matchId)extra='\n\nThe matched payment was recorded manually/independently — it will only be UNLINKED and stays in the books.';
   else if(t.assigned==='loan')extra='\n\nThe loan transaction this entry created will be removed.';
   else if(t.assigned==='asset')extra='\n\nThe asset value this entry added will be reversed.';
   else if(t.assigned==='reserve')extra='\n\nThe reserve transaction this entry created will be removed.';
   else if(t.assigned==='expense')extra='\n\nThe expense this entry created will be removed.';
-  if(!confirm('Delete this bank entry?\n\n'+(t.desc||'').substring(0,80)+'\n'+fmtD(t.date)+' · '+(t.type==='CR'?'+':'−')+fmt(t.amount)+extra))return;
+  const btn=summary?'\n\nPress OK to DELETE ENTRY + REVERSE SETTLEMENT.':'';
+  if(!confirm('Delete this bank entry?\n\n'+(t.desc||'').substring(0,80)+'\n'+fmtD(t.date)+' · '+(t.type==='CR'?'+':'−')+fmt(t.amount)+extra+btn))return;
 
-  // Reverse side-effects
-  if(t.matchId){
-    if(t.autoCreated){
-      // remove the payment this entry created
-      d.payments=(d.payments||[]).filter(p=>p.id!==t.matchId);
-    }
-    // else: leave the user's own payment intact, just drop the link by deleting the txn
+  // CASCADE: remove every payment OWNED by this bank entry (allocated or not, partial
+  // or full, single/multi-invoice, advance included). Balances are derived from
+  // payments, so removing the payment restores every outstanding automatically.
+  if(summary){
+    const ownedIds=summary.owned.map(p=>p.id);
+    d.payments=(d.payments||[]).filter(p=>ownedIds.indexOf(p.id)<0);
   }
+  // A merely-LINKED manual payment (never owned): unlink happens by deleting the txn.
   if(t.assigned==='loan'&&t.assignedLoan){
     const loan=(d.loans||[]).find(l=>l.id===t.assignedLoan);
     if(loan&&loan.txns){
@@ -7604,10 +7617,9 @@ function unassignTxn(idx){
   else if(t.assigned==='asset')extra='The asset value it added will be reversed.';
   else if(t.assigned==='reserve')extra='The reserve transaction it created will be removed.';
   if(!confirm('Send this entry back to the unassigned bank list?\n\n'+extra+'\n\nThe bank entry itself stays — only the assignment is reversed, so you can assign it again correctly.'))return;
-  // Reverse side-effects (same as delete) but keep the entry
-  if(t.assigned==='party'||t.autoCreated){
-    if(t.matchId)d.payments=(d.payments||[]).filter(p=>p.id!==t.matchId);
-  }
+  // Reverse side-effects (same ownership rule as delete) but keep the entry
+  const _owned=bmOwnedPayments(d,t).map(p=>p.id);
+  if(_owned.length)d.payments=(d.payments||[]).filter(p=>_owned.indexOf(p.id)<0);
   if(t.assigned==='loan'&&t.assignedLoan){
     const loan=(d.loans||[]).find(l=>l.id===t.assignedLoan);
     if(loan&&loan.txns){
@@ -7941,6 +7953,7 @@ function bmSweepTier(t){
 }
 function bmClassifySweeps(d){
   (d.bankTxns||[]).forEach(function(t){
+    if(!t.id)t.id='BTX'+uid4();                       // backfill ids on legacy entries
     if(t.matchId||t.assigned)return;                  // already settled — leave untouched
     if(t.clsUser==='sweep'){t.cls='SWEEP';return;}    // user-confirmed
     if(t.clsUser==='no'){if(t.cls==='SWEEP'||t.cls==='SWEEP?')t.cls=null;return;}
@@ -7956,6 +7969,90 @@ function bmClassifySweeps(d){
     var mate=sw.find(function(b){return !b.t.transferGroupId&&b.i!==a.i&&b.t.date===a.t.date&&Math.abs(b.t.amount-a.t.amount)<0.5&&b.t.type!==a.t.type;});
     if(mate){var g='SWG'+uid4();a.t.transferGroupId=g;mate.t.transferGroupId=g;}
   });
+}
+/* BANK ENTRY = SOURCE OF TRUTH. A payment is OWNED by a bank transaction when it
+   was created from confirming/assigning that entry. Manual payments that were merely
+   DISCOVERED as a match (auto-link) are never owned — deleting the entry only unlinks
+   them. Ownership key: payment.source==='bank' + payment.bankTxnId; legacy bank-created
+   payments (pre-R65) are recognized via autoCreated / assigned==='party' links. */
+function bmOwnedPayments(d,t){
+  return (d.payments||[]).filter(function(p){
+    if(p.source==='bank'&&p.bankTxnId&&t.id&&p.bankTxnId===t.id)return true;
+    if(p.source==='manual')return false;
+    if(t.autoCreated&&t.matchId===p.id&&p.source!=='manual')return true;              // legacy bm2/auto-created
+    if(t.assigned==='party'&&(t.createdId===p.id||t.matchId===p.id))return true;      // legacy manual-assign
+    return false;
+  });
+}
+function bmSettlementSummary(d,t){
+  var owned=bmOwnedPayments(d,t);
+  if(!owned.length)return null;
+  var lines=[];var party=null;
+  owned.forEach(function(p){
+    var pp=(d.parties||[]).find(function(x){return x.id===p.pid;});
+    if(pp)party=pp;
+    var allocSum=0;
+    (p.allocations||[]).forEach(function(a){
+      allocSum+=a.amt;
+      var doc=a.iid?(d.invoices||[]).find(function(x){return x.id===a.iid;}):(d.bills||[]).find(function(x){return x.id===a.bid;});
+      lines.push((doc?doc.num:'(document)')+' — '+fmt(a.amt));
+    });
+    var adv=Math.round(((p.amt||0)-allocSum)*100)/100;
+    if(adv>0.5)lines.push('Advance — '+fmt(adv));
+  });
+  return {owned:owned,party:party,lines:lines};
+}
+/* §13/§14 diagnostics — review-only, NEVER silently deletes historical records */
+function bmBankHealth(){
+  var d=D();var txnIds={};(d.bankTxns||[]).forEach(function(t){if(t.id)txnIds[t.id]=1;});
+  var orphans=(d.payments||[]).map(function(p,i){return {p:p,i:i};})
+    .filter(function(x){return x.p.source==='bank'&&x.p.bankTxnId&&!txnIds[x.p.bankTxnId];});
+  // possible duplicate bank settlements: same party + amount + date, >=2 payments, at least one bank-flavoured
+  var groups={};
+  (d.payments||[]).forEach(function(p,i){
+    var k=(p.pid||'')+'|'+Math.round((p.amt||0)*100)+'|'+(p.date||'');
+    (groups[k]=groups[k]||[]).push({p:p,i:i});
+  });
+  var dups=Object.keys(groups).map(function(k){return groups[k];})
+    .filter(function(g){return g.length>=2&&g.some(function(x){return x.p.source==='bank'||/bank/i.test(x.p.ref||'')||/bank/i.test(x.p.rem||'');});});
+  function payRow(x,showDel){
+    var p=x.p;var party=(d.parties||[]).find(function(q){return q.id===p.pid;});
+    var alloc=(p.allocations||[]).map(function(a){
+      var doc=a.iid?(d.invoices||[]).find(function(q){return q.id===a.iid;}):(d.bills||[]).find(function(q){return q.id===a.bid;});
+      return (doc?doc.num:'?')+' '+fmt(a.amt);
+    }).join(', ');
+    return '<div style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #F3F4F6;font-size:11px;align-items:center">'+
+      '<div><b>'+esc(party?party.name:'?')+'</b> · '+fmtD(p.date||'')+' · '+fmt(p.amt||0)+' · '+(p.dir==='in'?'receipt':'payment')+
+      '<br><span style="color:#6B7280">source: '+esc(p.source||'untagged')+(p.bankTxnId?' · bank ref '+esc(p.bankTxnId):'')+(alloc?' · alloc: '+esc(alloc):' · no allocations (advance)')+'</span></div>'+
+      (showDel?'<button class="btn sm" style="font-size:10px;background:#FEF2F2;color:#DC2626" onclick="bmHealthDeletePay(\''+p.id+'\')">Delete payment</button>':'')+
+    '</div>';
+  }
+  var ov=document.getElementById('bm-health');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='bm-health';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:680px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.3)">'+
+    '<div style="padding:14px 18px;border-bottom:1px solid #E5E7EB"><div style="font-weight:800;font-size:15px">🩺 Bank Data Health</div>'+
+    '<div style="font-size:11px;color:#6B7280;margin-top:3px">Review-only diagnostics. Nothing is deleted without your explicit choice.</div></div>'+
+    '<div style="overflow:auto;flex:1;padding:12px 18px">'+
+      '<div style="font-weight:800;font-size:12px;margin-bottom:4px">Orphan bank payments ('+orphans.length+')</div>'+
+      '<div style="font-size:11px;color:#6B7280;margin-bottom:6px">Payments tagged source=bank whose parent bank transaction no longer exists.</div>'+
+      (orphans.length?orphans.map(function(x){return payRow(x,true);}).join(''):'<div style="font-size:11px;color:#059669;padding:4px 0">✓ None</div>')+
+      '<div style="font-weight:800;font-size:12px;margin:14px 0 4px">Possible duplicate bank settlements ('+dups.length+' group(s))</div>'+
+      '<div style="font-size:11px;color:#6B7280;margin-bottom:6px">Same party + amount + date with a bank-flavoured payment — review before removing anything.</div>'+
+      (dups.length?dups.map(function(g){return '<div style="border:1px dashed #FDE68A;background:#FFFBEB;border-radius:8px;padding:6px 10px;margin-bottom:8px">'+g.map(function(x){return payRow(x,true);}).join('')+'</div>';}).join(''):'<div style="font-size:11px;color:#059669;padding:4px 0">✓ None</div>')+
+    '</div>'+
+    '<div style="padding:10px 18px;border-top:1px solid #E5E7EB;text-align:right"><button class="btn" onclick="document.getElementById(\'bm-health\').remove()">Close</button></div>'+
+  '</div>';
+  document.body.appendChild(ov);
+}
+function bmHealthDeletePay(pid2){
+  var d=D();var p=(d.payments||[]).find(function(x){return x.id===pid2;});if(!p)return;
+  var party=(d.parties||[]).find(function(q){return q.id===p.pid;});
+  if(!confirm('Delete this payment permanently?\n\n'+(party?party.name:'?')+' · '+fmtD(p.date||'')+' · '+fmt(p.amt||0)+'\n\nIts allocations reverse and outstanding balances are restored.'))return;
+  d.payments=d.payments.filter(function(x){return x.id!==pid2;});
+  (d.bankTxns||[]).forEach(function(t){if(t.matchId===pid2){t.matchId=null;delete t.matchMeta;if(t.assigned==='party')t.assigned=null;}});
+  saveToCloud();renderAll();bmBankHealth();
+  toast('Payment removed — balances restored','ok');
 }
 function bmConfirmSweep(i){
   var t=bankTxns[i];if(!t)return;
@@ -8182,6 +8279,10 @@ function bm2LearnBoot(d){
 function bm2Confirm(si,ci,silent){
   var d=D();var s=BM2.sugs[si];if(!s)return;
   var t=bankTxns[s.ti];if(!t||t.matchId||t.assigned)return;             // never duplicate
+  if(!t.id)t.id='BTX'+uid4();
+  // idempotency: if a bank-owned payment for this entry already exists, LINK it — never create a second
+  var already=(d.payments||[]).find(function(p){return p.source==='bank'&&p.bankTxnId===t.id;});
+  if(already){t.matchId=already.id;t.autoCreated=true;if(!silent){saveToCloud();bm2ShowReview();renderBank();}return;}
   var b=s.cands[ci||0]||s.best;
   if((ci||0)>0&&s.cands[0]&&s.cands[0].pid!==b.pid)bm2Reject(d,t,s.cands[0].pid); // user corrected the top suggestion
   // re-derive allocation for the chosen candidate at confirm time (state may have moved)
@@ -8190,6 +8291,7 @@ function bm2Confirm(si,ci,silent){
   var refNum=al.allocations.length?al.allocations[0].num:'';
   var pay={id:'PAY'+uid4(),pid:b.pid,amt:t.amount,date:t.date,mode:'NEFT',dir:b.dir,
     ref:refNum||'Bank stmt',rem:String(t.desc||'').substring(0,80)+' (bank match)',
+    source:'bank',bankTxnId:t.id,                                       // BANK ENTRY IS THE PARENT
     matchSource:'bank-auto',matchConfidence:b.score,matchReason:b.reasons.join('; '),
     matchedAt:new Date().toISOString(),matchedBy:'user-confirmed'};
   if(al.allocations.length)pay.allocations=al.allocations.map(function(a){var c={amt:a.amt};if(a.iid)c.iid=a.iid;if(a.bid)c.bid=a.bid;return c;});
@@ -8266,7 +8368,10 @@ function autoMatchBank(){
       return diff<=5;
     });
     const free=candidates.filter(p=>!bankTxns.some(x=>x.matchId===p.id));
-    if(free.length===1)t.matchId=free[0].id;
+    if(free.length===1){
+      t.matchId=free[0].id;
+      if(!free[0].source)free[0].source='manual';   // discovered match = user's own payment, never bank-owned
+    }
   });
   bm2Recheck({notify:false});
   saveToCloud();
@@ -8433,7 +8538,10 @@ function assignToParty(){
     pid=np.id;
   }
   if(!pid){alert('Select a party');return;}
-  const pay={id:'PAY'+uid4(),pid:pid,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60)};
+  if(!t.id)t.id='BTX'+uid4();
+  const _already=(d.payments||[]).find(p=>p.source==='bank'&&p.bankTxnId===t.id);
+  if(_already){t.matchId=_already.id;t.assigned='party';t.createdId=_already.id;saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();return;}
+  const pay={id:'PAY'+uid4(),pid:pid,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60),source:'bank',bankTxnId:t.id};
   d.payments.push(pay);
   (function(){try{
     bm2LearnAlias(D(),t,pid,true);
