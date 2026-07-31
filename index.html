@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R56</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R59</div>
   </nav>
 
   <!-- PAGES -->
@@ -6786,7 +6786,46 @@ function parseBankFile(input){
   input.value='';
 }
 
-/* ── PASSWORD-PROTECTED PDF BANK STATEMENT ── */
+/* ══════════════════════════════════════════════════════════════════════
+   BANK STATEMENT ENGINE (BSE) — multi-stage PDF importer (R57)
+   Stage 1  positional PDF.js extraction (page/x/y/w/h per item)
+   Stage 2  automatic column detection from statement header
+   Stage 3  layout variants (Debit/Credit, Withdrawal/Deposit, Amount+DrCr…)
+   Stage 4  multi-line transaction reconstruction (new txn starts at a date)
+   Stage 5  date normalisation (DD-first, month names) → YYYY-MM-DD
+   Stage 6  robust Indian amount parser (₹, lakh commas, CR/DR, (neg))
+   Stage 7  DR/CR priority: columns > attached CR/DR > keywords > balance Δ
+   Stage 8  running-balance validation + opening/closing reconciliation
+   Stage 9  header/footer/meta row skipping
+   Stage 10 password-protected PDFs (unchanged prompt flow)
+   Stage 11 OCR fallback via Tesseract.js for scanned PDFs
+   Stage 12 per-txn confidence score → ✓ / ⚠ / ❌
+   Stage 13 review modal before import (nothing touches bankTxns silently)
+   Stage 14 duplicate preview using the same key as mergeBankTxns()
+   Stage 15 hands imported txns to the existing autoMatchBank()
+   Stage 16 output object stays {date,desc,amount,balance,type,matchId,assigned}
+            + metadata {source,confidence,reference,debit,credit,page}
+   Stage 19 debug parser report
+   Stage 20 fallback chain: columns → CR/DR text → balance Δ → OCR → review
+   All processing is client-side; the PDF never leaves the browser.
+   ══════════════════════════════════════════════════════════════════════ */
+var BSE={txns:[],debug:{},dup:0,method:''};
+
+/* ── status overlay ── */
+function bseStatus(msg){
+  var el=document.getElementById('bse-status');
+  if(!el){
+    el=document.createElement('div');el.id='bse-status';
+    el.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:9998;display:flex;align-items:center;justify-content:center';
+    el.innerHTML='<div style="background:#fff;border-radius:14px;padding:22px 28px;min-width:260px;max-width:90vw;box-shadow:0 10px 40px rgba(0,0,0,.25)"><div style="font-size:22px;margin-bottom:8px">🏦</div><div id="bse-status-msg" style="font-weight:700;font-size:14px;white-space:pre-line"></div></div>';
+    document.body.appendChild(el);
+  }
+  el.style.display='flex';
+  var m=document.getElementById('bse-status-msg');if(m)m.textContent=msg;
+}
+function bseStatusHide(){var el=document.getElementById('bse-status');if(el)el.style.display='none';}
+
+/* ── Stage 10: entry point, password flow preserved ── */
 function loadPdfBankStatement(arrayBuffer){
   function withPdfjs(cb){
     var lib=window['pdfjs-dist/build/pdf'];
@@ -6798,100 +6837,526 @@ function loadPdfBankStatement(arrayBuffer){
       l.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       cb(l);
     };
+    s.onerror=function(){bseStatusHide();alert('Could not load the PDF reader (network blocked?). Please import the CSV/XLSX statement instead.');};
     document.head.appendChild(s);
   }
+  bseStatus('Reading PDF…');
   withPdfjs(function(pdfjsLib){
     var task=pdfjsLib.getDocument({data:arrayBuffer});
-    // Handle password-protected PDFs
     task.onPassword=function(updatePassword,reason){
-      var msg=reason===2?'Wrong password. Try again:':'This PDF is password-protected.\nEnter the statement password (usually your customer ID / DOB / mobile as per DCB):';
+      var msg=reason===2?'Wrong password. Try again:':'This PDF is password-protected.\nEnter the statement password (usually your customer ID / DOB / mobile as per your bank):';
       var pw=prompt(msg);
-      if(pw===null){alert('Import cancelled.');return;}
+      if(pw===null){bseStatusHide();alert('Import cancelled.');return;}
       updatePassword(pw);
     };
     task.promise.then(function(pdf){
+      bseStatus('Reading PDF…\nFound '+pdf.numPages+' page(s)');
       var pagePromises=[];
       for(var i=1;i<=pdf.numPages;i++){
-        pagePromises.push(pdf.getPage(i).then(function(page){
-          return page.getTextContent().then(function(tc){
-            // Group text items into lines by Y position
-            var rows={};
-            tc.items.forEach(function(it){
-              var y=Math.round(it.transform[5]);
-              if(!rows[y])rows[y]=[];
-              rows[y].push({x:it.transform[4],str:it.str});
+        (function(n){
+          pagePromises.push(pdf.getPage(n).then(function(page){
+            return page.getTextContent().then(function(tc){
+              return tc.items.map(function(it){
+                return {page:n,x:it.transform[4],y:it.transform[5],w:it.width||0,h:it.height||0,str:String(it.str||'').trim()};
+              }).filter(function(i2){return i2.str;});
             });
-            return Object.keys(rows).sort(function(a,b){return b-a;}).map(function(y){
-              return rows[y].sort(function(a,b){return a.x-b.x;}).map(function(c){return c.str;}).join(' ');
-            }).join('\n');
-          });
-        }));
+          }));
+        })(i);
       }
-      Promise.all(pagePromises).then(function(pages){
-        parseDCBPdfText(pages.join('\n'));
+      Promise.all(pagePromises).then(function(perPage){
+        var items=[];perPage.forEach(function(a){items=items.concat(a);});
+        bseRun(items,pdf);
       });
     }).catch(function(err){
-      if(err&&err.name==='PasswordException')return; // cancelled
+      bseStatusHide();
+      if(err&&err.name==='PasswordException')return;
       alert('Could not read PDF: '+(err&&err.message||err));
     });
   });
 }
 
-function parseDCBPdfText(text){
-  // DCB statement rows: date (DD/MM/YYYY or DD-MM-YY) ... description ... amounts
-  var lines=text.split('\n');
-  var txns=[];
-  var dateRe=/^(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})\b/;
-  var amtRe=/([\d,]+\.\d{2})/g;
-  var prevBalance=null;
-  // Seed the running balance from an opening / brought-forward balance line, so the FIRST transaction also classifies correctly
-  for(var _li=0;_li<lines.length;_li++){
-    var _L=lines[_li].toUpperCase();
-    if(/OPENING BALANCE|BALANCE B\/F|BROUGHT FORWARD|OPENING BAL\b/.test(_L)){
-      var _om=lines[_li].match(amtRe);
-      if(_om&&_om.length){prevBalance=parseFloat(_om[_om.length-1].replace(/,/g,''));break;}
+/* ── Stage 1: group items into visual rows ── */
+function bseGroupRows(items){
+  var byPage={};
+  items.forEach(function(it){(byPage[it.page]=byPage[it.page]||[]).push(it);});
+  var rows=[];
+  Object.keys(byPage).map(Number).sort(function(a,b){return a-b;}).forEach(function(pg){
+    var pts=byPage[pg].slice().sort(function(a,b){return b.y-a.y;}); // top → bottom
+    var cur=null;
+    pts.forEach(function(it){
+      if(cur&&Math.abs(cur.y-it.y)<=3){cur.items.push(it);}
+      else{cur={page:pg,y:it.y,items:[it]};rows.push(cur);}
+    });
+  });
+  rows.forEach(function(r){r.items.sort(function(a,b){return a.x-b.x;});r.text=r.items.map(function(i){return i.str;}).join('  ');});
+  return rows;
+}
+/* merge horizontally-adjacent items into cells (e.g. "Withdrawal"+"Amount") */
+function bseRowCells(row,gap){
+  gap=gap||10;
+  var cells=[];var cur=null;
+  row.items.forEach(function(it){
+    var end=it.x+(it.w||it.str.length*4);
+    if(cur&&it.x-cur.x1<=gap){cur.str+=' '+it.str;cur.x1=end;}
+    else{cur={str:it.str,x0:it.x,x1:end};cells.push(cur);}
+  });
+  cells.forEach(function(c){c.cx=(c.x0+c.x1)/2;});
+  return cells;
+}
+
+/* ── Stage 5: date parser (DD-first for Indian statements) ── */
+function bseSigned(a){return a?(a.neg?-a.v:(a.flag==='DR'?-a.v:a.v)):null;}
+var BSE_MONTHS={JAN:1,FEB:2,MAR:3,APR:4,MAY:5,JUN:6,JUL:7,AUG:8,SEP:9,SEPT:9,OCT:10,NOV:11,DEC:12};
+function bseParseDate(s){
+  if(!s)return null;
+  s=String(s).trim();
+  var m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s); // YYYY-MM-DD
+  if(m)return m[1]+'-'+String(+m[2]).padStart(2,'0')+'-'+String(+m[3]).padStart(2,'0');
+  m=/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/.exec(s); // DD/MM/YYYY (DD-first, never MM/DD)
+  if(m){
+    var dd=+m[1],mm=+m[2],yy=m[3].length===2?2000+ +m[3]:+m[3];
+    if(dd>=1&&dd<=31&&mm>=1&&mm<=12&&yy>=2000&&yy<=2099)
+      return yy+'-'+String(mm).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+    return null;
+  }
+  m=/^(\d{1,2})[\s\-]([A-Za-z]{3,9})[\s\-,]+(\d{2,4})$/.exec(s); // DD MMM YYYY / DD-MMM-YY
+  if(m){
+    var mo=BSE_MONTHS[m[2].slice(0,4).toUpperCase()]||BSE_MONTHS[m[2].slice(0,3).toUpperCase()];
+    if(!mo)return null;
+    var y2=m[3].length===2?2000+ +m[3]:+m[3];
+    return y2+'-'+String(mo).padStart(2,'0')+'-'+String(+m[1]).padStart(2,'0');
+  }
+  return null;
+}
+/* date anywhere at the START of a text line (fallback parser) */
+function bseDateAtStart(line){
+  var m=/^((?:\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})|(?:\d{4}-\d{2}-\d{2})|(?:\d{1,2}[\s\-][A-Za-z]{3,9}[\s\-,]+\d{2,4}))\b/.exec(line.trim());
+  if(!m)return null;
+  var d=bseParseDate(m[1]);
+  return d?{date:d,raw:m[1]}:null;
+}
+
+/* ── Stage 6: robust amount parser ── */
+function bseParseAmt(s){
+  if(s==null)return null;
+  var raw=String(s).trim();
+  if(!raw)return null;
+  var flag=null;
+  var neg=false;
+  if(/^\(.*\)$/.test(raw)){neg=true;raw=raw.slice(1,-1);}
+  var fm=/(?:^|[\s])(CR|DR)\.?$/i.exec(raw)||/^(CR|DR)\.?(?=[\s\d₹])/i.exec(raw);
+  if(fm){flag=fm[1].toUpperCase();raw=raw.replace(/(?:^|\s)(CR|DR)\.?\s*$/i,'').replace(/^(CR|DR)\.?\s*/i,'').trim();}
+  raw=raw.replace(/₹|RS\.?|INR/gi,'').replace(/\s+/g,'');
+  if(raw.startsWith('-')){neg=true;raw=raw.slice(1);}
+  if(/-$/.test(raw)){neg=true;raw=raw.replace(/-+$/,'');}     // trailing minus (SBI/ICICI): 95,000.00-
+  if(!/^\d[\d,]*(\.\d{1,2})?$/.test(raw))return null;      // not money (letters, >2 decimals…)
+  var digits=raw.replace(/[^\d]/g,'');
+  if(!raw.includes('.')&&!raw.includes(',')&&digits.length>8)return null; // account no. / UTR / phone
+  if(digits.length>12)return null;
+  var v=parseFloat(raw.replace(/,/g,''));
+  if(isNaN(v))return null;
+  return {v:v,neg:neg,flag:flag};
+}
+/* every money-looking token in a text line, with CR/DR attachment */
+function bseAmountsInLine(line){
+  // token-bounded: never pull digits out of ABC123 / BHFL-348472 / XX5206-style codes
+  var out=[];var re=/(?:^|[\s|])(\(?-?₹?\s?\d[\d,]*(?:\.\d{1,2})?-?\)?(?:\s?(?:CR|DR)\.?)?)(?=$|[\s|,;])/gi;
+  var m;
+  while((m=re.exec(line))!==null){
+    var tok=m[1];
+    var p=bseParseAmt(tok);
+    if(p&&p.v>0)out.push({v:p.v,neg:p.neg,flag:p.flag,idx:m.index+m[0].indexOf(tok),raw:tok});
+    re.lastIndex=m.index+m[0].length; // don't re-scan inside the same token
+  }
+  return out;
+}
+
+/* ── Stage 9: header/footer/meta rows ── */
+var BSE_META_RE=/PAGE\s+\d+\s+OF|STATEMENT\s+(OF|PERIOD|DATE)|ACCOUNT\s*(NO|NUMBER|TYPE)|IFSC|MICR|BRANCH|CUSTOMER\s*ID|CIF|GENERATED\s+ON|NOMINEE|CURRENCY|ADDRESS|THIS IS A (COMPUTER|SYSTEM)|END OF STATEMENT|TOTAL\s+(DEBITS?|CREDITS?|WITHDRAWALS?|DEPOSITS?)|TOTAL\s+NUMBER|TURNOVER|GRAND TOTAL|SUMMARY|EMAIL|PHONE|MOBILE|PAN\b|GSTIN|REGISTERED OFFICE|CUSTOMER CARE|NON RESIDENT|CIN\s*:|BANK LIMITED|IMPORTANT INFORMATION|CHARGE TYPE|SCHEME CODE|PENDING CHARGES|RECOVERED CHARGES|TDS DETAILS|DEPOSIT INSURANCE/i;
+var BSE_OPENING_RE=/OPENING\s+BAL|BALANCE\s+B\/?F|BROUGHT\s+FORWARD|B\/F\b/i;
+var BSE_CLOSING_RE=/CLOSING\s+BAL|CARRIED\s+FORWARD|C\/F\b/i;
+
+/* ── Stage 2: automatic column detection ── */
+function bseClassifyHeaderCell(t){
+  var u=t.toUpperCase().replace(/[^A-Z\/ ]/g,' ').replace(/\s+/g,' ').trim();
+  if(!u)return null;
+  if(/DR\s*\/\s*CR|CR\s*\/\s*DR/.test(u))return 'drcr';
+  if(/VALUE DATE/.test(u))return 'date2';
+  if(/\bDATE\b/.test(u))return 'date';
+  if(/NARRATION|PARTICULAR|DESCRIPTION|TRANSACTION DETAIL|\bDETAILS\b|REMARK/.test(u))return 'desc';
+  if(/CHEQUE|CHQ|REF|UTR|TRANSACTION ID|INSTRUMENT/.test(u))return 'ref';
+  if(/DEBIT|WITHDRAW/.test(u))return 'debit';
+  if(/CREDIT|DEPOSIT/.test(u))return 'credit';
+  if(/BALANCE/.test(u))return 'balance';
+  if(/\bAMOUNT\b/.test(u))return 'amount';
+  if(u==='DR')return 'debit';
+  if(u==='CR')return 'credit';
+  return null;
+}
+function bseDetectHeader(rows){
+  for(var i=0;i<Math.min(rows.length,60);i++){
+    var cells=bseRowCells(rows[i]);
+    if(cells.length<3)continue;
+    var found=[];var keys={};
+    cells.forEach(function(c){
+      var k=bseClassifyHeaderCell(c.str);
+      if(k&&k!=='date2'&&!keys[k]){keys[k]=1;found.push({key:k,cx:c.cx,x0:c.x0,x1:c.x1,label:c.str});}
+    });
+    var hasAmountSide=keys.debit||keys.credit||keys.amount;
+    if(keys.date&&hasAmountSide&&found.length>=3){
+      found.sort(function(a,b){return a.cx-b.cx;});
+      // column boundaries = midpoints between neighbouring header centres
+      for(var j=0;j<found.length;j++){
+        found[j].lo=j===0?-1e9:(found[j-1].cx+found[j].cx)/2;
+        found[j].hi=j===found.length-1?1e9:(found[j].cx+found[j+1].cx)/2;
+      }
+      return {rowIdx:i,cols:found,sig:rows[i].text.toUpperCase().replace(/\s+/g,' ').trim()};
     }
   }
+  return null;
+}
+function bseCellFor(cols,cx){
+  for(var i=0;i<cols.length;i++)if(cx>=cols[i].lo&&cx<cols[i].hi)return cols[i].key;
+  return null;
+}
+
+/* ── Stages 3+4: positional column parser with multi-line reconstruction ── */
+function bseParseWithColumns(rows,header){
+  var cols=header.cols;
+  var txns=[];var cur=null;var meta=[];
+  function push(){if(cur){cur.desc=cur.descParts.join(' ').replace(/\s+/g,' ').trim();txns.push(cur);}cur=null;}
+  for(var i=header.rowIdx+1;i<rows.length;i++){
+    var row=rows[i];
+    var sig=row.text.toUpperCase().replace(/\s+/g,' ').trim();
+    if(sig===header.sig)continue;                       // header repeated on next page
+    if(BSE_OPENING_RE.test(row.text)){var oa=bseAmountsInLine(row.text);if(oa.length&&BSE.opening==null)BSE.opening=bseSigned(oa[oa.length-1]);meta.push(row.text);continue;}
+    if(BSE_CLOSING_RE.test(row.text)){var ca=bseAmountsInLine(row.text);if(ca.length)BSE.closingStmt=bseSigned(ca[ca.length-1]);meta.push(row.text);continue;}
+    if(BSE_META_RE.test(row.text)&&!bseDateAtStart(row.text)){meta.push(row.text);continue;}
+    // sort this row's cells into detected columns
+    var cells=bseRowCells(row,6);
+    var slot={};
+    cells.forEach(function(c){
+      var k=bseCellFor(cols,c.cx);
+      if(!k)return;
+      slot[k]=slot[k]?slot[k]+' '+c.str:c.str;
+    });
+    var date=bseParseDate((slot.date||'').trim())||(slot.date?bseParseDate(slot.date.trim().split(/\s+/)[0]):null);
+    if(date){
+      push();
+      cur={date:date,descParts:[],ref:'',debit:null,credit:null,amount:null,balance:null,drcr:null,page:row.page,lines:1};
+    }
+    if(!cur)continue;                                    // narration before any date → ignore
+    if(!date)cur.lines++;
+    if(cur.lines>6&&!date){push();continue;}             // runaway wrap guard
+    if(slot.desc)cur.descParts.push(slot.desc);
+    if(slot.ref)cur.ref=(cur.ref?cur.ref+' ':'')+slot.ref;
+    if(slot.drcr&&!cur.drcr){var f=/CR/i.test(slot.drcr)?'CR':(/DR/i.test(slot.drcr)?'DR':null);cur.drcr=f;}
+    ['debit','credit','amount','balance'].forEach(function(k){
+      if(slot[k]==null)return;
+      var p=bseParseAmt(slot[k]);
+      if(!p||p.v<=0||cur[k]!=null)return;
+      cur[k]=(k==='balance'&&p.neg)?-p.v:p.v;  // balances can be negative (OD/sweep accounts)
+      if(p.flag&&!cur.drcr)cur.drcr=p.flag;
+      if(p.neg&&k==='amount')cur.drcr=cur.drcr||'DR';
+    });
+    // narration text that landed under the date column on wrap lines
+    if(!date&&slot.date&&!bseParseAmt(slot.date))cur.descParts.push(slot.date);
+  }
+  push();
+  BSE.debug.metaRows=meta.length;
+  return txns;
+}
+
+/* ── Stage 20 fallback: pure text-line parser (also used for OCR output) ── */
+function bseParseLines(text){
+  var lines=text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+  var txns=[];var cur=null;
+  function push(){if(cur){cur.desc=cur.descParts.join(' ').replace(/\s+/g,' ').trim();txns.push(cur);}cur=null;}
   lines.forEach(function(line){
-    line=line.trim();
-    var dm=line.match(dateRe);
-    if(!dm)return;
-    var amounts=line.match(amtRe);
-    if(!amounts||!amounts.length)return;
-    var yyyy=dm[3].length===2?'20'+dm[3]:dm[3];
-    var date=yyyy+'-'+dm[2]+'-'+dm[1];
-    // Description = text between date and first amount
-    var firstAmtIdx=line.indexOf(amounts[0]);
-    var desc=line.substring(dm[0].length,firstAmtIdx).trim().replace(/\s{2,}/g,' ');
-    // Last amount is usually the running balance; the one before it is the txn amount
-    var nums=amounts.map(function(a){return parseFloat(a.replace(/,/g,''));});
-    var balance=nums.length>=2?nums[nums.length-1]:null;
-    var amount=nums.length>=2?nums[nums.length-2]:nums[0];
-    var type=null;
-    // PRIORITY 1: running-balance DELTA. The change in the closing balance versus the
-    // previous row reveals BOTH the direction (balance up = credit, down = debit) AND the
-    // exact amount that moved — independent of how the debit/credit columns are laid out.
-    if(balance!==null&&prevBalance!==null){
-      var delta=Math.round((balance-prevBalance)*100)/100;
-      if(Math.abs(delta)>0.01){amount=Math.abs(delta);type=delta>0?'CR':'DR';}
+    if(BSE_OPENING_RE.test(line)){var oa=bseAmountsInLine(line);if(oa.length&&BSE.opening==null)BSE.opening=bseSigned(oa[oa.length-1]);return;}
+    if(BSE_CLOSING_RE.test(line)){var ca=bseAmountsInLine(line);if(ca.length)BSE.closingStmt=bseSigned(ca[ca.length-1]);return;}
+    var dm=bseDateAtStart(line);
+    if(!dm&&BSE_META_RE.test(line))return;
+    if(dm){
+      push();
+      cur={date:dm.date,descParts:[],ref:'',debit:null,credit:null,amount:null,balance:null,drcr:null,page:0,lines:1};
+      line=line.slice(dm.raw.length);
     }
-    // PRIORITY 2: explicit deposit/withdrawal or CR/DR wording in the narration.
-    if(!type){
-      var up=line.toUpperCase();
-      if((/\bCR\b|CREDIT|DEPOSIT|RECEIVED|INWARD|REFUND|REVERSAL/.test(up))&&!/\bDR\b|DEBIT|WITHDRAW/.test(up))type='CR';
-      else if(/\bDR\b|DEBIT|WITHDRAWAL|WITHDRAWN|OUTWARD/.test(up))type='DR';
-    }
-    if(!amount||amount<=0)return;
-    // PRIORITY 3: still unknown — leave for the user to classify (never silently assume a side).
-    if(!type)type='UNK';
-    if(balance!==null)prevBalance=balance;
-    txns.push({date:date,desc:desc||'Bank transaction',amount:amount,balance:balance,type:type,matchId:null,assigned:null});
+    if(!cur)return;
+    var amts=bseAmountsInLine(line);
+    // Drop leading bare-integer REFERENCES (no comma, no decimal) when a properly
+    // formatted amount (has , or .) appears later on the same line — refs like
+    // "REF 998877" must not be mistaken for the transaction amount. Bare integers are
+    // still accepted as amounts when no better-formatted candidate exists (whole-rupee).
+    (function(){
+      var hasFormatted=amts.some(function(a){return /[.,]/.test(a.raw);});
+      if(hasFormatted)amts=amts.filter(function(a){return /[.,]/.test(a.raw)||a.flag||a.neg;});
+    })();
+    var textOnly=line;
+    if(amts.length)textOnly=line.slice(0,amts[0].idx);
+    textOnly=textOnly.trim();
+    if(textOnly)cur.descParts.push(textOnly);
+    var rm=/\b(?:UTR|REF(?:ERENCE)?|CHQ|CHEQUE)\s*[:\.\-]?\s*([A-Z0-9]{5,22})\b/i.exec(line);
+    if(rm)cur.ref=(cur.ref?cur.ref+' ':'')+rm[1];
+    // Explicit CR/DR fallback state machine:
+    //   flaggedAmountFound — a 'NN.NN CR/DR' txn amount has been captured
+    //   after that, the NEXT eligible plain amount (already validated by bseParseAmt:
+    //   not a date / account no. / IFSC / UTR / phone) is the running BALANCE —
+    //   never a second transaction amount. State resets when a new date starts (new cur).
+    amts.forEach(function(a){
+      if(cur.flaggedAmountFound||cur.credit!=null||cur.debit!=null||cur.amount!=null){
+        cur.balance=a.neg?-a.v:a.v;             // balance may be negative; keep the last one
+        cur.balanceFoundAfterFlag=true;
+        return;
+      }
+      if(a.flag==='CR'){cur.credit=a.v;cur.drcr='CR';cur.flaggedAmountFound=true;cur.flaggedType='CR';}
+      else if(a.flag==='DR'){cur.debit=a.v;cur.drcr='DR';cur.flaggedAmountFound=true;cur.flaggedType='DR';}
+      else{cur.amount=a.v;if(a.neg)cur.drcr=cur.drcr||'DR';}
+    });
   });
-  if(!txns.length){alert('No transactions found in the PDF. If the statement layout is unusual, download CSV from the DCB app instead and import that.');return;}
-  var _m=mergeBankTxns(txns);
+  push();
+  // two plain amounts and no balance flag: treat last as balance
+  txns.forEach(function(t){
+    if(t.amount!=null&&t.balance==null&&t.credit==null&&t.debit==null){/* single amount, no balance */}
+  });
+  return txns;
+}
+
+/* ── Stage 7+8+12: classify, validate, score ── */
+var BSE_CR_KW=/CREDIT|DEPOSIT|RECEIVED|NEFT\s*IN|RTGS\s*IN|IMPS\s*IN|UPI\s*(RECEIVED|IN)|REFUND|REVERSAL|INT\.?\s*PAID|INTEREST\s+CREDIT|CASH\s+DEP/i;
+var BSE_DR_KW=/DEBIT|WITHDRAWAL|CASH\s+WITHDRAW|NEFT\s*OUT|RTGS\s*OUT|IMPS\s*OUT|UPI\s*(PAYMENT|OUT)|CHARGE|CHRG|EMI\b|POS\b|ATM\b|FEE\b|GST\b|TAX\b|INSURANCE|SI\s+DEBIT/i;
+function bseFinalize(raw){
+  var prevBal=BSE.opening!=null?BSE.opening:null;
+  var out=[];
+  raw.forEach(function(t){
+    var type=null,amount=null,prio=null;
+    if(t.debit!=null&&t.debit>0){type='DR';amount=t.debit;prio=1;}
+    else if(t.credit!=null&&t.credit>0){type='CR';amount=t.credit;prio=1;}
+    else if(t.drcr&&(t.amount!=null||t.balance!=null)){type=t.drcr;amount=t.amount!=null?t.amount:null;prio=2;}
+    if(amount==null&&t.amount!=null)amount=t.amount;
+    var narr=(t.desc||'')+' '+(t.ref||'');
+    if(!type){
+      if(BSE_CR_KW.test(narr)&&!BSE_DR_KW.test(narr)){type='CR';prio=3;}
+      else if(BSE_DR_KW.test(narr)&&!BSE_CR_KW.test(narr)){type='DR';prio=3;}
+    }
+    if(!type&&t.balance!=null&&prevBal!=null){ // priority 4: balance delta (never overrides cols)
+      var delta=Math.round((t.balance-prevBal)*100)/100;
+      if(Math.abs(delta)>0.009){type=delta>0?'CR':'DR';if(amount==null)amount=Math.abs(delta);prio=4;}
+    }
+    if(amount==null&&t.balance!=null&&prevBal!=null)amount=Math.abs(Math.round((t.balance-prevBal)*100)/100);
+    if(!amount||amount<=0){BSE.debug.rejected=(BSE.debug.rejected||0)+1;if(t.balance!=null)prevBal=t.balance;return;}
+    if(!type)type='UNK';
+    // Stage 8: running-balance validation
+    var balValid=null;
+    if(t.balance!=null&&prevBal!=null&&type!=='UNK'){
+      var expected=Math.round((prevBal+(type==='CR'?amount:-amount))*100)/100;
+      balValid=Math.abs(expected-t.balance)<=0.011;
+    }
+    // Stage 8 (cont.): derive balance for rows that print none, so the chain survives.
+    // Marked balDerived internally — NOT presented as a printed statement balance.
+    var derivedBal=null,balDerived=false;
+    if(t.balance!=null){derivedBal=t.balance;prevBal=t.balance;}
+    else if(type==='CR'&&prevBal!=null){prevBal=Math.round((prevBal+amount)*100)/100;derivedBal=prevBal;balDerived=true;}
+    else if(type==='DR'&&prevBal!=null){prevBal=Math.round((prevBal-amount)*100)/100;derivedBal=prevBal;balDerived=true;}
+    else prevBal=null; // unknown direction & no stated balance → chain broken until next printed balance
+    // Stage 12: confidence
+    var conf;
+    if(prio===1&&balValid===true)conf=97;
+    else if(prio===1)conf=88;
+    else if(prio===2&&balValid===true)conf=92;
+    else if(prio===2)conf=85;
+    else if(prio===3)conf=75;
+    else if(prio===4)conf=60;
+    else conf=40;
+    if(balValid===false)conf=Math.min(conf,49);
+    out.push({date:t.date,desc:(t.desc||'Bank transaction'),amount:amount,
+      balance:(t.balance!=null?t.balance:(balDerived?derivedBal:null)),balDerived:balDerived,
+      type:type,debit:type==='DR'?amount:null,credit:type==='CR'?amount:null,
+      reference:t.ref||'',page:t.page||0,confidence:conf,balValid:balValid,prio:prio});
+  });
+  return out;
+}
+
+/* ── engine driver + Stage 11 OCR + Stage 20 chain ── */
+function bseRun(items,pdf){
+  BSE={txns:[],debug:{pages:pdf?pdf.numPages:0,items:items.length},opening:null,closingStmt:null,dup:0,method:''};
+  var rows=bseGroupRows(items);
+  BSE.debug.rows=rows.length;
+  var textLen=items.reduce(function(a,i){return a+i.str.length;},0);
+  var dateHits=rows.filter(function(r){return bseDateAtStart(r.text)||/\d{2}[\/\-\.]\d{2}[\/\-\.]\d{2,4}/.test(r.text);}).length;
+  BSE.debug.textLen=textLen;BSE.debug.dateRows=dateHits;
+  if(pdf&&(textLen<120*(pdf.numPages||1)/4||dateHits===0)&&textLen<400){ // probably scanned
+    return bseOcr(pdf);
+  }
+  bseStatus('Detecting statement layout…');
+  var header=bseDetectHeader(rows);
+  var raw=null;
+  if(header){
+    BSE.method='columns';
+    BSE.debug.header=header.cols.map(function(c){return c.key+'('+c.label+')';}).join(' · ');
+    bseStatus('Detected columns:\n'+header.cols.map(function(c){return c.label;}).join(' · ')+'\n\nParsing transactions…');
+    raw=bseParseWithColumns(rows,header);
+  }
+  if(!raw||!raw.length){
+    BSE.method=BSE.method?'lines(fallback)':'lines';
+    bseStatus('Parsing transactions…');
+    raw=bseParseLines(rows.map(function(r){return r.text;}).join('\n'));
+  }
+  if((!raw||!raw.length)&&pdf)return bseOcr(pdf);
+  bseStatus('Validating balances…');
+  BSE.debug.candidates=(raw||[]).length;
+  var txns=bseFinalize(raw||[]);
+  BSE.debug.accepted=txns.length;
+  BSE.txns=txns;
+  bseStatusHide();
+  if(!txns.length){
+    alert('No transactions could be parsed from this PDF.\n\nParser report:\n'+bseReportText()+'\n\nPlease import the CSV/XLSX statement instead.');
+    return;
+  }
+  bseShowReview();
+}
+function bseOcr(pdf){
+  bseStatus('This looks like a scanned PDF.\nLoading OCR engine…');
+  function withTess(cb){
+    if(window.Tesseract)return cb(window.Tesseract);
+    var urls=['https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js','https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js','https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js'];
+    var i=0;
+    (function next(){
+      if(i>=urls.length){bseStatusHide();alert('Could not load the OCR engine (network blocked?).\nPlease import the CSV/XLSX version of the statement instead.');return;}
+      var s=document.createElement('script');s.src=urls[i++];
+      s.onload=function(){window.Tesseract?cb(window.Tesseract):next();};
+      s.onerror=next;
+      document.head.appendChild(s);
+    })();
+  }
+  withTess(function(T){
+    var texts=[];var n=pdf.numPages;
+    function doPage(p){
+      if(p>n){
+        BSE.method='ocr';
+        bseStatus('Parsing OCR text…');
+        var raw=bseParseLines(texts.join('\n'));
+        BSE.debug.candidates=raw.length;
+        var txns=bseFinalize(raw);
+        BSE.debug.accepted=txns.length;
+        BSE.txns=txns;
+        bseStatusHide();
+        if(!txns.length){alert('OCR could not find transactions in this scan.\n\n'+bseReportText()+'\n\nPlease import CSV/XLSX instead.');return;}
+        bseShowReview();
+        return;
+      }
+      bseStatus('OCR page '+p+' of '+n+'…\n(processing stays in your browser)');
+      pdf.getPage(p).then(function(page){
+        var vp=page.getViewport({scale:2});
+        var cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
+        page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise.then(function(){
+          T.recognize(cv,'eng').then(function(res){
+            texts.push(res.data.text||'');
+            doPage(p+1);
+          }).catch(function(){texts.push('');doPage(p+1);});
+        });
+      });
+    }
+    doPage(1);
+  });
+}
+
+/* ── Stage 19: debug report ── */
+function bseReportText(){
+  var d=BSE.debug||{};
+  return 'PDF pages: '+(d.pages||0)+
+    '\nText items: '+(d.items||0)+' · rows: '+(d.rows||0)+
+    '\nMethod: '+(BSE.method||'-')+
+    '\nDetected header: '+(d.header||'none')+
+    '\nCandidates: '+(d.candidates||0)+' · accepted: '+(d.accepted||0)+' · rejected: '+(d.rejected||0)+
+    '\nOpening balance: '+(BSE.opening!=null?BSE.opening:'not found')+
+    '\nStatement closing: '+(BSE.closingStmt!=null?BSE.closingStmt:'not found');
+}
+function bseShowReport(){alert('Parser report\n─────────────\n'+bseReportText());}
+
+/* ── Stage 13+14: review before import ── */
+function bseStatusOf(t){return (t.confidence>=85&&t.balValid!==false)?'ok':(t.confidence>=50?'warn':'bad');}
+function bseShowReview(){
+  var txns=BSE.txns;
+  var d=D();if(!Array.isArray(d.bankTxns))d.bankTxns=[];
+  var keyOf=function(t){return String(t.date||'')+'|'+Math.round((parseFloat(t.amount)||0)*100)+'|'+(t.type||'')+'|'+String(t.desc||'').replace(/\s+/g,' ').trim().toLowerCase().slice(0,40);};
+  var seen=new Set(d.bankTxns.map(keyOf));
+  var dup=0;txns.forEach(function(t){if(seen.has(keyOf(t)))dup++;});
+  BSE.dup=dup;
+  var credits=0,debits=0,ok=0,warn=0,bad=0;
+  txns.forEach(function(t){
+    if(t.type==='CR')credits+=t.amount;else if(t.type==='DR')debits+=t.amount;
+    var s=bseStatusOf(t);if(s==='ok')ok++;else if(s==='warn')warn++;else bad++;
+  });
+  var calcClosing=BSE.opening!=null?Math.round((BSE.opening+credits-debits)*100)/100:null;
+  var recon=(calcClosing!=null&&BSE.closingStmt!=null)?(Math.abs(calcClosing-BSE.closingStmt)<=0.011):null;
+  var rows=txns.map(function(t,i){
+    var s=bseStatusOf(t);
+    var icon=s==='ok'?'<span style="color:#059669;font-weight:800">✓</span>':(s==='warn'?'<span style="color:#D97706;font-weight:800">⚠ Review</span>':'<span style="color:#DC2626;font-weight:800">❌ Problem</span>');
+    var note=t.balValid===false?' <span style="font-size:10px;color:#DC2626">(balance mismatch)</span>':(t.type==='UNK'?' <span style="font-size:10px;color:#D97706">(direction unknown)</span>':'');
+    return '<tr style="border-bottom:1px solid #E5E7EB'+(s!=='ok'?';background:#FFFBEB':'')+'">'+
+      '<td style="padding:6px 8px;white-space:nowrap">'+fmtD(t.date)+'</td>'+
+      '<td style="padding:6px 8px;max-width:260px;overflow:hidden;text-overflow:ellipsis">'+esc(t.desc)+(t.reference?' <span style="color:#6B7280;font-size:10px">'+esc(t.reference)+'</span>':'')+'</td>'+
+      '<td style="padding:6px 8px;text-align:right;color:#DC2626">'+(t.type==='DR'?fmt(t.amount):'—')+'</td>'+
+      '<td style="padding:6px 8px;text-align:right;color:#059669">'+(t.type==='CR'?fmt(t.amount):'—')+(t.type==='UNK'?fmt(t.amount)+'?':'')+'</td>'+
+      '<td style="padding:6px 8px;text-align:right">'+(t.balance!=null?fmt(t.balance)+(t.balDerived?' <span style="font-size:9px;color:#9CA3AF" title="derived from running balance, not printed on statement">≈</span>':''):'—')+'</td>'+
+      '<td style="padding:6px 8px;white-space:nowrap">'+icon+note+'</td></tr>';
+  }).join('');
+  var ov=document.getElementById('bse-review');
+  if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='bse-review';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  ov.innerHTML=
+  '<div style="background:#fff;border-radius:14px;max-width:940px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.3)">'+
+    '<div style="padding:16px 18px;border-bottom:1px solid #E5E7EB">'+
+      '<div style="font-weight:800;font-size:16px">🏦 Review bank statement before import</div>'+
+      '<div style="font-size:12px;color:#6B7280;margin-top:6px;line-height:1.6">'+
+        'Transactions found: <b>'+txns.length+'</b> · ✓ '+ok+' verified · ⚠ '+warn+' need review'+(bad?' · ❌ '+bad+' problem(s)':'')+(dup?' · '+dup+' duplicate(s) will be skipped':'')+'<br>'+
+        'Credits: <b style="color:#059669">'+fmt(credits)+'</b> · Debits: <b style="color:#DC2626">'+fmt(debits)+'</b>'+
+        (BSE.opening!=null?' · Opening: <b>'+fmt(BSE.opening)+'</b>':'')+
+        (calcClosing!=null?' · Calculated closing: <b>'+fmt(calcClosing)+'</b>':'')+
+        (BSE.closingStmt!=null?' · Statement closing: <b>'+fmt(BSE.closingStmt)+'</b>':'')+
+        (recon===true?' · <b style="color:#059669">Reconciliation: ✓ MATCHED</b>':recon===false?' · <b style="color:#DC2626">Reconciliation: ⚠ MISMATCH</b>':'')+
+      '</div>'+
+    '</div>'+
+    '<div style="overflow:auto;flex:1">'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+        '<thead><tr style="background:#F3F4F6;position:sticky;top:0">'+
+        '<th style="padding:8px;text-align:left">Date</th><th style="padding:8px;text-align:left">Narration</th>'+
+        '<th style="padding:8px;text-align:right">Debit</th><th style="padding:8px;text-align:right">Credit</th>'+
+        '<th style="padding:8px;text-align:right">Balance</th><th style="padding:8px;text-align:left">Status</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody></table>'+
+    '</div>'+
+    '<div style="padding:12px 18px;border-top:1px solid #E5E7EB;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<a href="javascript:bseShowReport()" style="font-size:11px;color:#6B7280">Parser report</a>'+
+      '<div style="flex:1"></div>'+
+      '<button class="btn" onclick="document.getElementById(\'bse-review\').remove()">Cancel</button>'+
+      (warn+bad?'<button class="btn" style="background:#FEF3C7;color:#92400E" onclick="bseImport(true)">Import All With Warnings ('+txns.length+')</button>':'')+
+      '<button class="btn pri" onclick="bseImport(false)">Import Verified ('+ok+')</button>'+
+    '</div>'+
+  '</div>';
+  document.body.appendChild(ov);
+}
+
+/* ── Stage 15+16: import → merge → auto-match ── */
+function bseImport(withWarnings){
+  var ov=document.getElementById('bse-review');if(ov)ov.remove();
+  var pick=BSE.txns.filter(function(t){return withWarnings?true:bseStatusOf(t)==='ok';});
+  var skipped=BSE.txns.length-pick.length;
+  if(!pick.length){alert('Nothing selected to import.');return;}
+  var norm=pick.map(function(t){
+    return {date:t.date,desc:t.desc,amount:t.amount,balance:t.balance!=null?t.balance:null,type:t.type,matchId:null,assigned:null,
+      source:'PDF',confidence:t.confidence,reference:t.reference||'',debit:t.debit,credit:t.credit,page:t.page};
+  });
+  var m=mergeBankTxns(norm);
   autoMatchBank();
-  var unk=D().bankTxns.filter(function(t){return t.type==='UNK';}).length;
-  alert('✅ Added '+_m.added+' new transaction(s) from PDF'+(_m.dup?' ('+_m.dup+' duplicate(s) skipped)':'')+'.\nTotal bank entries: '+_m.total+'. Auto-matching done.'+(unk?'\n⚠️ '+unk+' entry(ies) could not be auto-classified as credit/debit — set them in the ❓ Miscellaneous section.':''));
+  saveToCloud().then(function(){renderAll();});
+  var unk=pick.filter(function(t){return t.type==='UNK';}).length;
+  alert('✅ '+m.added+' transaction(s) imported'+
+    (skipped?'\n⚠ '+skipped+' warning row(s) skipped':'')+
+    (m.dup?'\n✓ '+m.dup+' duplicate(s) skipped':'')+
+    '\n✓ Auto-matching completed'+
+    (unk?'\n⚠ '+unk+' entry(ies) need CR/DR classification — see the ❓ Miscellaneous section':''));
 }
 
 function parseBankPaste(){
