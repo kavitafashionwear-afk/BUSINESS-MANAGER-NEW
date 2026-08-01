@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R75</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R78</div>
   </nav>
 
   <!-- PAGES -->
@@ -1239,7 +1239,7 @@ function markLoadedBM(firm, cache){
   saveLocal();
   setSyncDot(cache ? (isOnline?'busy':'offline') : 'ok');
   renderAll();
-  if(!window._bm2Boot){window._bm2Boot=1;setTimeout(function(){try{bm2Recheck({notify:true});if(typeof renderBank==='function')renderBank();}catch(e){}},1200);}
+  if(!window._bm2Boot){window._bm2Boot=1;setTimeout(function(){try{bm2Recheck({notify:true});bmPrepaidNotify();if(typeof renderBank==='function')renderBank();}catch(e){}},1200);}
 }
 
 function subscribeData(){
@@ -4066,7 +4066,7 @@ function saveBill(){
     if(bill.mode==='cash'){d.payments.push({id:'PAY'+uid4(),pid:supplier.id,bid:bill.id,amt:grand,date:bill.date,mode:'Cash',dir:'out',ref:'Cash Bill',rem:''}); }
   }
   saveToCloud();closeModal('bill');_billAttachDraft=null;toast('✅ Purchase bill saved','ok');renderAll();
-  if(curParty===supplier.id)openPartyDetail(supplier.id);  try{bm2Recheck({notify:true});}catch(e){}
+  if(curParty===supplier.id)openPartyDetail(supplier.id);  try{bm2Recheck({notify:true});}catch(e){}  try{bmPrepaidNotify();}catch(e){}
 }
 
 // ═══ EDIT / DELETE BILL ═══
@@ -4726,7 +4726,7 @@ function saveInvoice(){
     }
   }
   saveToCloud();closeModal('inv');toast('✅ Invoice saved','ok');printInvoice(inv.id);renderAll();
-  if(curParty===customer.id)openPartyDetail(customer.id);  try{bm2Recheck({notify:true});}catch(e){}
+  if(curParty===customer.id)openPartyDetail(customer.id);  try{bm2Recheck({notify:true});}catch(e){}  try{bmPrepaidNotify();}catch(e){}
 }
 
 
@@ -6783,6 +6783,7 @@ function currentBankBalance(){
 function renderBank(){
   const pg=document.getElementById('pg-bank');if(!pg)return;
   const d=D();
+  try{BM2.prepaid=bmPrepaidScanAll(d);}catch(e){}   // refresh count (read-only) — surfaces historical matches too
   bankTxns=d.bankTxns;  // persisted per business
   const view=bankTxns.filter(_bankInRange);
   const filtActive=!!(bankFiltFrom||bankFiltTo);
@@ -6844,6 +6845,7 @@ function renderBank(){
     <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
       <button class="btn sm pri" onclick="bm2ShowReview()" style="font-size:12px">🧠 Review Matches${BM2.sugs.length?' ('+BM2.sugs.length+')':''}</button>
       <button class="btn sm" onclick="autoMatchBank();bm2Recheck({notify:true});renderBank();toast('🔄 '+BM2.sugs.length+' suggestion(s) after re-check','ok')" style="background:#EFF6FF;color:#1E40AF">🔄 Re-check Bank Matches</button>
+      <button class="btn sm" onclick="bmPrepaidReview()" style="background:#FFFBEB;color:#92400E">🔔 Prepaid Matches${(BM2.prepaid&&BM2.prepaid.length)?' ('+BM2.prepaid.length+')':''}</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
       <button class="btn sm" onclick="repairPaymentDirections()" style="background:#FFF7ED;color:#92400E">🔧 Fix Receipt/Payment Mix-ups</button>
       <button class="btn sm" onclick="bmBankHealth()" style="background:#F0FDF4;color:#166534">🩺 Data Health</button>
@@ -7978,7 +7980,7 @@ function findPartyForTxn(t){
    Account/UPI/IFSC are extra high-confidence signals when available.
    Flow is always: AUTO-SUGGEST → USER CONFIRMS → POST. Never silent entries.
    ══════════════════════════════════════════════════════════════════════ */
-var BM2={sugs:[],seen:(typeof WeakSet!=='undefined'?new WeakSet():{add:function(){},has:function(){return false;}})};
+var BM2={sugs:[],prepaid:[],seen:(typeof WeakSet!=='undefined'?new WeakSet():{add:function(){},has:function(){return false;}})};
 var BM2_STOP={NEFT:1,RTGS:1,IMPS:1,UPI:1,TRF:1,TRANSFER:1,PAYMENT:1,PAY:1,PAID:1,RECEIVED:1,REC:1,FROM:1,TO:1,BY:1,REF:1,REFERENCE:1,UTR:1,TXN:1,TRANSACTION:1,BANK:1,BRANCH:1,AC:1,ACCOUNT:1,MB:1,INB:1,NET:1,MOB:1,MOBILE:1,SWEEP:1,CHG:1,CHGS:1,CHARGES:1,GST:1,INV:1,INVOICE:1,BILL:1,NO:1,MR:1,MS:1,THE:1,AND:1,FOR:1,ICIC:1,HDFC:1,SBIN:1,UBIN:1,KKBK:1,PUNB:1,BARB:1,UTIB:1,COSB:1,IBKL:1,DCBL:1,SMCB:1,STATE:1,LTD:1,LIMITED:1,PVT:1,PRIVATE:1,LLP:1};
 var BM2_SUFFIX=/\b(PRIVATE|PVT|LIMITED|LTD|LLP|M\/S|MS)\b\.?/g;
 
@@ -8204,6 +8206,155 @@ function bm2ScoreParty(d,t,party,narrTokens,narrCompact){
     learned:learned?{cc:(learned.rel.cc||1),rc:(learned.rel.rc||0),a:learned.rel.a,strong:learned.score>=80&&!learned.mism}:null,
     acctMismatch:learned&&learned.mism?learned.mism:null};
 }
+/* ── PREPAID BILL MATCH (R76) ──────────────────────────────────────────────
+   A bank-owned payment received BEFORE a bill exists may have already been used
+   by FIFO (against an older bill) or parked in the advance pool. When a new bill
+   appears within a backward 7-day window and its amount matches that payment, we
+   SUGGEST reallocating the SAME payment to the new bill. Never silent, never a
+   second payment, never a second allocation — we rewrite one payment's allocations
+   array and re-derive every balance. Reuses allocFIFO for any partial remainder. */
+var PREPAID_WINDOW_DAYS=7;
+function bmPrepaidCloseTol(){var v=parseFloat(localStorage.getItem('bm_closeTol'));return isFinite(v)&&v>0?v:100;}
+function _daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/864e5);}
+function bmPayAllocSummary(d,p){
+  var lines=[];var used=0;
+  (p.allocations||[]).forEach(function(a){
+    used+=a.amt;
+    var doc=a.iid?(d.invoices||[]).find(function(x){return x.id===a.iid;}):(d.bills||[]).find(function(x){return x.id===a.bid;});
+    lines.push({id:a.iid||a.bid,key:a.iid?'iid':'bid',num:doc?doc.num:'(doc)',amt:a.amt});
+  });
+  if(p.bid&&!(p.allocations||[]).length){var b=(d.bills||[]).find(function(x){return x.id===p.bid;});used=p.amt;lines.push({id:p.bid,key:'bid',num:b?b.num:'(bill)',amt:p.amt,direct:true});}
+  if(p.iid&&!(p.allocations||[]).length){var iv=(d.invoices||[]).find(function(x){return x.id===p.iid;});used=p.amt;lines.push({id:p.iid,key:'iid',num:iv?iv.num:'(inv)',amt:p.amt,direct:true});}
+  var advance=Math.round((p.amt-used)*100)/100;
+  return {lines:lines,advance:Math.max(0,advance)};
+}
+function bmPrepaidForDoc(d,docId,isInv){
+  var doc=(isInv?d.invoices:d.bills).find(function(x){return x.id===docId;});
+  if(!doc||doc.mode==='cash')return [];
+  var dir=isInv?'in':'out';
+  var bal=isInv?invBalance(docId):billBalance(docId);
+  if(bal<=0.5)return [];
+  var tol=bmPrepaidCloseTol();
+  var out=[];
+  (d.payments||[]).forEach(function(p){
+    if(p.pid!==doc.pid)return;
+    if(p.source!=='bank')return;
+    if((p.dir||dir)!==dir)return;
+    var dd=_daysBetween(p.date,doc.date);
+    if(dd<0||dd>PREPAID_WINDOW_DAYS)return;
+    if(_allocTo(p,isInv?'iid':'bid',docId)>0.5)return;
+    if((p.prepaidDismissed||[]).indexOf(docId)>=0)return;
+    // Compare against the document's CURRENT OUTSTANDING (existing billBalance/invBalance),
+    // not its gross total — a partly-settled bill should match on what's still due.
+    var diff=Math.round((p.amt-bal)*100)/100;
+    var exact=Math.abs(diff)<=0.5;
+    var close=!exact&&Math.abs(diff)<=tol;
+    if(!exact&&!close)return;
+    out.push({payId:p.id,payAmt:p.amt,payDate:p.date,days:dd,docId:docId,isInv:isInv,docNum:doc.num,docAmt:doc.grand,docBal:bal,
+      diff:diff,exact:exact,close:close,summary:bmPayAllocSummary(d,p)});
+  });
+  out.sort(function(a,b){return (a.exact?0:1)-(b.exact?0:1)||a.days-b.days;});
+  return out;
+}
+function bmPrepaidScanAll(d){
+  var all=[];
+  (d.bills||[]).forEach(function(b){bmPrepaidForDoc(d,b.id,false).forEach(function(s){all.push(s);});});
+  (d.invoices||[]).forEach(function(iv){bmPrepaidForDoc(d,iv.id,true).forEach(function(s){all.push(s);});});
+  return all;
+}
+function bmPrepaidNotify(){
+  try{var d=D();var all=bmPrepaidScanAll(d);if(all.length){toast('\uD83D\uDD14 '+all.length+' possible prepaid payment match'+(all.length>1?'es':'')+' \u2014 open Prepaid Matches in the Bank tab','ok');}BM2.prepaid=all;}catch(e){}
+}
+function bmPrepaidReallocate(payId,docId,isInv,silent){
+  var d=D();
+  var p=(d.payments||[]).find(function(x){return x.id===payId;});
+  if(!p){if(!silent)toast('Payment not found','warn');return;}
+  var doc=(isInv?d.invoices:d.bills).find(function(x){return x.id===docId;});
+  if(!doc){if(!silent)toast('Document not found','warn');return;}
+  var dir=isInv?'in':'out';
+  var before=bmPayAllocSummary(d,p);
+  // ── ATOMIC: compute + validate the replacement FIRST; only commit if valid.
+  // Snapshot this payment's links, temporarily neutralise ONLY this payment (so allocFIFO
+  // sees the true outstanding for its own money), compute, then RESTORE the snapshot.
+  // Nothing is written until validation passes; on any failure the original is untouched.
+  var snapAllocations=p.allocations?JSON.parse(JSON.stringify(p.allocations)):[];
+  var snapBid=p.bid,snapIid=p.iid;
+  var al;
+  try{
+    p.allocations=[];delete p.bid;delete p.iid;
+    al=allocFIFO(p.pid,dir,p.amt,{id:docId});
+  }catch(e){
+    p.allocations=snapAllocations;if(snapBid)p.bid=snapBid;if(snapIid)p.iid=snapIid;
+    if(!silent)toast('Reallocation failed — original allocation kept','warn');
+    return;
+  }
+  p.allocations=snapAllocations;if(snapBid)p.bid=snapBid;if(snapIid)p.iid=snapIid; // restore before validating
+  var newAllocs=al.allocations.map(function(a){var c={amt:a.amt};if(a.iid)c.iid=a.iid;if(a.bid)c.bid=a.bid;return c;});
+  var allocSum=Math.round(newAllocs.reduce(function(s,a){return s+a.amt;},0)*100)/100;
+  var toTarget=Math.round(al.allocations.reduce(function(s,a){return s+((a.iid===docId||a.bid===docId)?a.amt:0);},0)*100)/100;
+  var leftover=Math.round((al.leftover||0)*100)/100;
+  var conserved=Math.abs((allocSum+leftover)-Math.round(p.amt*100)/100)<=0.011;
+  if(!conserved||toTarget<=0.5){
+    if(!silent)toast('Reallocation not applied — could not place this payment on '+esc(doc.num)+'; original allocation kept','warn');
+    return;                                          // p.allocations never mutated
+  }
+  // ── COMMIT (single write) ──
+  p.allocations=newAllocs;delete p.bid;delete p.iid;
+  if(!Array.isArray(p.reallocLog))p.reallocLog=[];
+  p.reallocLog.push({at:new Date().toISOString(),by:'user-confirmed',reason:'prepaid bill match',
+    bankTxnId:p.bankTxnId||null,payId:p.id,
+    from:before.lines.map(function(l){return {id:l.id,num:l.num,amt:l.amt};}),
+    fromAdvance:before.advance||0,
+    to:{id:docId,num:doc.num,amt:toTarget},
+    leftover:leftover});
+  if(!silent){
+    saveToCloud();renderAll();
+    var leftMsg=leftover>0.5?(' · '+fmt(leftover)+' remains as advance'):'';
+    toast('✅ Reallocated '+fmt(p.amt)+' to '+esc(doc.num)+leftMsg+' (same payment, no duplication)','ok');
+    var ov=document.getElementById('bm-prepaid');if(ov)bmPrepaidReview();
+  }
+  return al;
+}
+function bmPrepaidReview(){
+  var d=D();var all=bmPrepaidScanAll(d);BM2.prepaid=all;
+  var ov=document.getElementById('bm-prepaid');if(ov)ov.remove();
+  ov=document.createElement('div');ov.id='bm-prepaid';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  function card(s,i){
+    var d2=D();
+    var allocTxt=s.summary.lines.length?s.summary.lines.map(function(l){return esc(l.num)+' '+fmt(l.amt);}).join(', '):'';
+    var stateTxt=allocTxt?('Currently allocated to: <b>'+allocTxt+'</b>'+(s.summary.advance>0.5?' \u00B7 advance '+fmt(s.summary.advance):'')):(s.summary.advance>0.5?'Currently in <b>Advance Pool</b> ('+fmt(s.summary.advance)+')':'Currently unallocated');
+    var docDate=(s.isInv?d2.invoices:d2.bills).find(function(x){return x.id===s.docId;}).date;
+    return '<div class="card" style="padding:12px;margin-bottom:10px;border-left:3px solid '+(s.exact?'#059669':'#D97706')+'">'+
+      '<div style="font-weight:800;font-size:13px;color:'+(s.exact?'#065F46':'#92400E')+'">'+(s.exact?'\u26A0 PREPAID BILL MATCH':'\u26A0 PREPAID CLOSE MATCH')+'</div>'+
+      '<div style="font-size:12px;margin-top:6px;line-height:1.7">'+
+        'Bank payment: <b>'+fmt(s.payAmt)+'</b> \u00B7 '+fmtD(s.payDate)+'<br>'+stateTxt+'<br>'+
+        'New '+(s.isInv?'invoice':'bill')+': <b>'+esc(s.docNum)+'</b> \u00B7 '+fmt(s.docAmt)+' \u00B7 '+fmtD(docDate)+'<br>'+
+        '<span style="color:#6B7280">Payment is '+s.days+' day'+(s.days===1?'':'s')+' before this '+(s.isInv?'invoice':'bill')+(s.exact?'':' \u00B7 differs by '+fmt(Math.abs(s.diff)))+'</span>'+
+      '</div>'+
+      '<div style="font-weight:600;font-size:12px;margin-top:8px">Reallocate this payment to '+esc(s.docNum)+'?</div>'+
+      '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+        '<button class="btn sm pri" style="font-size:11px" onclick="bmPrepaidReallocate(\''+s.payId+'\',\''+s.docId+'\','+(s.isInv?'true':'false')+')">\u2713 Confirm &amp; Reallocate</button>'+
+        '<button class="btn sm" style="font-size:11px;background:#F3F4F6" onclick="bmPrepaidKeep(\''+s.payId+'\',\''+s.docId+'\')">Keep current</button>'+
+        '<button class="btn sm" style="font-size:11px;background:#F3F4F6" onclick="bmPrepaidSkip('+i+')">Skip</button>'+
+      '</div>'+
+    '</div>';
+  }
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 12px 48px rgba(0,0,0,.3)">'+
+    '<div style="padding:14px 18px;border-bottom:1px solid #E5E7EB"><div style="font-weight:800;font-size:15px">\uD83D\uDD14 Prepaid Payment Matches</div>'+
+    '<div style="font-size:12px;color:#6B7280;margin-top:3px">A bank payment received up to '+PREPAID_WINDOW_DAYS+' days before a new bill may belong to it. Nothing changes until you confirm \u2014 the same payment is moved, never duplicated.</div></div>'+
+    '<div style="overflow:auto;flex:1;padding:12px 16px">'+(all.length?all.map(card).join(''):'<div style="text-align:center;color:#6B7280;padding:30px">No prepaid matches right now.</div>')+'</div>'+
+    '<div style="padding:10px 18px;border-top:1px solid #E5E7EB;text-align:right"><button class="btn" onclick="document.getElementById(\'bm-prepaid\').remove()">Close</button></div>'+
+  '</div>';
+  document.body.appendChild(ov);
+}
+function bmPrepaidKeep(payId,docId){
+  var d=D();var p=(d.payments||[]).find(function(x){return x.id===payId;});
+  if(p){if(!Array.isArray(p.prepaidDismissed))p.prepaidDismissed=[];if(p.prepaidDismissed.indexOf(docId)<0)p.prepaidDismissed.push(docId);saveToCloud();}
+  bmPrepaidReview();
+}
+function bmPrepaidSkip(i){bmPrepaidReview();}
+
 /* ── SWEEP / INTERNAL TRANSFER CLASSIFICATION (R61) ─────────────────────
    Runs BEFORE party matching. Sweeps stay in bankTxns (bank balance still
    reconciles exactly) but are excluded from party/bill matching and never
