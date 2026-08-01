@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R74</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R75</div>
   </nav>
 
   <!-- PAGES -->
@@ -8160,19 +8160,37 @@ function bm2ScoreParty(d,t,party,narrTokens,narrCompact){
   var prevRel=(d.payments||[]).some(function(p){return p.pid===party.id&&p.matchedBy==='user-confirmed';});
   if(prevRel&&(nameS||learned||refs.length)){s+=30;reasons.push('Previously confirmed relationship');}
   // allocation
-  var target=refs.length?{id:refs[0].doc.id}:null;
+  // ── SETTLEMENT PRIORITY (reuses existing allocFIFO) ──────────────────────
+  // 1) EXACT single-bill match: bank amount == one outstanding doc's balance → that
+  //    doc becomes the FIFO target (allocFIFO protects it; FIFO only fills leftovers).
+  // 2) CLOSE match: within tolerance but not exact → flagged as a suggestion, never
+  //    silently settled. 3) Otherwise fall through to existing oldest-first FIFO.
+  var CLOSE_TOL=(function(){var v=parseFloat(localStorage.getItem('bm_closeTol'));return isFinite(v)&&v>0?v:100;})();
+  var sideForAmt=(dir==='in'?d.invoices:d.bills).filter(function(x){return x.pid===party.id&&x.mode!=='cash';})
+    .map(function(x){return {id:x.id,num:x.num,date:x.date,bal:(dir==='in'?invBalance(x.id):billBalance(x.id))};})
+    .filter(function(x){return x.bal>0.5;});
+  var exactDoc=null,closeDoc=null,closeDiff=0;
+  if(!refs.length){                                   // an explicit invoice/bill ref already wins; don't override it
+    sideForAmt.forEach(function(x){
+      var diff=Math.round((x.bal-t.amount)*100)/100;
+      if(Math.abs(diff)<=0.5){if(!exactDoc)exactDoc=x;}
+      else if(Math.abs(diff)<=CLOSE_TOL){if(!closeDoc||Math.abs(diff)<Math.abs(closeDiff)){closeDoc=x;closeDiff=diff;}}
+    });
+  }
+  var target=refs.length?{id:refs[0].doc.id}:(exactDoc?{id:exactDoc.id}:null);
+  var closeMatch=(!refs.length&&!exactDoc&&closeDoc)?{num:closeDoc.num,bal:closeDoc.bal,diff:Math.round((t.amount-closeDoc.bal)*100)/100,id:closeDoc.id}:null;
   var al=allocFIFO(party.id,dir,t.amount,target);
   var allocated=al.allocations.reduce(function(a,x){return a+x.amt;},0);
   var advanceAmt=Math.max(0,Math.round((t.amount-allocated)*100)/100);
+  if(exactDoc){s+=45;reasons.push('Exact bill match — '+esc(exactDoc.num)+' ('+fmt(exactDoc.bal)+')');}
   if(al.allocations.length){
     if(advanceAmt<=0.5){
-      if(al.allocations.length===1){
-        var docBal=dir==='in'?invBalance(al.allocations[0].iid)+al.allocations[0].amt*0:null; // balance pre-alloc known via alloc amt
+      if(al.allocations.length===1&&!exactDoc){
         var full=(dir==='in'?d.invoices:d.bills).find(function(x){return x.id===(al.allocations[0].iid||al.allocations[0].bid);});
         var bal=dir==='in'?invBalance(al.allocations[0].iid):billBalance(al.allocations[0].bid);
         if(Math.abs(bal-t.amount)<=0.5){s+=40;reasons.push('Exact outstanding amount');}
         else{s+=30;reasons.push('Partial payment against outstanding');}
-      }else{s+=35;reasons.push('Multiple documents total exactly');}
+      }else if(al.allocations.length>1){s+=35;reasons.push('Multiple documents total exactly');}
     }else{
       s+=al.allocations.length?20:0;
       reasons.push('Covers outstanding; '+fmt(advanceAmt)+' extra as advance');
@@ -8181,7 +8199,8 @@ function bm2ScoreParty(d,t,party,narrTokens,narrCompact){
   }else{
     reasons.push('No outstanding — would record as advance');
   }
-  return {pid:party.id,pname:party.name,score:s,reasons:reasons,dir:dir,allocs:al.allocations,advance:advanceAmt,hasRef:!!refs.length,
+  if(closeMatch)reasons.push('Close amount match: '+esc(closeMatch.num)+' is '+fmt(closeMatch.bal)+' (differs by '+fmt(Math.abs(closeMatch.diff))+')');
+  return {pid:party.id,pname:party.name,score:s,reasons:reasons,dir:dir,allocs:al.allocations,advance:advanceAmt,hasRef:!!refs.length,exact:!!exactDoc,closeMatch:closeMatch,
     learned:learned?{cc:(learned.rel.cc||1),rc:(learned.rel.rc||0),a:learned.rel.a,strong:learned.score>=80&&!learned.mism}:null,
     acctMismatch:learned&&learned.mism?learned.mism:null};
 }
@@ -8387,6 +8406,7 @@ function bm2ShowReview(){
         '<div>'+bm2LevelBadge(s.level,s.ambiguous)+'</div>'+
       '</div>'+
       (b.acctMismatch?'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:11px;color:#991B1B"><b>&#9888; ACCOUNT MISMATCH</b> — narration resembles '+esc(b.pname)+', but the account ending ('+esc(b.acctMismatch.got)+') differs from the previously confirmed account ('+esc(b.acctMismatch.expected)+').</div>':'')+
+      (b.closeMatch?'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:11px;color:#92400E"><b>&#9888; CLOSE AMOUNT MATCH</b> — bill/invoice '+esc(b.closeMatch.num)+' is <b>'+fmt(b.closeMatch.bal)+'</b>, bank entry is <b>'+fmt(t.amount)+'</b> (differs by <b>'+fmt(Math.abs(b.closeMatch.diff))+'</b>). Not treated as exact — confirm only if this is the right bill.</div>':'')+
       '<div style="background:#F9FAFB;border-radius:8px;padding:8px 10px;margin-top:8px">'+allocRows+'</div>'+
       '<div style="font-size:11px;color:#059669;margin-top:6px">'+b.reasons.map(function(r){return '✓ '+r;}).join(' &nbsp; ')+'</div>'+
       '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+altBtns+
