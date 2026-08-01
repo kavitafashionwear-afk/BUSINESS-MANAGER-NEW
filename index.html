@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R66</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R69</div>
   </nav>
 
   <!-- PAGES -->
@@ -2996,7 +2996,13 @@ function openPartyDetail(pid){
           <div style="font-size:11px;text-align:right">${bbal<1?'<span class="bdg grn">Settled</span>':bbal<b.grand-0.5?'<span class="bdg ora">Partial</span> <span style="color:var(--r)">Due '+fmt(bbal)+'</span>':'<span class="bdg red">Pending</span> <span style="color:var(--r)">'+fmt(bbal)+'</span>'}</div>
         </div>
       </div>
-      <div class="bm" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${b.items.map(it=>esc(it.desc)).join(', ')}</span>${bbal>0.5?`<button class="btn sm" style="flex-shrink:0" onclick="event.stopPropagation();openPayModal('${pid}','${b.id}','bill')">₹ Settle</button>`:''}</div>
+      <div class="bm" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${b.items.map(it=>esc(it.desc)).join(', ')}</span>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${bbal>0.5?`<button class="btn sm" onclick="event.stopPropagation();openPayModal('${pid}','${b.id}','bill')">₹ Settle</button>`:''}
+          <button class="btn sm" onclick="event.stopPropagation();editBill('${b.id}')" title="Edit">✏️</button>
+          <button class="btn sm red" onclick="event.stopPropagation();confirmDelBill('${b.id}')" title="Delete">🗑</button>
+        </div>
+      </div>
     </div>`;
   }).join('');
 
@@ -3010,7 +3016,13 @@ function openPartyDetail(pid){
           <div style="font-size:11px;text-align:right">${ibal<1?'<span class="bdg grn">Settled</span>':ibal<inv.grand-0.5?'<span class="bdg ora">Partial</span> <span style="color:var(--r)">Due '+fmt(ibal)+'</span>':'<span class="bdg red">Pending</span> <span style="color:var(--r)">'+fmt(ibal)+'</span>'}</div>
         </div>
       </div>
-      <div class="bm" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${inv.items.map(it=>esc(it.desc)).join(', ')}</span>${ibal>0.5?`<button class="btn sm" style="flex-shrink:0" onclick="event.stopPropagation();openPayModal('${pid}','${inv.id}','inv')">₹ Settle</button>`:''}</div>
+      <div class="bm" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${inv.items.map(it=>esc(it.desc)).join(', ')}</span>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          ${ibal>0.5?`<button class="btn sm" onclick="event.stopPropagation();openPayModal('${pid}','${inv.id}','inv')">₹ Settle</button>`:''}
+          <button class="btn sm" onclick="event.stopPropagation();editInvoice('${inv.id}')" title="Edit">✏️</button>
+          <button class="btn sm red" onclick="event.stopPropagation();confirmDelInv('${inv.id}')" title="Delete">🗑</button>
+        </div>
+      </div>
     </div>`;
   }).join('');
 
@@ -3065,6 +3077,7 @@ function openPartyDetail(pid){
       <button class="btn" onclick="openNoteModal('${pid}')">📋 Note</button>
       <button class="btn" onclick="printStatement('${pid}')">🖨 Statement</button>
       <button class="btn sm" onclick="editParty('${pid}')">✏️ Edit</button>
+      <button class="btn sm" style="background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" onclick="copyPartyToOtherFirm('${pid}')">📤 Copy to ${curBiz==='MI'?'Kavita':'Modrobe'}</button>
       <button class="btn sm red" onclick="confirmDelParty('${pid}')">🗑</button>
     </div>
     ${pbills.length?`<div class="card" style="padding:0 16px"><div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub)">PURCHASE BILLS</div>${billRows}</div>`:''}
@@ -3568,6 +3581,37 @@ function saveParty(){
   try{verifyPartyBanksAsync(editPartyId||party.id);}catch(e){}
   if(curParty===wasEdit)openPartyDetail(wasEdit);
 }
+// Share ONLY the party master (name, GSTIN, address, banks, emails…) into the other
+// firm — never bills, invoices or payments. Matches an existing party there by GSTIN
+// (or name) and updates it; otherwise creates a fresh party in that firm.
+function copyPartyToOtherFirm(pid){
+  const src=curBiz;
+  const other=src==='MI'?'KF':'MI';
+  const d=D();
+  const p=d.parties.find(x=>x.id===pid);if(!p){alert('Party not found.');return;}
+  ensureFirm(other);
+  const ob=S[other];
+  const gst=(p.gstin||'').toUpperCase();
+  let match=null;
+  if(gst)match=ob.parties.find(x=>(x.gstin||'').toUpperCase()===gst);
+  if(!match)match=ob.parties.find(x=>(x.name||'').trim().toLowerCase()===(p.name||'').trim().toLowerCase());
+  const verb=match?'update the existing':'create a new';
+  if(!confirm('Copy party details of "'+p.name+'" to '+BIZ[other].name+'?\n\nThis will '+verb+' party master there (name, GSTIN, address, bank details, emails).\n\nNo bills, invoices or payments are copied — only the party details.'))return;
+  // master fields only — never *_pid links, balances, or opening balances of the source books
+  const MASTER=['name','type','state','phone','city','addr','pin','gstin','pan','udyam','msme','emails','constitution','banks','bank','ifsc','upi','rem'];
+  const copy=JSON.parse(JSON.stringify(p));
+  if(match){
+    MASTER.forEach(k=>{ if(copy[k]!==undefined) match[k]=copy[k]; });
+  }else{
+    const np={id:'P'+String(ob.pC||1).padStart(4,'0')};
+    MASTER.forEach(k=>{ if(copy[k]!==undefined) np[k]=copy[k]; });
+    np.ob=0;np.obType='CR';                    // fresh party, no carried balance in the other firm
+    ob.parties.push(np);
+    ob.pC=(ob.pC||1)+1;
+  }
+  saveToCloud();
+  toast('✅ Party details '+(match?'updated in ':'copied to ')+BIZ[other].name,'ok');
+}
 function confirmDelParty(pid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this party and all their data to Recycle Bin? You can restore everything anytime.</div>';
   document.getElementById('cf-ok').onclick=()=>{
@@ -3638,7 +3682,7 @@ function renderBills(){
             </div>
             <div style="text-align:right">
               <div class="ba">${fmt(b.grand)}</div>
-              <div style="font-size:11px;color:${bbal<1?'var(--g)':bbal<bill.grand-0.5?'var(--o)':'var(--r)'}">${bbal<1?'✓ Settled':bbal<bill.grand-0.5?'Partial · Paid '+fmt(bill.grand-bbal)+' · Due '+fmt(bbal):'Due: '+fmt(bbal)}</div>
+              <div style="font-size:11px;color:${bbal<1?'var(--g)':bbal<b.grand-0.5?'var(--o)':'var(--r)'}">${bbal<1?'✓ Settled':bbal<b.grand-0.5?'Partial · Paid '+fmt(b.grand-bbal)+' · Due '+fmt(bbal):'Due: '+fmt(bbal)}</div>
             </div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
@@ -4008,9 +4052,10 @@ function confirmDelBill(bid){
   const billPayments=d.payments.filter(p=>p.bid===bid);
   if(!d.trash)d.trash=[];
   d.trash.push({type:'bill',deletedAt:new Date().toISOString(),bill:JSON.parse(JSON.stringify(bill)),payments:JSON.parse(JSON.stringify(billPayments))});
+  const _pid=bill.pid;
   d.bills=d.bills.filter(b=>b.id!==bid);
   d.payments=d.payments.filter(p=>p.bid!==bid);
-  saveToCloud().then(function(){renderAll();});toast('🗑 Bill moved to Recycle Bin','warn');
+  saveToCloud().then(function(){renderAll();if(curParty&&curParty===_pid)openPartyDetail(_pid);});toast('🗑 Bill moved to Recycle Bin','warn');
 }
 function _confirmDelBill_OLD(bid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this purchase bill to Recycle Bin? You can restore it anytime.</div>';
@@ -4079,9 +4124,10 @@ function confirmDelInv(iid){
   if(!d.trash)d.trash=[];
   d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
   if(!reuse)recordCancelledInv(d,inv,'Deleted/Cancelled');
+  const _pid=inv.pid;
   d.invoices=d.invoices.filter(i=>i.id!==iid);
   d.payments=d.payments.filter(p=>p.iid!==iid);
-  saveToCloud().then(function(){renderAll();});
+  saveToCloud().then(function(){renderAll();if(curParty&&curParty===_pid)openPartyDetail(_pid);});
   toast(reuse?('🗑 Invoice deleted — number '+(inv.num||'')+' freed for reuse'):('🚫 '+(inv.num||'')+' cancelled permanently (see Reports → Cancelled Invoices)'),'warn');
 }
 function _confirmDelInv_OLD(iid){
@@ -4705,8 +4751,13 @@ function allocateLegacyPayments(d){
     .filter(p=>!p.iid&&!p.bid&&!(p.allocations&&p.allocations.length))
     .sort((a,b)=>(((a.date||'')+a.id)).localeCompare((b.date||'')+b.id));
   legacy.forEach(p=>{
-    const key=p.dir==='in'?'iid':'bid';
-    const docs=(p.dir==='in'?d.invoices:d.bills)
+    let dir=p.dir;
+    // Heal payments saved with the wrong/blank direction: if the dir side has no pending
+    // docs for this party but the other side does, use the side that actually has dues.
+    const hasDocs=(dd)=>(dd==='in'?d.invoices:d.bills).some(x=>x.pid===p.pid&&x.mode!=='cash'&&(bal[x.id]||0)>0.5);
+    if(!hasDocs(dir)&&hasDocs(dir==='in'?'out':'in'))dir=dir==='in'?'out':'in';
+    const key=dir==='in'?'iid':'bid';
+    const docs=(dir==='in'?d.invoices:d.bills)
       .filter(x=>x.pid===p.pid&&x.mode!=='cash'&&(bal[x.id]||0)>0.5)
       .sort((a,b)=>(a.date||'').localeCompare(b.date||''));
     let left=p.amt;const allocs=[];
@@ -4757,7 +4808,9 @@ function previewAlloc(){
   const amt=parseFloat(document.getElementById('pay-amt').value)||0;
   const d=D();const party=d.parties.find(p=>p.id===payTargetId);
   if(!party||amt<=0){el.innerHTML='';return;}
-  const dir=party.type==='C'?'in':party.type==='S'?'out':'in';
+  const dir=payTargetDoc
+    ?(payTargetDoc.type==='bill'?'out':'in')
+    :(party.type==='S'?'out':'in');
   const {allocations,leftover}=allocFIFO(payTargetId,dir,amt,payTargetDoc);
   if(!allocations.length){el.innerHTML=leftover>0?'<span style="color:var(--sub)">No pending '+(dir==='in'?'invoices':'bills')+' — will be kept as advance / on-account.</span>':'';return;}
   el.innerHTML='Will settle (oldest first): '+allocations.map(a=>{
@@ -4771,7 +4824,12 @@ function savePayment(){
   const amt=parseFloat(document.getElementById('pay-amt').value)||0;
   if(amt<=0){alert('Enter valid amount');return;}
   const party=d.parties.find(p=>p.id===payTargetId);
-  const dir=party&&party.type==='C'?'in':party&&party.type==='S'?'out':'in';
+  // Direction: when settling a SPECIFIC document, the document type decides (a purchase
+  // bill is always an outflow, a sales invoice an inflow) — this is authoritative even for
+  // 'Both' parties. Only fall back to party type for open/on-account payments.
+  const dir=payTargetDoc
+    ?(payTargetDoc.type==='bill'?'out':'in')
+    :(party&&party.type==='S'?'out':'in');
   const mode=document.getElementById('pay-mode').value;
   const pay={
     id:'PAY'+uid4(),
