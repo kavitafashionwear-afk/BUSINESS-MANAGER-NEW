@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R69</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R73</div>
   </nav>
 
   <!-- PAGES -->
@@ -446,7 +446,14 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
         ✨ <strong id="b-new-party-name"></strong> not found — will be <strong>auto-created as a new Supplier</strong> when you save this bill.
       </div>
     </div>
-    <div class="fl"><label>Consignee (Ship To)</label><input id="b-consignee" placeholder="e.g. Dhanudhar Processor Pvt. Ltd."></div>
+    <div class="fl"><label>📎 Original Invoice PDF (optional)</label>
+      <input id="b-attach-file" type="file" accept="application/pdf,image/*" onchange="onBillAttachPick(this)" style="width:100%;padding:9px 12px;border:1.5px dashed var(--bdr);border-radius:10px;font-size:13px;background:#FAFAFA">
+      <div class="hint">Attach the supplier's original bill (PDF or photo). Kept with this purchase bill. Max ~700 KB so it syncs to the cloud.</div>
+      <div id="b-attach-info" style="display:none;margin-top:6px;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:8px 12px;font-size:12px;color:#065F46;justify-content:space-between;align-items:center;gap:8px">
+        <span id="b-attach-name" style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <span style="display:flex;gap:8px;flex-shrink:0"><a href="javascript:viewBillAttachDraft()" style="color:var(--pri2);font-weight:700">View</a><a href="javascript:clearBillAttach()" style="color:#DC2626;font-weight:700">Remove</a></span>
+      </div>
+    </div>
     <details class="adv">
       <summary>🚚 Transport &amp; LR details (optional)</summary>
       <div class="fr">
@@ -2999,6 +3006,7 @@ function openPartyDetail(pid){
       <div class="bm" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${b.items.map(it=>esc(it.desc)).join(', ')}</span>
         <div style="display:flex;gap:6px;flex-shrink:0">
           ${bbal>0.5?`<button class="btn sm" onclick="event.stopPropagation();openPayModal('${pid}','${b.id}','bill')">₹ Settle</button>`:''}
+          ${b.attach?`<button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="event.stopPropagation();viewBillAttachment('${b.id}')" title="Original invoice PDF">📎</button>`:''}
           <button class="btn sm" onclick="event.stopPropagation();editBill('${b.id}')" title="Edit">✏️</button>
           <button class="btn sm red" onclick="event.stopPropagation();confirmDelBill('${b.id}')" title="Delete">🗑</button>
         </div>
@@ -3689,6 +3697,7 @@ function renderBills(){
             <div class="bm" style="margin-top:0">${party?esc(party.name):''} · ${b.items.length} item(s)</div>
             <div style="display:flex;gap:6px">
               <button class="btn sm" onclick="event.stopPropagation();viewBill('${b.id}')" title="Print">🖨️</button>
+              ${b.attach?`<button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="event.stopPropagation();viewBillAttachment('${b.id}')" title="Original invoice PDF">📎</button>`:''}
               <button class="btn sm" onclick="event.stopPropagation();editBill('${b.id}')" title="Edit">✏️</button>
               <button class="btn sm red" onclick="event.stopPropagation();confirmDelBill('${b.id}')" title="Delete">🗑</button>
             </div>
@@ -3767,6 +3776,52 @@ function setBillType(t){
   document.getElementById('bt-jobwork').className=t==='jobwork'?'act':'';
   document.getElementById('b-linked-wrap').style.display=t==='jobwork'?'block':'none';
 }
+// ── Purchase-bill PDF attachment (original supplier invoice) ──
+// Stored as base64 data-URL on the bill record (bill.attach = {name,type,data}).
+// Each bill is its own Firestore doc, so we cap the file to stay well under the 1 MB
+// doc limit (base64 inflates ~33%, so ~700 KB raw ≈ ~950 KB stored).
+var _billAttachDraft=null;                     // {name,type,data} pending save, or null
+var BILL_ATTACH_MAX=700*1024;
+function onBillAttachPick(input){
+  const f=input.files&&input.files[0];if(!f)return;
+  if(f.size>BILL_ATTACH_MAX){
+    alert('That file is '+Math.round(f.size/1024)+' KB — too large to sync (max ~700 KB).\n\nTip: use a PDF "compress" / "reduce size" option, or attach a clear photo instead.');
+    input.value='';return;
+  }
+  const r=new FileReader();
+  r.onload=function(){ _billAttachDraft={name:f.name,type:f.type||'application/pdf',data:String(r.result)}; showBillAttachInfo(); };
+  r.onerror=function(){ alert('Could not read that file. Try again.'); };
+  r.readAsDataURL(f);
+}
+function showBillAttachInfo(){
+  const box=document.getElementById('b-attach-info');const nm=document.getElementById('b-attach-name');
+  if(!box)return;
+  if(_billAttachDraft){ if(nm)nm.textContent='📎 '+_billAttachDraft.name; box.style.display='flex'; }
+  else { box.style.display='none'; }
+}
+function clearBillAttach(){
+  _billAttachDraft=null;
+  const fi=document.getElementById('b-attach-file');if(fi)fi.value='';
+  showBillAttachInfo();
+}
+function _openAttachInTab(att){
+  if(!att||!att.data){alert('No attachment.');return;}
+  try{
+    const parts=att.data.split(',');const bin=atob(parts[1]||'');const len=bin.length;const arr=new Uint8Array(len);
+    for(let i=0;i<len;i++)arr[i]=bin.charCodeAt(i);
+    const blob=new Blob([arr],{type:att.type||'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const w=window.open(url,'_blank');
+    if(!w){const a=document.createElement('a');a.href=url;a.download=att.name||'attachment';a.click();}
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){ alert('Could not open the attachment.'); }
+}
+function viewBillAttachDraft(){ _openAttachInTab(_billAttachDraft); }
+function viewBillAttachment(bid){
+  const d=D();const b=d.bills.find(x=>x.id===bid);
+  if(!b||!b.attach){alert('No attachment on this bill.');return;}
+  _openAttachInTab(b.attach);
+}
 function openBillModal(pid){
   editBillId=null;billItemCount=0;
   document.getElementById('bill-mo-title').textContent='New Purchase Bill';var _bb=document.getElementById('bill-save-btn');if(_bb)_bb.textContent='Create Bill';
@@ -3788,6 +3843,7 @@ function openBillModal(pid){
   document.getElementById('b-supup').value='No';
   document.getElementById('b-supup-month').value='';
   toggleSupUp();
+  clearBillAttach();
   document.getElementById('b-items-list').innerHTML='';
   setBillType('purchase');
   // Populate supplier list
@@ -3996,7 +4052,8 @@ function saveBill(){
     mode:document.getElementById('b-mode').value,
     rem:document.getElementById('b-rem').value.trim(),
     supUploaded:document.getElementById('b-supup').value==='Yes',
-    supUploadMonth:document.getElementById('b-supup').value==='Yes'?(document.getElementById('b-supup-month').value||''):''
+    supUploadMonth:document.getElementById('b-supup').value==='Yes'?(document.getElementById('b-supup-month').value||''):'',
+    attach:_billAttachDraft?JSON.parse(JSON.stringify(_billAttachDraft)):null
   };
   if(editBillId){
     const _old=d.bills.find(b=>b.id===editBillId);
@@ -4007,7 +4064,7 @@ function saveBill(){
     d.bills.push(bill);d.bC=(d.bC||1)+1;
     if(bill.mode==='cash'){d.payments.push({id:'PAY'+uid4(),pid:supplier.id,bid:bill.id,amt:grand,date:bill.date,mode:'Cash',dir:'out',ref:'Cash Bill',rem:''}); }
   }
-  saveToCloud();closeModal('bill');toast('✅ Purchase bill saved','ok');renderAll();
+  saveToCloud();closeModal('bill');_billAttachDraft=null;toast('✅ Purchase bill saved','ok');renderAll();
   if(curParty===supplier.id)openPartyDetail(supplier.id);  try{bm2Recheck({notify:true});}catch(e){}
 }
 
@@ -4026,6 +4083,7 @@ function editBill(bid){
   document.getElementById('b-supup').value=bill.supUploaded?'Yes':'No';
   document.getElementById('b-supup-month').value=bill.supUploadMonth||'';
   toggleSupUp();
+  _billAttachDraft=bill.attach?JSON.parse(JSON.stringify(bill.attach)):null;showBillAttachInfo();
   const party=d.parties.find(p=>p.id===bill.pid);document.getElementById('b-supplier').value=party?party.name:'';
   setBillType(bill.jw?'jobwork':'purchase');
   document.getElementById('sup-list').innerHTML=d.parties.filter(p=>p.type==='S'||p.type==='B').map(p=>`<option value="${esc(p.name)}">`).join('');
@@ -6827,6 +6885,7 @@ function renderBank(){
           ?`<div style="font-size:11px;margin-top:3px;color:${_sug.level==='high'?'#059669':_sug.level==='likely'?'#B45309':'#6B7280'}">${_sug.level==='high'?'✓':'⚠'} Suggested: <b>${esc(_sug.best.pname)}</b> · <a href="javascript:bm2ShowReview()" style="color:var(--pri2)">Review</a></div>`
           :`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— unidentified entry —</div>`;
       }
+      if(t.reconOverride)statusLine+=`<div style="font-size:10px;color:#B91C1C;margin-top:2px" title="${esc(t.reconOverrideNote||'')}">⚠ ${esc(t.reconOverrideNote||'Imported with reconciliation override')}</div>`;
       return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.assigned==='reserve'?'#16A34A':t.matchId?'#059669':t.cls==='SWEEP'?'#0369A1':t.cls==='SWEEP?'?'#D97706':'#DC2626'}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1;min-width:0">
@@ -7163,6 +7222,55 @@ function bseCellFor(cols,cx){
 /* ── Stages 3+4: positional column parser with multi-line reconstruction ── */
 function bseParseWithColumns(rows,header){
   var cols=header.cols;
+  // ── Calibrate money-column RIGHT edges from the data itself ──
+  // Bank PDFs right-align amounts, and the numbers often align well to the RIGHT of the
+  // header labels — so a wide debit can drift under the "Deposits" label and get read as a
+  // credit. We cluster the right edges (x1) of numeric cells in real data rows into up to
+  // three bands (debit | credit | balance) and classify amounts by which band they align to.
+  var amtKeys=[];
+  if(cols.some(function(c){return c.key==='debit';}))amtKeys.push('debit');
+  if(cols.some(function(c){return c.key==='credit';}))amtKeys.push('credit');
+  if(cols.some(function(c){return c.key==='amount';}))amtKeys.push('amount');
+  var hasBalance=cols.some(function(c){return c.key==='balance';});
+  var edges=[];
+  for(var ci=header.rowIdx+1;ci<rows.length;ci++){
+    if(!bseDateAtStart(rows[ci].text)&&!/\d[\d,]*\.\d{2}/.test(rows[ci].text))continue;
+    bseRowCells(rows[ci],6).forEach(function(c){
+      if(/^\(?-?₹?\s?[\d,]+\.\d{2}\)?-?$/.test(c.str.replace(/\s/g,''))||/[\d,]+\.\d{2}\s*(CR|DR)?$/i.test(c.str))edges.push(c.x1);
+    });
+  }
+  var bands=null;
+  if(edges.length>=6){
+    edges.sort(function(a,b){return a-b;});
+    // greedy cluster: new band when a gap > 25px appears
+    var clusters=[[edges[0]]];
+    for(var e=1;e<edges.length;e++){
+      if(edges[e]-clusters[clusters.length-1][clusters[clusters.length-1].length-1]>25)clusters.push([edges[e]]);
+      else clusters[clusters.length-1].push(edges[e]);
+    }
+    // keep the biggest clusters, take their median as the band's right edge
+    clusters.sort(function(a,b){return b.length-a.length;});
+    var need=amtKeys.length+(hasBalance?1:0);
+    var top=clusters.slice(0,Math.max(need,Math.min(clusters.length,3))).map(function(cl){cl.sort(function(a,b){return a-b;});return cl[Math.floor(cl.length/2)];});
+    top.sort(function(a,b){return a-b;});
+    // assign left→right: [debit?, credit?/amount?, balance?]  (balance is always rightmost)
+    if(top.length>=2){
+      var order=amtKeys.concat(hasBalance?['balance']:[]);
+      if(top.length===order.length){bands={};order.forEach(function(k,ix){bands[k]=top[ix];});}
+      else if(hasBalance&&top.length>=2){
+        // fewer clusters than columns (e.g. only-debit statement + balance)
+        bands={};bands.balance=top[top.length-1];
+        var rest=top.slice(0,top.length-1);
+        amtKeys.slice(0,rest.length).forEach(function(k,ix){bands[k]=rest[ix];});
+      }
+    }
+  }
+  function amtSlotFor(cell){
+    if(!bands)return null;
+    var best=null,bd=1e9;
+    Object.keys(bands).forEach(function(k){var d=Math.abs(cell.x1-bands[k]);if(d<bd){bd=d;best=k;}});
+    return bd<=30?best:null;   // within 30px of a learned right edge
+  }
   var txns=[];var cur=null;var meta=[];
   function push(){if(cur){cur.desc=cur.descParts.join(' ').replace(/\s+/g,' ').trim();txns.push(cur);}cur=null;}
   for(var i=header.rowIdx+1;i<rows.length;i++){
@@ -7171,12 +7279,28 @@ function bseParseWithColumns(rows,header){
     if(sig===header.sig)continue;                       // header repeated on next page
     if(BSE_OPENING_RE.test(row.text)){var oa=bseAmountsInLine(row.text);if(oa.length&&BSE.opening==null)BSE.opening=bseSigned(oa[oa.length-1]);meta.push(row.text);continue;}
     if(BSE_CLOSING_RE.test(row.text)){var ca=bseAmountsInLine(row.text);if(ca.length)BSE.closingStmt=bseSigned(ca[ca.length-1]);meta.push(row.text);continue;}
+    // Printed turnover row (e.g. DCB "Turnover  25,15,311.00  15,76,014.55") = a second
+    // anchor for the reconciliation gate: our column sums must match these.
+    if(/\bTURNOVER\b/i.test(row.text)){
+      var ta=bseAmountsInLine(row.text).map(function(a){return a.v;}).filter(function(v){return v>0;});
+      if(ta.length>=2){BSE.turnDebit=ta[ta.length-2];BSE.turnCredit=ta[ta.length-1];}
+      meta.push(row.text);continue;
+    }
+    // Recovered-charges box (page after the transaction table) — captured for DISPLAY ONLY
+    // as supporting info. It is NEVER subtracted from, or used to "explain", the
+    // reconciliation gap (a recovered charge may already be a transaction row).
+    if(/RECOVERED\b/i.test(row.text)&&/CHARGE/i.test(row.text)){
+      var rc=bseAmountsInLine(row.text).map(function(a){return a.v;}).filter(function(v){return v>0;});
+      if(rc.length){BSE.recoveredCharges=(BSE.recoveredCharges||0)+rc[rc.length-1];}
+      meta.push(row.text);continue;
+    }
     if(BSE_META_RE.test(row.text)&&!bseDateAtStart(row.text)){meta.push(row.text);continue;}
-    // sort this row's cells into detected columns
+    // sort this row's cells into detected columns; amounts use the calibrated right edges
     var cells=bseRowCells(row,6);
     var slot={};
     cells.forEach(function(c){
-      var k=bseCellFor(cols,c.cx);
+      var isNum=/^\(?-?₹?\s?[\d,]+\.\d{2}\)?-?$/.test(c.str.replace(/\s/g,''))||/[\d,]+\.\d{2}\s*(CR|DR)?$/i.test(c.str);
+      var k=(isNum?amtSlotFor(c):null)||bseCellFor(cols,c.cx);
       if(!k)return;
       slot[k]=slot[k]?slot[k]+' '+c.str:c.str;
     });
@@ -7204,6 +7328,7 @@ function bseParseWithColumns(rows,header){
   }
   push();
   BSE.debug.metaRows=meta.length;
+  BSE.debug.amountBands=bands?JSON.stringify(bands):'label-fallback';
   return txns;
 }
 
@@ -7268,6 +7393,7 @@ var BSE_DR_KW=/DEBIT|WITHDRAWAL|CASH\s+WITHDRAW|NEFT\s*OUT|RTGS\s*OUT|IMPS\s*OUT
 function bseFinalize(raw){
   var prevBal=BSE.opening!=null?BSE.opening:null;
   var out=[];
+  var corrected=0;
   raw.forEach(function(t){
     var type=null,amount=null,prio=null;
     if(t.debit!=null&&t.debit>0){type='DR';amount=t.debit;prio=1;}
@@ -7279,26 +7405,46 @@ function bseFinalize(raw){
       if(BSE_CR_KW.test(narr)&&!BSE_DR_KW.test(narr)){type='CR';prio=3;}
       else if(BSE_DR_KW.test(narr)&&!BSE_CR_KW.test(narr)){type='DR';prio=3;}
     }
-    if(!type&&t.balance!=null&&prevBal!=null){ // priority 4: balance delta (never overrides cols)
+    if(!type&&t.balance!=null&&prevBal!=null){ // priority 4: balance delta
       var delta=Math.round((t.balance-prevBal)*100)/100;
       if(Math.abs(delta)>0.009){type=delta>0?'CR':'DR';if(amount==null)amount=Math.abs(delta);prio=4;}
     }
     if(amount==null&&t.balance!=null&&prevBal!=null)amount=Math.abs(Math.round((t.balance-prevBal)*100)/100);
     if(!amount||amount<=0){BSE.debug.rejected=(BSE.debug.rejected||0)+1;if(t.balance!=null)prevBal=t.balance;return;}
     if(!type)type='UNK';
-    // Stage 8: running-balance validation
+
+    // ── RUNNING BALANCE IS AUTHORITATIVE (R72) ────────────────────────────
+    // The arithmetic (prev ± amount = balance) is ground truth; column geometry is
+    // only a heuristic. When a printed balance is present and it DISPROVES the
+    // geometric DR/CR but the opposite direction reconciles exactly, the balance
+    // wins and flips the classification. This catches column-swap bugs (e.g. a
+    // withdrawal printed under the Deposits column) before they corrupt the books —
+    // regardless of where a future bank moves its columns.
+    var autoCorrected=false;
+    if(t.balance!=null&&prevBal!=null){
+      var fits=function(ty){var exp=Math.round((prevBal+(ty==='CR'?amount:-amount))*100)/100;return Math.abs(exp-t.balance)<=0.011;};
+      if(type!=='UNK'&&!fits(type)&&fits(type==='CR'?'DR':'CR')){
+        type=(type==='CR'?'DR':'CR');autoCorrected=true;corrected++;
+        prio=Math.min(prio||9,2);                 // balance-confirmed direction is high-trust
+      }else if(type==='UNK'){
+        // no geometric direction, but the balance move tells us: derive it
+        var d2=Math.round((t.balance-prevBal)*100)/100;
+        if(Math.abs(d2)>0.009&&Math.abs(Math.abs(d2)-amount)<=0.011){type=d2>0?'CR':'DR';prio=4;}
+      }
+    }
+
+    // Stage 8: running-balance validation (after any correction)
     var balValid=null;
     if(t.balance!=null&&prevBal!=null&&type!=='UNK'){
       var expected=Math.round((prevBal+(type==='CR'?amount:-amount))*100)/100;
       balValid=Math.abs(expected-t.balance)<=0.011;
     }
-    // Stage 8 (cont.): derive balance for rows that print none, so the chain survives.
-    // Marked balDerived internally — NOT presented as a printed statement balance.
+    // derive balance for rows that print none, so the chain survives
     var derivedBal=null,balDerived=false;
     if(t.balance!=null){derivedBal=t.balance;prevBal=t.balance;}
     else if(type==='CR'&&prevBal!=null){prevBal=Math.round((prevBal+amount)*100)/100;derivedBal=prevBal;balDerived=true;}
     else if(type==='DR'&&prevBal!=null){prevBal=Math.round((prevBal-amount)*100)/100;derivedBal=prevBal;balDerived=true;}
-    else prevBal=null; // unknown direction & no stated balance → chain broken until next printed balance
+    else prevBal=null;
     // Stage 12: confidence
     var conf;
     if(prio===1&&balValid===true)conf=97;
@@ -7309,11 +7455,13 @@ function bseFinalize(raw){
     else if(prio===4)conf=60;
     else conf=40;
     if(balValid===false)conf=Math.min(conf,49);
+    if(autoCorrected)conf=Math.max(conf,90);       // balance-corrected rows are trustworthy
     out.push({date:t.date,desc:(t.desc||'Bank transaction'),amount:amount,
       balance:(t.balance!=null?t.balance:(balDerived?derivedBal:null)),balDerived:balDerived,
       type:type,debit:type==='DR'?amount:null,credit:type==='CR'?amount:null,
-      reference:t.ref||'',page:t.page||0,confidence:conf,balValid:balValid,prio:prio});
+      reference:t.ref||'',page:t.page||0,confidence:conf,balValid:balValid,prio:prio,autoCorrected:autoCorrected});
   });
+  BSE.debug.corrected=corrected;
   return out;
 }
 
@@ -7429,7 +7577,25 @@ function bseShowReview(){
     var s=bseStatusOf(t);if(s==='ok')ok++;else if(s==='warn')warn++;else bad++;
   });
   var calcClosing=BSE.opening!=null?Math.round((BSE.opening+credits-debits)*100)/100:null;
-  var recon=(calcClosing!=null&&BSE.closingStmt!=null)?(Math.abs(calcClosing-BSE.closingStmt)<=0.011):null;
+  var reconGap=(calcClosing!=null&&BSE.closingStmt!=null)?Math.round((calcClosing-BSE.closingStmt)*100)/100:null;
+  var recon=(reconGap!=null)?(Math.abs(reconGap)<=0.011):null;
+  // Turnover cross-check (second anchor): if the statement prints total withdrawals/
+  // deposits, they must equal our column sums. A mismatch here means a mis-read column.
+  var turnGap=null;
+  if(BSE.turnCredit!=null&&BSE.turnDebit!=null){
+    turnGap={cr:Math.round((credits-BSE.turnCredit)*100)/100,dr:Math.round((debits-BSE.turnDebit)*100)/100};
+  }
+  var turnOk=turnGap?(Math.abs(turnGap.cr)<=0.5&&Math.abs(turnGap.dr)<=0.5):null;
+  var corrected=BSE.debug.corrected||0;
+  // Transaction-table ending balance = last printed balance among the parsed rows.
+  // This is a DIFFERENT quantity from the statement's printed closing balance; the two
+  // are shown separately (never conflated) so a statement-level difference is visible.
+  var txnEndBal=null;for(var _ti=txns.length-1;_ti>=0;_ti--){if(txns[_ti].balance!=null&&!txns[_ti].balDerived){txnEndBal=txns[_ti].balance;break;}}
+  var stmtLevelGap=(txnEndBal!=null&&BSE.closingStmt!=null)?Math.round((txnEndBal-BSE.closingStmt)*100)/100:null;
+  // Import GATE: block a clean one-click import when arithmetic doesn't hold.
+  // recon===false OR turnOk===false OR any per-row balance mismatch = not verified-clean.
+  var rowMismatch=txns.some(function(t){return t.balValid===false;});
+  var reconBlocked=(recon===false)||(turnOk===false)||rowMismatch;
   var rows=txns.map(function(t,i){
     var s=bseStatusOf(t);
     var icon=s==='ok'?'<span style="color:#059669;font-weight:800">✓</span>':(s==='warn'?'<span style="color:#D97706;font-weight:800">⚠ Review</span>':'<span style="color:#DC2626;font-weight:800">❌ Problem</span>');
@@ -7456,8 +7622,29 @@ function bseShowReview(){
         (BSE.opening!=null?' · Opening: <b>'+fmt(BSE.opening)+'</b>':'')+
         (calcClosing!=null?' · Calculated closing: <b>'+fmt(calcClosing)+'</b>':'')+
         (BSE.closingStmt!=null?' · Statement closing: <b>'+fmt(BSE.closingStmt)+'</b>':'')+
-        (recon===true?' · <b style="color:#059669">Reconciliation: ✓ MATCHED</b>':recon===false?' · <b style="color:#DC2626">Reconciliation: ⚠ MISMATCH</b>':'')+
+        (corrected?'<br><span style="color:#7C3AED">🔄 '+corrected+' row(s) auto-corrected by running balance (column direction was overridden).</span>':'')+
       '</div>'+
+      // ── Reconciliation banner ──
+      (recon===true&&turnOk!==false
+        ?'<div style="margin-top:8px;background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;padding:8px 12px;font-size:12px;color:#065F46"><b>✓ Reconciled.</b> Opening + credits − debits equals the statement closing balance'+(turnOk===true?', and column totals match the printed turnover':'')+'.</div>'
+        :recon===false
+          ?'<div style="margin-top:8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;font-size:12px;color:#991B1B"><b>⚠ Statement-level reconciliation difference: '+fmt(Math.abs(reconGap))+'</b>'+
+            '<div style="margin-top:4px;color:#7F1D1D;font-weight:400">Transaction rows may each be internally valid, but the numbers don\'t tie out to the printed closing:</div>'+
+            '<div style="margin-top:4px;font-family:monospace;font-size:11px;color:#7F1D1D">'+
+              (txnEndBal!=null?'Transaction-table ending balance: <b>'+fmt(txnEndBal)+'</b><br>':'')+
+              'Printed closing balance: <b>'+fmt(BSE.closingStmt)+'</b><br>'+
+              (stmtLevelGap!=null?'Difference: <b>'+fmt(Math.abs(stmtLevelGap))+'</b>':'Calculated ('+fmt(calcClosing)+') vs printed ('+fmt(BSE.closingStmt)+') differ by <b>'+fmt(Math.abs(reconGap))+'</b>')+
+            '</div>'+
+            (BSE.recoveredCharges?'<div style="margin-top:6px;font-size:11px;color:#6B7280;font-weight:400">Supporting info only: the statement lists recovered charges of '+fmt(BSE.recoveredCharges)+'. This is shown for reference and is <b>not</b> assumed to explain the difference — the remainder is not automatically accounted for.</div>':'')+
+            '<div style="margin-top:6px;font-weight:400">This can be legitimate (charges/interest posted outside the transaction table), or it can indicate a mis-read row. Nothing is imported as verified — you must explicitly acknowledge and override to import.</div>'+
+          '</div>'
+          :turnOk===false
+            ?'<div style="margin-top:8px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:8px 12px;font-size:12px;color:#991B1B"><b>⚠ Column totals don\'t match printed turnover.</b> A debit/credit column may have been mis-read. Review before importing.</div>'
+            :rowMismatch
+              ?'<div style="margin-top:8px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:8px 12px;font-size:12px;color:#92400E"><b>⚠ Some rows don\'t fit the running balance.</b> Those rows are flagged below. Import is blocked until you confirm.</div>'
+              :BSE.opening==null||BSE.closingStmt==null
+                ?'<div style="margin-top:8px;background:#F3F4F6;border-radius:8px;padding:8px 12px;font-size:12px;color:#4B5563">ℹ No opening/closing balance found to reconcile against — this statement can\'t be arithmetically verified, so classification is best-effort. Please spot-check the rows.</div>'
+                :'')+
     '</div>'+
     '<div style="overflow:auto;flex:1">'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
@@ -7471,28 +7658,46 @@ function bseShowReview(){
       '<a href="javascript:bseShowReport()" style="font-size:11px;color:#6B7280">Parser report</a>'+
       '<div style="flex:1"></div>'+
       '<button class="btn" onclick="document.getElementById(\'bse-review\').remove()">Cancel</button>'+
-      (warn+bad?'<button class="btn" style="background:#FEF3C7;color:#92400E" onclick="bseImport(true)">Import All With Warnings ('+txns.length+')</button>':'')+
-      '<button class="btn pri" onclick="bseImport(false)">Import Verified ('+ok+')</button>'+
+      (reconBlocked
+        // Blocked: no clean import. Only an explicit override, clearly labelled.
+        ?'<button class="btn" style="background:#FEE2E2;color:#991B1B;font-weight:800" onclick="bseImport(true,true)">Override &amp; import anyway ('+txns.length+')</button>'
+        // Clean: normal import buttons
+        :(warn+bad?'<button class="btn" style="background:#FEF3C7;color:#92400E" onclick="bseImport(true)">Import All With Warnings ('+txns.length+')</button>':'')+
+         '<button class="btn pri" onclick="bseImport(false)">Import Verified ('+ok+')</button>')+
     '</div>'+
   '</div>';
   document.body.appendChild(ov);
 }
 
 /* ── Stage 15+16: import → merge → auto-match ── */
-function bseImport(withWarnings){
+function bseImport(withWarnings,override){
   var ov=document.getElementById('bse-review');if(ov)ov.remove();
   var pick=BSE.txns.filter(function(t){return withWarnings?true:bseStatusOf(t)==='ok';});
   var skipped=BSE.txns.length-pick.length;
   if(!pick.length){alert('Nothing selected to import.');return;}
+  // Requirement #7: an override must remain VISIBLY RECORDED on the imported entries so it
+  // can be seen later. We stamp a human-readable reconciliation note (with the exact gap)
+  // on every entry of an overridden batch — it is NOT silently promoted to 'verified'.
+  var gap=null;
+  if(override){
+    var _cr=0,_dr=0;pick.forEach(function(t){if(t.type==='CR')_cr+=t.amount;else if(t.type==='DR')_dr+=t.amount;});
+    var _cc=BSE.opening!=null?Math.round((BSE.opening+_cr-_dr)*100)/100:null;
+    if(_cc!=null&&BSE.closingStmt!=null)gap=Math.abs(Math.round((_cc-BSE.closingStmt)*100)/100);
+  }
+  var batchId='BATCH'+Date.now().toString(36);
+  var overrideNote=override?('Imported with reconciliation override'+(gap!=null?' — difference '+fmt(gap):'')+' · '+new Date().toLocaleDateString('en-IN')):'';
   var norm=pick.map(function(t){
     return {date:t.date,desc:t.desc,amount:t.amount,balance:t.balance!=null?t.balance:null,type:t.type,matchId:null,assigned:null,
-      source:'PDF',confidence:t.confidence,reference:t.reference||'',debit:t.debit,credit:t.credit,page:t.page};
+      source:'PDF',confidence:t.confidence,reference:t.reference||'',debit:t.debit,credit:t.credit,page:t.page,
+      balValid:t.balValid,importBatch:batchId,
+      reconOverride:override?true:false,reconOverrideNote:overrideNote,reconOverrideGap:(override&&gap!=null)?gap:null};
   });
   var m=mergeBankTxns(norm);
   autoMatchBank();
   saveToCloud().then(function(){renderAll();});
   var unk=pick.filter(function(t){return t.type==='UNK';}).length;
   alert('✅ '+m.added+' transaction(s) imported'+
+    (override?'\n⚠ '+overrideNote+'\n   (recorded on each imported entry — not marked as verified)':'')+
     (skipped?'\n⚠ '+skipped+' warning row(s) skipped':'')+
     (m.dup?'\n✓ '+m.dup+' duplicate(s) skipped':'')+
     '\n✓ Auto-matching completed'+
