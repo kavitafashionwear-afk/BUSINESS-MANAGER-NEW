@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R81</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R84</div>
   </nav>
 
   <!-- PAGES -->
@@ -2614,9 +2614,8 @@ function renderLoans(){
     <div class="pi"><div class="pn" style="font-size:13px">${esc(a.name)}</div><div class="ps">${esc(a.cat||'Asset')}${a.date?' · '+fmtD(a.date):''}${a.note?' · '+esc(a.note):''}</div></div>
     <div class="pb" style="color:#0369A1">${fmt(a.value)}<div style="font-size:10px"><button class="btn sm" onclick="openAssetModal('${a.id}')">✏️ Edit</button> <button class="btn sm red" onclick="delAsset('${a.id}')">🗑</button></div></div>
   </div>`;
-  const sheetRow=(label,val,color)=>`<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px"><span>${label}</span><span style="font-weight:700;color:${color||'inherit'}">${fmt(val)}</span></div>`;
-  // Liabilities + Equity (reserves) total — should balance against assets in proper double-entry
-  const liabPlusEquity=bs.liabilities.total+bs.capital+bs.reserves;
+  // Liabilities + Equity total now rendered by the authoritative bsSections() engine below.
+  // (liabPlusEquity removed — the dashboard Balance Sheet now reconciles via bsSections().)
 
   document.getElementById('pg-loans').innerHTML=`
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -2627,38 +2626,29 @@ function renderLoans(){
       <div style="font-size:13px;opacity:.85;margin-top:2px">${BIZ[curBiz].name}</div>
     </div>
 
-    <!-- BALANCE SHEET -->
+    <!-- BALANCE SHEET (single source of truth: bsSections / classifiedBS) -->
     <div class="card">
-      <div class="card-hd">📊 Balance Sheet (live)</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div>
-          <div style="font-size:12px;font-weight:800;color:#059669;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin-bottom:4px">ASSETS${info('asset')}</div>
-          ${sheetRow('💵 Cash in Hand',bs.assets.cash)}
-          ${sheetRow('💰 Receivables',bs.assets.debtors)}
-          ${sheetRow('📦 Stock in Hand',bs.assets.stock)}
-          ${sheetRow('🏭 Fixed Assets',bs.assets.fixed)}
-          <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Assets</strong><strong style="color:#059669">${fmt(bs.assets.total)}</strong></div>
+      <div class="card-hd" style="display:flex;justify-content:space-between;align-items:center"><span>📊 Balance Sheet (live)</span><button class="btn sm" style="padding:2px 8px;font-size:10px" onclick="openCapitalModal()">+ Capital</button></div>
+      ${(()=>{const s=bsSections();
+        return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#DC2626;border-bottom:2px solid #FEE2E2;padding-bottom:4px;margin-bottom:4px">LIABILITIES</div>
+            ${bsRowsHTML(s.L)}
+            <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total</strong><strong style="color:#DC2626">${fmt(s.liabTot)}</strong></div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:800;color:#059669;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin-bottom:4px">ASSETS</div>
+            ${bsRowsHTML(s.A)}
+            <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total</strong><strong style="color:#059669">${fmt(s.assetTot)}</strong></div>
+          </div>
         </div>
-        <div>
-          <div style="font-size:12px;font-weight:800;color:#DC2626;border-bottom:2px solid #FEE2E2;padding-bottom:4px;margin-bottom:4px">LIABILITIES${info('liability')}</div>
-          ${sheetRow('📤 Payables',bs.liabilities.creditors)}
-          ${sheetRow('🤝 Loans',bs.liabilities.loans)}
-          ${sheetRow('🏦 OD Drawn',bs.liabilities.od)}
-          <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total Liabilities</strong><strong style="color:#DC2626">${fmt(bs.liabilities.total)}</strong></div>
-          <div style="font-size:12px;font-weight:800;color:#7C3AED;border-bottom:2px solid #EDE9FE;padding-bottom:4px;margin:10px 0 4px;display:flex;justify-content:space-between;align-items:center"><span>CAPITAL${info('capital')}</span><button class="btn sm" style="padding:2px 8px;font-size:10px" onclick="openCapitalModal()">+ Add / Edit</button></div>
-          ${sheetRow('🏛️ Capital',bs.capital,'#7C3AED')}
-          <div style="font-size:12px;font-weight:800;color:#16A34A;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin:10px 0 4px">RESERVES &amp; SURPLUS${info('reservesurplus')}</div>
-          ${sheetRow('💰 Reserves & Surplus',bs.reserves,'#16A34A')}
-        </div>
-      </div>
-      <div style="background:#F0FDF4;border-radius:10px;padding:10px 12px;margin-top:12px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:12px;font-weight:700;color:#166534">Liabilities + Capital + Reserves</span>
-        <span style="font-size:15px;font-weight:800;color:#16A34A">${fmt(liabPlusEquity)}</span>
-      </div>
-      <div style="background:${bs.netWorth>=0?'#ECFDF5':'#FEF2F2'};border-radius:10px;padding:12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:13px;font-weight:700">📈 Net Worth (Assets − Liabilities)</span>
-        <span style="font-size:18px;font-weight:800;color:${bs.netWorth>=0?'#059669':'#DC2626'}">${fmt(bs.netWorth)}</span>
-      </div>
+        ${Math.abs(s.bsDiff)>0.5
+          ?`<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:#92400E"><strong>⚠ Suspense / Balance Sheet Difference: ${fmt(Math.abs(s.bsDiff))}</strong><br>Recorded books do not fully reconcile. Capital is shown at its actual recorded value (not adjusted). This difference is the real gap between recorded assets and accounted claims — review opening balances / capital / unrecorded entries.</div>`
+          :`<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px;color:#065F46">✓ Books reconcile — both sides tie out with no Suspense difference.</div>`}
+        <div style="background:#F5F3FF;border-radius:10px;padding:10px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-weight:700;color:#5B21B6">Capital Account (recorded)</span>
+          <span style="font-size:15px;font-weight:800;color:#7C3AED">${fmt(s.capital)}</span>
+        </div>`;})()}
     </div>
 
     <div class="stats">
@@ -10278,25 +10268,37 @@ function pkgFinancials(){
     reserves:totalReserves()
   };
 }
-// Closing (post-closing) trial balance — real accounts; Capital is the balancing figure.
+// Closing trial balance — real accounts. Capital = RECORDED capital (never a plug);
+// P&L = actual cumulative profit; any residual is shown as Suspense / Difference, exposed.
 function trialBalanceData(){
-  const f=pkgFinancials();
+  const b=classifiedBS();          // single source of truth (recorded capital, real P&L, GST, etc.)
   const dr=[],cr=[];
-  dr.push(['Cash in Hand',f.cash]);
-  if(f.bank>=0)dr.push(['Bank Balance',f.bank]);else cr.push(['Bank (overdrawn)',-f.bank]);
-  dr.push(['Sundry Debtors',f.debtors]);
-  dr.push(['Closing Stock (at cost)',f.stock]);
-  if(f.fixed)dr.push(['Fixed Assets',f.fixed]);
-  if(f.creditors)cr.push(['Sundry Creditors',f.creditors]);
-  if(f.loans)cr.push(['Loans (Unsecured)',f.loans]);
-  if(f.od)cr.push(['Bank Overdraft',f.od]);
-  if(f.reserves)cr.push(['Reserves & Surplus',f.reserves]);
-  const drTot=dr.reduce((s,r)=>s+r[1],0);
-  const crKnown=cr.reduce((s,r)=>s+r[1],0);
-  const capital=drTot-crKnown; // balancing figure (Capital Account / Net Worth)
-  cr.push(['Capital Account (balancing)',capital]);
-  const crTot=cr.reduce((s,r)=>s+r[1],0);
-  return{dr,cr,drTot,crTot,capital};
+  dr.push(['Cash in Hand',b.cash]);
+  if(b.bank>=0)dr.push(['Bank Balance',b.bank]);else cr.push(['Bank (overdrawn)',-b.bank]);
+  if(b.tradeRecv)dr.push(['Sundry Debtors',b.tradeRecv]);
+  if(b.supplierAdv)dr.push(['Advances to Suppliers',b.supplierAdv]);
+  dr.push(['Closing Stock (at cost)',b.stock]);
+  if(b.fixed)dr.push(['Fixed Assets',b.fixed]);
+  if(b.stInvest)dr.push(['Investments',b.stInvest]);
+  if(b.itcCredit)dr.push(['Duties & Taxes (ITC receivable)',b.itcCredit]);
+  if(b.capital)cr.push(['Capital Account',b.capital]);            // recorded, NOT balancing
+  if(b.otherRes)cr.push(['Reserves & Surplus',b.otherRes]);
+  if(Math.abs(b.drawingRes)>0.5)dr.push(['Drawings',-b.drawingRes]); // drawings reduce capital → debit
+  const _pl=Math.round((b.plAccount+b.plRes)*100)/100;
+  if(_pl>0.5)cr.push(['Profit & Loss A/c',_pl]);else if(_pl<-0.5)dr.push(['Profit & Loss A/c (loss)',-_pl]);
+  if(b.creditors)cr.push(['Sundry Creditors',b.creditors]);
+  if(b.custAdv)cr.push(['Advances from Customers',b.custAdv]);
+  if(b.dutiesTaxes)cr.push(['Duties & Taxes (GST payable)',b.dutiesTaxes]);
+  if(b.loans)cr.push(['Loans (Unsecured)',b.loans]);
+  if(b.od)cr.push(['Bank Overdraft',b.od]);
+  if(Math.abs(b.suspenseRes)>0.5)cr.push(['Suspense A/c (recorded)',b.suspenseRes]);
+  // Expose any residual difference as Suspense — never adjust a genuine account to force a tally.
+  let drTot=dr.reduce((s,r)=>s+r[1],0), crTot=cr.reduce((s,r)=>s+r[1],0);
+  const diff=Math.round((drTot-crTot)*100)/100;
+  if(diff>0.5)cr.push(['Suspense A/c / Difference',diff]);
+  else if(diff<-0.5)dr.push(['Suspense A/c / Difference',-diff]);
+  drTot=dr.reduce((s,r)=>s+r[1],0); crTot=cr.reduce((s,r)=>s+r[1],0);
+  return{dr,cr,drTot,crTot,capital:b.capital,bsDiff:b.bsDiff};
 }
 function renderTrialBalance(pg){
   const t=trialBalanceData();
@@ -10313,7 +10315,7 @@ function renderTrialBalance(pg){
       <tbody>${body}</tbody>
       <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(t.drTot)}</td><td style="padding:8px;border-left:2px solid var(--bdr)">TOTAL</td><td style="padding:8px;text-align:right">${fmt(t.crTot)}</td></tr></tfoot>
     </table></div>
-    <div class="ibox ${Math.abs(t.drTot-t.crTot)<1?'grn':'red'}" style="margin-top:12px">${Math.abs(t.drTot-t.crTot)<1?'✅ Trial Balance tallies':'⚠️ Difference '+fmt(Math.abs(t.drTot-t.crTot))}. Capital Account is the balancing figure — your accountant reconciles opening capital and current-year profit.</div></div>`;
+    <div class="ibox ${Math.abs(t.drTot-t.crTot)<1?'grn':'red'}" style="margin-top:12px">${Math.abs(t.drTot-t.crTot)<1?'✅ Trial Balance tallies':'⚠️ Difference '+fmt(Math.abs(t.drTot-t.crTot))}. Capital Account is shown at its actual recorded value; Profit &amp; Loss is real cumulative profit. Any residual appears as a Suspense / Difference line — the books are never force-balanced by adjusting Capital.</div></div>`;
 }
 function printTrialBalance(){
   const t=trialBalanceData();const maxLen=Math.max(t.dr.length,t.cr.length);let body='';
@@ -10336,40 +10338,111 @@ function classifiedBS(){
   const stock=Math.max(0,pkgClosingStock());
   const cash=Math.max(0,cashInHand());
   const bank=bankNet();const bankPos=bank>0?bank:0,bankNeg=bank<0?-bank:0;
-  const loans=totalLoanOutstanding(),od=odUsed(),reserves=totalReserves();
+  const loans=totalLoanOutstanding(),od=odUsed();
+  // Split reserves into accountant buckets by category (existing reserve records only):
+  //   Owner Capital → Capital Account · Retained Earnings → P&L A/c · Drawing → Drawing A/c
+  //   Suspense → Suspense A/c · everything else → other reserves.
+  const _rs=ensureReserves();
+  const _bucket=(re)=>{const c=(re.cat||'').toLowerCase();
+    if(c==='owner capital')return 'ownerCap';
+    if(c==='retained earnings')return 'pl';
+    if(c.indexOf('drawing')>=0)return 'drawing';
+    if(c.indexOf('suspense')>=0)return 'suspense';
+    return 'other';};
+  let ownerCapRes=0,plRes=0,drawingRes=0,suspenseRes=0,otherRes=0;
+  _rs.forEach(re=>{const bal=reserveBalance(re);const bk=_bucket(re);
+    if(bk==='ownerCap')ownerCapRes+=bal; else if(bk==='pl')plRes+=bal;
+    else if(bk==='drawing')drawingRes+=bal; else if(bk==='suspense')suspenseRes+=bal; else otherRes+=bal;});
+  const reserves=ownerCapRes+plRes+drawingRes+suspenseRes+otherRes;
+  // Duties & Taxes (GST payable) = cumulative output GST on sales − input GST (ITC) on non-jobwork purchases.
+  // A net credit (ITC > output) is an asset, not a liability, so it's floored at 0 for the liability side.
+  let outGST=0,inGST=0;
+  (d.invoices||[]).forEach(i=>{const g=gstSplit(i);outGST+=(g.cgst||0)+(g.sgst||0)+(g.igst||0);});
+  (d.bills||[]).forEach(b=>{if(b.jw)return;const g=gstSplit(b);inGST+=(g.cgst||0)+(g.sgst||0)+(g.igst||0);});
+  const dutiesTaxes=Math.max(0,Math.round((outGST-inGST)*100)/100);
+  const itcCredit=Math.max(0,Math.round((inGST-outGST)*100)/100); // net ITC receivable (asset), if any
   const cashEq=cash+bankPos;
-  const curAssetsTot=stock+tradeRecv+supplierAdv+stInvest+cashEq;
+  const curAssetsTot=stock+tradeRecv+supplierAdv+stInvest+cashEq+itcCredit;
   const nonCurAssetsTot=fixed;
   const assetTot=curAssetsTot+nonCurAssetsTot;
-  const curLiab=creditors+custAdv+od+bankNeg;
+  const curLiab=creditors+custAdv+od+bankNeg+dutiesTaxes;
   const nonCurLiab=loans;
-  const capital=assetTot-(reserves+nonCurLiab+curLiab);
-  return {tradeRecv,supplierAdv,creditors,custAdv,fixed,stInvest,stock,cash,bank,bankPos,bankNeg,loans,od,reserves,cashEq,curAssetsTot,nonCurAssetsTot,assetTot,curLiab,nonCurLiab,capital};
+  // ── Capital is the RECORDED capital only — never a balancing plug ──
+  // Owner Capital comes straight from recorded "Owner Capital" reserve records.
+  const capital=ownerCapRes;
+  // Profit & Loss A/c = cumulative net profit to date (ex-GST): sales − purchases − expenses.
+  // This is genuine derived data (same formula as the P&L report), not a plug. Any P&L kept
+  // as a "Retained Earnings" reserve is shown separately so it isn't double-counted.
+  let _sales=0,_purch=0;
+  (d.invoices||[]).forEach(i=>{_sales+=(gstSplit(i).taxable||0);});
+  (d.bills||[]).forEach(b=>{if(b.jw)return;_purch+=(gstSplit(b).taxable||0);});
+  const _exp=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const plAccount=Math.round((_sales-_purch-_exp)*100)/100;
+  // ── Genuine two-side totals, each from its own recorded/derived data ──
+  // Liabilities & Equity side = recorded capital + P&L + drawings + other reserves + loans + current liab.
+  const equityLiabTot=capital+plRes+plAccount+drawingRes+otherRes+suspenseRes+nonCurLiab+curLiab;
+  // ── Suspense / Balance Sheet Difference: expose (never hide) any imbalance ──
+  // difference = Assets − (Equity & Liabilities). If assets exceed the claims we can account
+  // for, the unexplained excess sits on the liabilities side (and vice-versa). Capital is
+  // NOT touched to absorb it.
+  const bsDiff=Math.round((assetTot-equityLiabTot)*100)/100;
+  return {tradeRecv,supplierAdv,creditors,custAdv,fixed,stInvest,stock,cash,bank,bankPos,bankNeg,
+    loans,od,reserves,ownerCapRes,plRes,drawingRes,suspenseRes,otherRes,
+    dutiesTaxes,itcCredit,cashEq,curAssetsTot,nonCurAssetsTot,assetTot,curLiab,nonCurLiab,
+    capital,plAccount,equityLiabTot,bsDiff};
 }
 function bsSections(){
   const b=classifiedBS();
-  const A=[{kind:'head',label:'NON-CURRENT ASSETS'},
-    {kind:'line',label:'Fixed Assets (land, machinery, vehicles, furniture)',amt:b.fixed},
-    {kind:'sub',label:'Total Non-Current Assets',amt:b.nonCurAssetsTot},
-    {kind:'head',label:'CURRENT ASSETS'},
-    {kind:'line',label:'Inventory / Closing Stock (at cost)',amt:b.stock},
-    {kind:'line',label:'Trade Receivables (Debtors)',amt:b.tradeRecv}];
+  // ── LIABILITIES side (accountant order), each line from its OWN recorded/derived data ──
+  const L=[{kind:'head',label:'CAPITAL ACCOUNT'},
+    {kind:'line',label:'Capital Account',amt:b.capital}];   // recorded Owner Capital ONLY (no plug)
+  if(Math.abs(b.drawingRes)>0.5)L.push({kind:'line',label:'Drawing A/c',amt:b.drawingRes});
+  if(b.otherRes>0.5)L.push({kind:'line',label:'Reserves & Surplus',amt:b.otherRes});
+  L.push({kind:'sub',label:'Total Capital',amt:b.capital+b.drawingRes+b.otherRes});
+  if(b.loans>0.5){L.push({kind:'head',label:'LOANS (LIABILITY)'});L.push({kind:'line',label:'Secured / Unsecured Loans',amt:b.loans});}
+  if(b.od>0.5||b.bankNeg>0.5){L.push({kind:'head',label:'BANK OD A/C'});
+    if(b.od>0.5)L.push({kind:'line',label:'Bank Overdraft',amt:b.od});
+    if(b.bankNeg>0.5)L.push({kind:'line',label:'Bank (overdrawn)',amt:b.bankNeg});}
+  // Profit & Loss A/c: cumulative net profit to date + any retained-earnings reserve.
+  const plShown=Math.round((b.plAccount+b.plRes)*100)/100;
+  if(Math.abs(plShown)>0.5){L.push({kind:'head',label:'PROFIT & LOSS A/C'});
+    L.push({kind:'line',label:'Profit & Loss A/c'+(b.plAccount<0?' (loss)':''),amt:plShown});}
+  const clItems=[];
+  if(b.dutiesTaxes>0.5)clItems.push({kind:'line',label:'Duties & Taxes (GST payable)',amt:b.dutiesTaxes});
+  if(b.creditors>0.5)clItems.push({kind:'line',label:'Sundry Creditors',amt:b.creditors});
+  if(b.custAdv>0.5)clItems.push({kind:'line',label:'Advances from Customers',amt:b.custAdv});
+  if(clItems.length){L.push({kind:'head',label:'CURRENT LIABILITIES'});clItems.forEach(x=>L.push(x));
+    L.push({kind:'sub',label:'Total Current Liabilities',amt:b.curLiab});}
+
+  // ── ASSETS side (accountant order) ──
+  const A=[];
+  A.push({kind:'head',label:'FIXED ASSETS'});
+  A.push({kind:'line',label:'Fixed Assets',amt:b.fixed});
+  if(b.stInvest>0.5){A.push({kind:'head',label:'INVESTMENTS'});A.push({kind:'line',label:'Investments',amt:b.stInvest});}
+  A.push({kind:'head',label:'CURRENT ASSETS'});
+  A.push({kind:'line',label:'Closing Stock',amt:b.stock});
+  if(b.tradeRecv>0.5)A.push({kind:'line',label:'Sundry Debtors',amt:b.tradeRecv});
   if(b.supplierAdv>0.5)A.push({kind:'line',label:'Advances to Suppliers',amt:b.supplierAdv});
-  if(b.stInvest>0.5)A.push({kind:'line',label:'Short-term Investments',amt:b.stInvest});
-  A.push({kind:'line',label:'Cash & Cash Equivalents (cash + bank)',amt:b.cashEq});
+  if(b.itcCredit>0.5)A.push({kind:'line',label:'Duties & Taxes (ITC receivable)',amt:b.itcCredit});
+  A.push({kind:'line',label:'Cash-in-Hand',amt:b.cash});
+  if(b.bankPos>0.5)A.push({kind:'line',label:'Bank Accounts',amt:b.bankPos});
   A.push({kind:'sub',label:'Total Current Assets',amt:b.curAssetsTot});
-  const L=[{kind:'head',label:'CAPITAL & RESERVES'},
-    {kind:'line',label:"Owner's Capital Account (balancing)",amt:b.capital}];
-  if(b.reserves>0.5)L.push({kind:'line',label:'Reserves & Surplus',amt:b.reserves});
-  L.push({kind:'sub',label:'Total Capital & Reserves',amt:b.capital+b.reserves});
-  if(b.nonCurLiab>0.5){L.push({kind:'head',label:'NON-CURRENT LIABILITIES'});L.push({kind:'line',label:'Loans / Borrowings',amt:b.loans});}
-  L.push({kind:'head',label:'CURRENT LIABILITIES'});
-  if(b.creditors>0.5)L.push({kind:'line',label:'Sundry Creditors',amt:b.creditors});
-  if(b.custAdv>0.5)L.push({kind:'line',label:'Advances from Customers',amt:b.custAdv});
-  if(b.od>0.5)L.push({kind:'line',label:'Bank Overdraft',amt:b.od});
-  if(b.bankNeg>0.5)L.push({kind:'line',label:'Bank (overdrawn)',amt:b.bankNeg});
-  L.push({kind:'sub',label:'Total Current Liabilities',amt:b.curLiab});
-  return {A,L,assetTot:b.assetTot,liabTot:b.assetTot,capital:b.capital};
+
+  // ── SUSPENSE A/C — expose the imbalance, do NOT hide it in Capital ──
+  // bsDiff = Assets − (Equity & Liabilities). Any recorded-Suspense reserve is shown too.
+  // A positive difference means assets exceed accounted claims → sits on the LIABILITIES side
+  // as an unexplained credit; a negative difference sits on the ASSETS side. Either way the
+  // genuine accounts above are untouched and the two grand totals foot to Total Assets.
+  var suspLiab=b.suspenseRes+(b.bsDiff>0?b.bsDiff:0);
+  var suspAsset=(b.bsDiff<0?-b.bsDiff:0);
+  if(Math.abs(suspLiab)>0.5){L.push({kind:'head',label:'SUSPENSE A/C'});
+    L.push({kind:'line',label:'Suspense A/c / Balance Sheet Difference',amt:suspLiab});}
+  if(suspAsset>0.5){A.push({kind:'head',label:'SUSPENSE A/C'});
+    A.push({kind:'line',label:'Suspense A/c / Balance Sheet Difference',amt:suspAsset});}
+
+  var liabGrand=Math.round((b.equityLiabTot+(b.bsDiff>0?b.bsDiff:0))*100)/100;
+  var assetGrand=Math.round((b.assetTot+(b.bsDiff<0?-b.bsDiff:0))*100)/100;
+  return {A,L,assetTot:assetGrand,liabTot:liabGrand,capital:b.capital,bsDiff:b.bsDiff};
 }
 function bsRowsHTML(rows){
   return rows.map(r=>{
@@ -10381,19 +10454,19 @@ function bsRowsHTML(rows){
 function renderBalanceSheetReport(pg){
   const s=bsSections();
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🏛️ Balance Sheet</h3>
-    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${BIZ[curBiz].name} · classified (current vs non-current)</div>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${BIZ[curBiz].name} · accountant format</div>
     ${repActionBar("printBalanceSheet()",null)}
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
-      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">ASSETS</th></tr></thead>
-      <tbody>${bsRowsHTML(s.A)}</tbody>
-      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL ASSETS</td><td style="padding:8px;text-align:right">${fmt(s.assetTot)}</td></tr></tfoot>
+      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">LIABILITIES</th></tr></thead>
+      <tbody>${bsRowsHTML(s.L)}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(s.liabTot)}</td></tr></tfoot>
     </table>
     <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">EQUITY &amp; LIABILITIES</th></tr></thead>
-      <tbody>${bsRowsHTML(s.L)}</tbody>
-      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL EQUITY &amp; LIABILITIES</td><td style="padding:8px;text-align:right">${fmt(s.liabTot)}</td></tr></tfoot>
+      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">ASSETS</th></tr></thead>
+      <tbody>${bsRowsHTML(s.A)}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(s.assetTot)}</td></tr></tfoot>
     </table>
-    <div class="ibox blu" style="margin-top:12px">Capital Account (net worth) = <strong>${fmt(s.capital)}</strong>, the balancing figure. Closing stock at cost. Advances to suppliers and short-term investments shown under Current Assets. Bank from imported statements.</div></div>`;
+    <div class="ibox blu" style="margin-top:12px">Capital Account = <strong>${fmt(s.capital)}</strong> (recorded capital only — never adjusted to force a balance). Profit &amp; Loss A/c is cumulative net profit to date. Duties &amp; Taxes = GST payable (net of ITC). ${Math.abs(s.bsDiff)>0.5?'<strong style="color:#B45309">A Balance Sheet Difference of '+fmt(Math.abs(s.bsDiff))+' is shown under Suspense A/c — this is the actual gap between recorded assets and accounted claims, exposed rather than hidden.</strong>':'Both sides tie out exactly with no Suspense difference.'}</div></div>`;
 }
 function bsRowsPrint(rows){
   return rows.map(r=>{
@@ -10405,14 +10478,14 @@ function bsRowsPrint(rows){
 function printBalanceSheet(){
   const s=bsSections();
   const html=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">
-    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">ASSETS</th></tr></thead>
-    <tbody>${bsRowsPrint(s.A)}</tbody>
-    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL ASSETS</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.assetTot)}</td></tr></tfoot>
+    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">LIABILITIES</th></tr></thead>
+    <tbody>${bsRowsPrint(s.L)}</tbody>
+    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.liabTot)}</td></tr></tfoot>
   </table>
   <table style="width:100%;border-collapse:collapse;font-size:11px">
-    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">EQUITY &amp; LIABILITIES</th></tr></thead>
-    <tbody>${bsRowsPrint(s.L)}</tbody>
-    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL EQUITY &amp; LIABILITIES</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.liabTot)}</td></tr></tfoot>
+    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">ASSETS</th></tr></thead>
+    <tbody>${bsRowsPrint(s.A)}</tbody>
+    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.assetTot)}</td></tr></tfoot>
   </table>`;
   printReport('Balance Sheet (as on '+fmtD(td())+')',html);
 }
@@ -10467,8 +10540,8 @@ function generateAccountantPackage(){
 
   // 6. Balance Sheet (classified)
   const bss=bsSections();
-  const bsBody=bsRowsPrint(bss.A)+`<tr style="font-weight:800;background:#e8e8e8"><td style="padding:4px;border:1px solid #ccc">TOTAL ASSETS</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bss.assetTot)}</td></tr>`+
-    `<tr><td colspan="2" style="padding:3px"></td></tr>`+bsRowsPrint(bss.L)+`<tr style="font-weight:800;background:#e8e8e8"><td style="padding:4px;border:1px solid #ccc">TOTAL EQUITY &amp; LIABILITIES</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bss.liabTot)}</td></tr>`;
+  const bsBody=bsRowsPrint(bss.L)+`<tr style="font-weight:800;background:#e8e8e8"><td style="padding:4px;border:1px solid #ccc">TOTAL LIABILITIES</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bss.liabTot)}</td></tr>`+
+    `<tr><td colspan="2" style="padding:3px"></td></tr>`+bsRowsPrint(bss.A)+`<tr style="font-weight:800;background:#e8e8e8"><td style="padding:4px;border:1px solid #ccc">TOTAL ASSETS</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(bss.assetTot)}</td></tr>`;
   const bsSec=sec('6. Balance Sheet (as on '+fmtD(td())+')',`<table style="width:100%;border-collapse:collapse;font-size:10.5px"><tbody>${bsBody}</tbody></table>`);
 
   // 7. Party Ledger Summary
