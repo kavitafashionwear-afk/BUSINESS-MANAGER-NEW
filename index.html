@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R94</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R95</div>
   </nav>
 
   <!-- PAGES -->
@@ -922,11 +922,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     </div>
     <div style="font-size:12px;font-weight:800;color:#059669;margin:10px 0 2px">ASSETS (opening)</div>
     <div class="fr">
-      <div class="fl"><label>Closing Stock (opening) ₹</label><input id="ob-stock" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Closing Stock (opening) ₹ <span style="font-weight:400;color:var(--sub);font-size:10px">→ also shows in Stock section</span></label><input id="ob-stock" type="number" step="0.01" min="0" placeholder="0"></div>
       <div class="fl"><label>Sundry Debtors (opening) ₹</label><input id="ob-debtors" type="number" step="0.01" min="0" placeholder="0"></div>
     </div>
     <div class="fr">
-      <div class="fl"><label>Cash-in-Hand (opening) ₹</label><input id="ob-cash" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Cash-in-Hand (opening) ₹ <span style="font-weight:400;color:var(--sub);font-size:10px">→ also shows in Cash section</span></label><input id="ob-cash" type="number" step="0.01" min="0" placeholder="0"></div>
       <div class="fl"><label>Bank Accounts (opening) ₹</label><input id="ob-bank" type="number" step="0.01" placeholder="0"></div>
     </div>
     <div class="fr">
@@ -2741,7 +2741,7 @@ function renderLoans(){
       <button class="btn" style="background:#EFF6FF;color:#1E40AF;border-color:#BFDBFE" onclick="openOpeningBSModal()">📋 Opening Balances</button>
     </div>
     ${(()=>{const o=D().openingBS;if(!o)return '';
-      const rows=[['Profit & Loss A/c',o.pl,'L'],['Duties & Taxes (GST payable)',o.dutiesTaxes,'L'],['Sundry Creditors',o.creditors,'L'],['Advances from Customers',o.custAdv,'L'],['Closing Stock',o.stock,'A'],['Sundry Debtors',o.debtors,'A'],['Cash-in-Hand',o.cash,'A'],['Bank Accounts',o.bank,'A'],['Duties & Taxes (ITC receivable)',o.itc,'A'],['Advances to Suppliers',o.supplierAdv,'A']].filter(r=>Math.abs(parseFloat(r[1])||0)>0.001);
+      const rows=[['Profit & Loss A/c',o.pl,'L'],['Duties & Taxes (GST payable)',o.dutiesTaxes,'L'],['Sundry Creditors',o.creditors,'L'],['Advances from Customers',o.custAdv,'L'],['Closing Stock',D().cfStock,'A'],['Sundry Debtors',o.debtors,'A'],['Cash-in-Hand',D().cashOpening,'A'],['Bank Accounts',o.bank,'A'],['Duties & Taxes (ITC receivable)',o.itc,'A'],['Advances to Suppliers',o.supplierAdv,'A']].filter(r=>Math.abs(parseFloat(r[1])||0)>0.001);
       if(!rows.length)return '';
       return `<div class="card" style="border:1.5px solid #BFDBFE;background:#F8FAFF;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -2917,13 +2917,15 @@ function openReserveModal(rid){
   openModal('reserve');
 }
 function openOpeningBSModal(){
-  const o=ensureOpeningBS();
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=(v===0||v==='0')?'':((v||v===0)?v:'');};
+  const d=D();const o=ensureOpeningBS();
   document.getElementById('ob-date').value=o.date||'';
-  ['pl','dutiesTaxes','itc','debtors','creditors','stock','cash','bank','custAdv','supplierAdv'].forEach(k=>{
+  ['pl','dutiesTaxes','itc','debtors','creditors','bank','custAdv','supplierAdv'].forEach(k=>{
     const el=document.getElementById('ob-'+k);
     if(el){const val=parseFloat(o[k]);el.value=(!isNaN(val)&&val!==0)?val:'';}
   });
+  // Stock & cash are stored in their real operating fields — show those, not the BS-only copy.
+  const stEl=document.getElementById('ob-stock');if(stEl){const v=parseFloat(d.cfStock);stEl.value=(!isNaN(v)&&v!==0)?v:'';}
+  const cshEl=document.getElementById('ob-cash');if(cshEl){const v=parseFloat(d.cashOpening);cshEl.value=(!isNaN(v)&&v!==0)?v:'';}
   openModal('openingbs');
 }
 function clearOpeningBS(){
@@ -2937,10 +2939,20 @@ function saveOpeningBS(){
   const d=D();const o=ensureOpeningBS();
   const num=id=>{const el=document.getElementById(id);const v=el?parseFloat(el.value):0;return isNaN(v)?0:v;};
   o.date=document.getElementById('ob-date').value||'';
-  ['pl','dutiesTaxes','itc','debtors','creditors','stock','cash','bank','custAdv','supplierAdv'].forEach(k=>{o[k]=num('ob-'+k);});
+  // Figures with a REAL operating home route there (single source of truth), so they reflect
+  // in that section too — not only the Balance Sheet:
+  //   • Opening Stock  → cfStock (feeds Stock section, stockValue, purchase totals)
+  //   • Opening Cash   → cashOpening (feeds the Cash section ledger)
+  const _stock=num('ob-stock');
+  const _cash=num('ob-cash');
+  if(_stock>0){d.cfStock=_stock;}
+  if(_cash>0){d.cashOpening=_cash;if(!d.cashOpeningDate)d.cashOpeningDate=o.date||_fyStartISO();}
+  o.stock=0;o.cash=0;   // cleared here so the Balance Sheet doesn't double-count (it reads cfStock/cashOpening directly)
+  // The remaining figures have no separate operating section — they exist only as balances:
+  ['pl','dutiesTaxes','itc','debtors','creditors','bank','custAdv','supplierAdv'].forEach(k=>{o[k]=num('ob-'+k);});
   d.openingBS=o;
   saveToCloud();closeModal('openingbs');renderLoans();
-  toast('✅ Opening balances saved — added to the Balance Sheet as opening figures','ok');
+  toast('✅ Opening balances saved — stock &amp; cash now also show in their own sections','ok');
 }
 function saveReserve(){
   const d=D();ensureReserves();
