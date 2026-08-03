@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R92</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R93</div>
   </nav>
 
   <!-- PAGES -->
@@ -8078,7 +8078,9 @@ function deleteBankTxn(idx){
 
 // Reverse an assignment/match but KEEP the bank entry — it goes back to the "needs action" list so you can re-assign it.
 function unassignTxn(idx){
-  const d=D();const t=bankTxns[idx];if(!t)return;
+  const d=D();
+  bankTxns=d.bankTxns||bankTxns;          // ensure the global points at the CURRENT firm's array before indexing
+  const t=bankTxns[idx];if(!t)return;
   if(!(t.matchId||t.assigned)){renderBank();return;}
   let extra='';
   if(t.assigned==='party'||t.autoCreated)extra='The receipt/payment it created will be removed from the party ledger.';
@@ -8122,7 +8124,10 @@ function unassignTxn(idx){
   // Clear all assignment flags → entry returns to the "needs action" list
   t.matchId=null;delete t.matchMeta;delete t.skipMatch;t.assigned=null;t.assignedLoan=null;t.assignedAsset=null;t.assignedReserve=null;t.autoCreated=null;t.createdId=null;
   d.bankTxns=bankTxns;
-  saveToCloud();renderAll();renderBank();
+  saveToCloud();
+  try{renderAll();}catch(e){}
+  try{renderBank();}catch(e){}
+  toast('↩ Entry sent back to Miscellaneous — assign it again from there','ok');
 }
 
 function repairPaymentDirections(){
