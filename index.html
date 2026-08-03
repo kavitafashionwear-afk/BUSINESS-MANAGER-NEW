@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R84</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R87</div>
   </nav>
 
   <!-- PAGES -->
@@ -885,7 +885,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <div class="fr">
       <div class="fl"><label>Category</label>
         <select id="rs-cat">
-          <option>Retained Earnings</option><option>Owner Capital</option><option>General Reserve</option><option>Capital Reserve</option><option>Other</option>
+          <option>Owner Capital</option><option>Retained Earnings</option><option>Drawing</option><option>Suspense A/c</option><option>General Reserve</option><option>Capital Reserve</option><option>Other</option>
         </select>
       </div>
       <div class="fl"><label>Opening Amount (₹) *</label><input id="rs-amount" type="number" placeholder="0" min="0" step="0.01"></div>
@@ -2633,12 +2633,12 @@ function renderLoans(){
         return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
           <div>
             <div style="font-size:12px;font-weight:800;color:#DC2626;border-bottom:2px solid #FEE2E2;padding-bottom:4px;margin-bottom:4px">LIABILITIES</div>
-            ${bsRowsHTML(s.L)}
+            <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>${bsRowsHTML(s.L)}</tbody></table>
             <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total</strong><strong style="color:#DC2626">${fmt(s.liabTot)}</strong></div>
           </div>
           <div>
             <div style="font-size:12px;font-weight:800;color:#059669;border-bottom:2px solid #D1FAE5;padding-bottom:4px;margin-bottom:4px">ASSETS</div>
-            ${bsRowsHTML(s.A)}
+            <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>${bsRowsHTML(s.A)}</tbody></table>
             <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-top:1.5px solid var(--bdr);margin-top:4px"><strong>Total</strong><strong style="color:#059669">${fmt(s.assetTot)}</strong></div>
           </div>
         </div>
@@ -9023,7 +9023,7 @@ function openAssign(idx){
     </select>
     <input id="asg-reserve-name" placeholder="Reserve name (for new reserve)" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;margin-bottom:8px;box-sizing:border-box">
     <select id="asg-reserve-cat" style="width:100%;padding:10px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;margin-bottom:8px">
-      <option>Retained Earnings</option><option>Owner Capital</option><option>General Reserve</option><option>Capital Reserve</option><option>Other</option>
+      <option>Owner Capital</option><option>Retained Earnings</option><option>Drawing</option><option>Suspense A/c</option><option>General Reserve</option><option>Capital Reserve</option><option>Other</option>
     </select>
     <button class="btn" style="width:100%;justify-content:center;background:#F0FDF4;color:#166534;border-color:#BBF7D0" onclick="assignToReserve()">💰 Record to Reserve &amp; Surplus</button>
   </div>
@@ -10456,16 +10456,18 @@ function renderBalanceSheetReport(pg){
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🏛️ Balance Sheet</h3>
     <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${BIZ[curBiz].name} · accountant format</div>
     ${repActionBar("printBalanceSheet()",null)}
-    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
-      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">LIABILITIES</th></tr></thead>
-      <tbody>${bsRowsHTML(s.L)}</tbody>
-      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(s.liabTot)}</td></tr></tfoot>
-    </table>
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">ASSETS</th></tr></thead>
-      <tbody>${bsRowsHTML(s.A)}</tbody>
-      <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(s.assetTot)}</td></tr></tfoot>
-    </table>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">LIABILITIES</th></tr></thead>
+        <tbody>${bsRowsHTML(s.L)}</tbody>
+        <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(s.liabTot)}</td></tr></tfoot>
+      </table>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="background:var(--pri);color:#fff"><th colspan="2" style="padding:8px;text-align:left">ASSETS</th></tr></thead>
+        <tbody>${bsRowsHTML(s.A)}</tbody>
+        <tfoot><tr style="background:var(--pri3);font-weight:800"><td style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(s.assetTot)}</td></tr></tfoot>
+      </table>
+    </div>
     <div class="ibox blu" style="margin-top:12px">Capital Account = <strong>${fmt(s.capital)}</strong> (recorded capital only — never adjusted to force a balance). Profit &amp; Loss A/c is cumulative net profit to date. Duties &amp; Taxes = GST payable (net of ITC). ${Math.abs(s.bsDiff)>0.5?'<strong style="color:#B45309">A Balance Sheet Difference of '+fmt(Math.abs(s.bsDiff))+' is shown under Suspense A/c — this is the actual gap between recorded assets and accounted claims, exposed rather than hidden.</strong>':'Both sides tie out exactly with no Suspense difference.'}</div></div>`;
 }
 function bsRowsPrint(rows){
@@ -10477,16 +10479,22 @@ function bsRowsPrint(rows){
 }
 function printBalanceSheet(){
   const s=bsSections();
-  const html=`<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">
-    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">LIABILITIES</th></tr></thead>
-    <tbody>${bsRowsPrint(s.L)}</tbody>
-    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.liabTot)}</td></tr></tfoot>
-  </table>
-  <table style="width:100%;border-collapse:collapse;font-size:11px">
-    <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">ASSETS</th></tr></thead>
-    <tbody>${bsRowsPrint(s.A)}</tbody>
-    <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.assetTot)}</td></tr></tfoot>
-  </table>`;
+  const html=`<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody><tr style="vertical-align:top">
+    <td style="width:50%;padding:0 6px 0 0">
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">LIABILITIES</th></tr></thead>
+        <tbody>${bsRowsPrint(s.L)}</tbody>
+        <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.liabTot)}</td></tr></tfoot>
+      </table>
+    </td>
+    <td style="width:50%;padding:0 0 0 6px">
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:#ddd"><th colspan="2" style="padding:5px;text-align:left;border:1px solid #bbb">ASSETS</th></tr></thead>
+        <tbody>${bsRowsPrint(s.A)}</tbody>
+        <tfoot><tr style="font-weight:800;background:#e8e8e8"><td style="padding:5px;border:1px solid #bbb">TOTAL</td><td style="padding:5px;text-align:right;border:1px solid #bbb">${m2(s.assetTot)}</td></tr></tfoot>
+      </table>
+    </td>
+  </tr></tbody></table>`;
   printReport('Balance Sheet (as on '+fmtD(td())+')',html);
 }
 
