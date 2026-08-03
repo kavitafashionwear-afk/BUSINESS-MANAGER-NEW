@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R88</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R92</div>
   </nav>
 
   <!-- PAGES -->
@@ -848,12 +848,16 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     </div>
     <div class="fl"><label>Date of Purchase</label><input id="as-date" type="date"></div>
     <div style="background:#F8FAFC;border:1.5px solid var(--bdr);border-radius:10px;padding:10px;margin-bottom:10px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;margin-bottom:8px;font-weight:700;color:#1E40AF"><input type="checkbox" id="as-opening" style="width:16px;height:16px" onchange="calcAssetTotal()"> 📋 Opening balance asset (already paid in a previous year)</label>
+      <div id="as-pay-fields">
       <div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 How was it paid? <span style="font-weight:400;color:var(--sub)">(split allowed)</span></div>
       <div class="fr">
         <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">Paid by Cash (₹)</label><input id="as-cash" type="number" placeholder="0" min="0" step="0.01" oninput="calcAssetTotal()"></div>
         <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">Paid by Bank (₹)</label><input id="as-bank" type="number" placeholder="0" min="0" step="0.01" oninput="calcAssetTotal()"></div>
       </div>
       <div id="as-pay-calc" style="font-size:11px;color:var(--sub)"></div>
+      </div>
+      <div id="as-opening-note" style="display:none;font-size:11px;color:#1E40AF">This asset appears under Fixed Assets without any current-year cash/bank outflow and without a payable — its cost is already covered by your opening capital/cash. Use this for assets carried from last year's Balance Sheet.</div>
     </div>
     <details id="as-gst-wrap" style="margin:2px 0 8px">
       <summary style="font-size:12px;font-weight:700;color:var(--pri2);cursor:pointer;padding:4px 0">🧾 GST / claim Input Credit (for TV, phone, machinery…)</summary>
@@ -1539,6 +1543,23 @@ function emptyState(icon,title,sub,btnLabel,btnAction){
     (btnLabel?'<button class="btn pri" onclick="'+btnAction+'">'+btnLabel+'</button>':'')+'</div>';
 }
 function pageIntro(txt){return '<div style="font-size:12.5px;color:var(--sub);margin:-2px 0 12px;line-height:1.5">'+txt+'</div>';}
+function jumpToBankTxn(txnId){
+  if(!txnId)return;
+  const d=D();
+  const exists=(d.bankTxns||[]).some(t=>t.id===txnId);
+  if(!exists){toast('That bank entry is no longer in the statement (it may have been cleared or re-imported).','warn');return;}
+  goTab('bank');
+  // renderBank runs in goTab; wait a tick for the DOM, then scroll + highlight
+  setTimeout(function(){
+    const el=document.getElementById('banktxn-'+txnId);
+    if(!el){toast('Bank entry not visible — it may be filtered out. Clear bank filters and try again.','warn');return;}
+    el.scrollIntoView({behavior:'smooth',block:'center'});
+    const prevBg=el.style.boxShadow,prevBd=el.style.borderColor;
+    el.style.transition='box-shadow .3s';
+    el.style.boxShadow='0 0 0 3px #6366F1';
+    setTimeout(function(){el.style.boxShadow=prevBg||'';},1800);
+  },220);
+}
 function goTab(t){
   curTab=t;curParty=null;curDoc=null;
   const map={bills:'billshub',invoices:'billshub',inventory:'items'};
@@ -2655,7 +2676,7 @@ function renderLoans(){
   };
   const assetRow=a=>`<div class="prow" style="cursor:default">
     <div class="pav" style="background:#0EA5E9;font-size:15px">${a.cat==='Vehicle'?'🚗':a.cat==='Machinery'?'⚙️':a.cat==='Furniture'?'🪑':a.cat==='Property'?'🏠':a.cat==='Investment / FD'?'📈':'📦'}</div>
-    <div class="pi"><div class="pn" style="font-size:13px">${esc(a.name)}</div><div class="ps">${esc(a.cat||'Asset')}${a.date?' · '+fmtD(a.date):''}${a.note?' · '+esc(a.note):''}</div></div>
+    <div class="pi"><div class="pn" style="font-size:13px">${esc(a.name)}${(a.opening||a.payMode==='opening')?' <span style="font-size:9px;background:#DBEAFE;color:#1E40AF;padding:1px 5px;border-radius:6px;font-weight:700">OPENING</span>':''}</div><div class="ps">${esc(a.cat||'Asset')}${a.date?' · '+fmtD(a.date):''}${a.note?' · '+esc(a.note):''}</div></div>
     <div class="pb" style="color:#0369A1">${fmt(a.value)}<div style="font-size:10px"><button class="btn sm" onclick="openAssetModal('${a.id}')">✏️ Edit</button> <button class="btn sm red" onclick="delAsset('${a.id}')">🗑</button></div></div>
   </div>`;
   // Liabilities + Equity total now rendered by the authoritative bsSections() engine below.
@@ -2707,6 +2728,22 @@ function renderLoans(){
       <button class="btn" style="background:#F0FDF4;color:#166534;border-color:#BBF7D0" onclick="openReserveModal()">+ Add Reserve</button>
       <button class="btn" style="background:#EFF6FF;color:#1E40AF;border-color:#BFDBFE" onclick="openOpeningBSModal()">📋 Opening Balances</button>
     </div>
+    ${(()=>{const o=D().openingBS;if(!o)return '';
+      const rows=[['Profit & Loss A/c',o.pl,'L'],['Duties & Taxes (GST payable)',o.dutiesTaxes,'L'],['Sundry Creditors',o.creditors,'L'],['Advances from Customers',o.custAdv,'L'],['Closing Stock',o.stock,'A'],['Sundry Debtors',o.debtors,'A'],['Cash-in-Hand',o.cash,'A'],['Bank Accounts',o.bank,'A'],['Duties & Taxes (ITC receivable)',o.itc,'A'],['Advances to Suppliers',o.supplierAdv,'A']].filter(r=>Math.abs(parseFloat(r[1])||0)>0.001);
+      if(!rows.length)return '';
+      return `<div class="card" style="border:1.5px solid #BFDBFE;background:#F8FAFF;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-weight:800;font-size:13px;color:#1E40AF">📋 Opening Balances${o.date?' <span style="font-weight:400;color:var(--sub);font-size:11px">as on '+fmtD(o.date)+'</span>':''}</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn sm" style="background:#EFF6FF;color:#1E40AF;border-color:#BFDBFE" onclick="openOpeningBSModal()">✏️ Edit</button>
+            <button class="btn sm" style="background:#FEF2F2;color:#B91C1C;border-color:#FECACA" onclick="clearOpeningBS()">Clear</button>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>
+          ${rows.map(r=>`<tr><td style="padding:4px 6px;color:var(--sub)">${esc(r[0])} <span style="font-size:9px;color:#94A3B8">${r[2]==='L'?'LIAB':'ASSET'}</span></td><td style="padding:4px 6px;text-align:right;font-weight:600${(parseFloat(r[1])||0)<0?';color:#DC2626':''}">${fmt(parseFloat(r[1])||0)}</td></tr>`).join('')}
+        </tbody></table>
+        <div style="font-size:10px;color:var(--sub);margin-top:6px">These opening figures are added to the current year's transactions on the Balance Sheet.</div>
+      </div>`;})()}
     ${reserves.length?`<div class="card-hd" style="padding:0 4px">💰 Reserves &amp; Surplus</div>${reserves.map(reserveCard).join('')}`:''}
     ${od.length?`<div class="card-hd" style="padding:0 4px;margin-top:8px">🏦 Overdraft Facilities</div>${od.map(loanCard).join('')}`:''}
     ${friendly.length?`<div class="card-hd" style="padding:0 4px;margin-top:8px">🤝 Friends &amp; Family Loans</div>${friendly.map(loanCard).join('')}`:''}
@@ -2731,6 +2768,7 @@ function openAssetModal(aid){
   document.getElementById('as-gst').value=a?(a.gstPct||0):0;
   let cp=a?(a.cashPaid!=null?a.cashPaid:(a.payMode==='cash'?(a.grand||a.value||0):0)):0;
   let bp=a?(a.bankPaid!=null?a.bankPaid:(a.payMode==='bank'?(a.grand||a.value||0):0)):0;
+  const _opEl=document.getElementById('as-opening');if(_opEl)_opEl.checked=!!(a&&(a.opening||a.payMode==='opening'));
   document.getElementById('as-cash').value=cp||'';
   document.getElementById('as-bank').value=bp||'';
   document.getElementById('as-supplier').value=a?(a.supplier||''):'';
@@ -2771,6 +2809,9 @@ function openAssetModal(aid){
   openModal('asset');
 }
 function calcAssetTotal(){
+  const _op=document.getElementById('as-opening');
+  const _pf=document.getElementById('as-pay-fields'),_on=document.getElementById('as-opening-note');
+  if(_op&&_pf){const isOpen=_op.checked;_pf.style.display=isOpen?'none':'';if(_on)_on.style.display=isOpen?'':'none';}
   const taxable=parseFloat(document.getElementById('as-value').value)||0;
   const pct=parseFloat(document.getElementById('as-gst').value)||0;
   const itc=document.getElementById('as-itc').checked;
@@ -2813,19 +2854,21 @@ function saveAsset(){
   const gstStr=gstPct>0?(gstPct+(intra?'s':'i')):'';
   const grand=taxable+gstAmt;
   const value=claimItc?taxable:grand;
-  const cashPaid=parseFloat(document.getElementById('as-cash').value)||0;
-  const bankPaid=parseFloat(document.getElementById('as-bank').value)||0;
-  const unpaid=Math.round((grand-cashPaid-bankPaid)*100)/100;
-  const payMode=cashPaid&&bankPaid?'split':cashPaid?'cash':bankPaid?'bank':'credit';
-  // If bought (partly) on credit from a named supplier, link them so the unpaid shows as a payable in their ledger
+  const opening=!!(document.getElementById('as-opening')&&document.getElementById('as-opening').checked);
+  const cashPaid=opening?0:(parseFloat(document.getElementById('as-cash').value)||0);
+  const bankPaid=opening?0:(parseFloat(document.getElementById('as-bank').value)||0);
+  const unpaid=opening?0:Math.round((grand-cashPaid-bankPaid)*100)/100;
+  const payMode=opening?'opening':(cashPaid&&bankPaid?'split':cashPaid?'cash':bankPaid?'bank':'credit');
+  // If bought (partly) on credit from a named supplier, link them so the unpaid shows as a payable in their ledger.
+  // Opening assets are already paid (last year) → never create a payable.
   let supplierPid=null;
-  if(supplier&&unpaid>0.5){const sp=getOrCreateParty(supplier,'S',gstin);if(sp)supplierPid=sp.id;}
+  if(!opening&&supplier&&unpaid>0.5){const sp=getOrCreateParty(supplier,'S',gstin);if(sp)supplierPid=sp.id;}
   const obj={
     id:editAssetId||('AS'+String(d.assetC||1).padStart(3,'0')),
     name,
     cat:document.getElementById('as-cat').value,
     value,taxable,gstPct,gstAmt,gstStr,grand,gstin,supplier,supplierPid,
-    cashPaid,bankPaid,unpaid,payMode,claimItc,
+    cashPaid,bankPaid,unpaid,payMode,claimItc,opening,
     date:document.getElementById('as-date').value||td(),
     note:document.getElementById('as-note').value.trim(),
     txns:editAssetId?(d.assets.find(x=>x.id===editAssetId)?.txns||[]):[]
@@ -2863,10 +2906,20 @@ function openReserveModal(rid){
 }
 function openOpeningBSModal(){
   const o=ensureOpeningBS();
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=(v||v===0)?v:'';};
-  set('ob-date',o.date||'');
-  ['pl','dutiesTaxes','itc','debtors','creditors','stock','cash','bank','custAdv','supplierAdv'].forEach(k=>set('ob-'+k,o[k]||''));
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=(v===0||v==='0')?'':((v||v===0)?v:'');};
+  document.getElementById('ob-date').value=o.date||'';
+  ['pl','dutiesTaxes','itc','debtors','creditors','stock','cash','bank','custAdv','supplierAdv'].forEach(k=>{
+    const el=document.getElementById('ob-'+k);
+    if(el){const val=parseFloat(o[k]);el.value=(!isNaN(val)&&val!==0)?val:'';}
+  });
   openModal('openingbs');
+}
+function clearOpeningBS(){
+  if(!confirm('Clear all opening balances? This removes the prior-year figures from the Balance Sheet. Your invoices, payments and other data are not affected.'))return;
+  const d=D();
+  d.openingBS={date:'',pl:0,dutiesTaxes:0,itc:0,debtors:0,creditors:0,stock:0,cash:0,bank:0,custAdv:0,supplierAdv:0};
+  saveToCloud();renderLoans();
+  toast('Opening balances cleared','ok');
 }
 function saveOpeningBS(){
   const d=D();const o=ensureOpeningBS();
@@ -3087,14 +3140,14 @@ function openPartyDetail(pid){
   }).join('');
 
   const _docNum={};pinvs.forEach(i=>_docNum[i.id]=i.num);pbills.forEach(b=>_docNum[b.id]=b.num);
-  const payRows=ppays.slice().reverse().map(p=>`<div class="prow" style="cursor:default">
+  const payRows=ppays.slice().reverse().map(p=>`<div class="prow" style="cursor:${(p.source==='bank'&&p.bankTxnId)?'pointer':'default'}"${(p.source==='bank'&&p.bankTxnId)?` onclick="jumpToBankTxn('${esc(p.bankTxnId)}')" title="View this entry in the Bank Statement"`:''}>
     <div class="pav" style="background:${p.dir==='in'?'#059669':'#1E40AF'};font-size:18px">${p.dir==='in'?'↙':'↗'}</div>
     <div class="pi">
       <div class="pn" style="color:${p.dir==='in'?'var(--g)':'var(--r)'}">₹${new Intl.NumberFormat('en-IN').format(p.amt)}</div>
-      <div class="ps">${fmtD(p.date)} · ${p.mode}${p.ref?' · '+esc(p.ref):''}</div>
+      <div class="ps">${fmtD(p.date)} · ${p.mode}${p.ref?' · '+esc(p.ref):''}${(p.source==='bank'&&p.bankTxnId)?' · <span style="color:var(--pri2)">🔗 Bank stmt</span>':''}</div>
       ${(p.allocations&&p.allocations.length)?`<div class="ps" style="color:var(--sub)">→ ${p.allocations.map(a=>esc(_docNum[a.iid||a.bid]||'')+' '+fmt(a.amt)).join(' · ')}</div>`:(p.iid||p.bid)?`<div class="ps" style="color:var(--sub)">→ ${esc(_docNum[p.iid||p.bid]||'')}</div>`:''}
     </div>
-    <button class="btn sm red" onclick="delPayment('${p.id}')">🗑</button>
+    <button class="btn sm red" onclick="event.stopPropagation();delPayment('${p.id}')">🗑</button>
   </div>`).join('');
 
   const assetRows=passets.map(a=>`<div class="brow" style="cursor:pointer" onclick="goTab('loans')">
@@ -4869,6 +4922,45 @@ function allocateLegacyPayments(d){
   // to any invoice/bill (e.g. the doc was renumbered/recreated by an older build) credits
   // nothing, leaving that document permanently "pending". Drop only the dead entries; the
   // payment then re-flows through the existing FIFO pass below. Live allocations untouched.
+  // ── Heal OVER-ALLOCATED documents: if the total allocated to a bill/invoice EXCEEDS its
+  // grand (e.g. two bank payments were both dropped onto the same bill), the excess is real
+  // money wrongly parked — it makes that doc show a negative/settled balance while OTHER bills
+  // stay unpaid. Release the excess (trimming the most recent allocations first) back to the
+  // owning payment as surplus; the auto-advance pass below then re-flows it to genuinely
+  // unpaid bills, oldest first. Money is conserved (only re-pointed, never created/removed).
+  const _grand={};
+  (d.invoices||[]).forEach(i=>{if(i.mode!=='cash')_grand[i.id]=i.grand;});
+  (d.bills||[]).forEach(b=>{if(b.mode!=='cash')_grand[b.id]=b.grand;});
+  // total currently allocated per doc (direct links counted as full-amount allocations)
+  const _allocated={};
+  d.payments.forEach(p=>{
+    if(p.bid&&_grand[p.bid]!=null)_allocated[p.bid]=(_allocated[p.bid]||0)+p.amt;
+    if(p.iid&&_grand[p.iid]!=null)_allocated[p.iid]=(_allocated[p.iid]||0)+p.amt;
+    (p.allocations||[]).forEach(a=>{const k=a.iid||a.bid;if(_grand[k]!=null)_allocated[k]=(_allocated[k]||0)+a.amt;});
+  });
+  Object.keys(_allocated).forEach(docId=>{
+    let excess=Math.round((_allocated[docId]-_grand[docId])*100)/100;
+    if(excess<=0.5)return; // not over-allocated
+    // Trim from allocation ENTRIES on this doc, most-recent payment first (bank payments preferred),
+    // so the freed money belongs to the payment that can re-flow it.
+    const holders=[];
+    d.payments.forEach(p=>{
+      (p.allocations||[]).forEach(a=>{if((a.iid||a.bid)===docId)holders.push({p,a});});
+    });
+    holders.sort((x,y)=>{
+      const bankX=x.p.source==='bank'?1:0,bankY=y.p.source==='bank'?1:0;
+      if(bankX!==bankY)return bankY-bankX;                 // bank-owned first (they re-flow)
+      return ((y.p.date||'')+y.p.id).localeCompare((x.p.date||'')+x.p.id); // newest first
+    });
+    for(const h of holders){
+      if(excess<=0.5)break;
+      const cut=Math.min(excess,h.a.amt);
+      h.a.amt=Math.round((h.a.amt-cut)*100)/100;
+      excess=Math.round((excess-cut)*100)/100;
+    }
+    // drop any allocation entries that were trimmed to ~0
+    d.payments.forEach(p=>{if(p.allocations)p.allocations=p.allocations.filter(a=>Math.abs(a.amt)>0.005||(a.iid||a.bid)!==docId);});
+  });
   const _docExists={};
   (d.invoices||[]).forEach(i=>_docExists[i.id]=1);
   (d.bills||[]).forEach(b=>_docExists[b.id]=1);
@@ -7019,7 +7111,7 @@ function renderBank(){
           :`<div style="font-size:11px;color:#9CA3AF;margin-top:3px">— unidentified entry —</div>`;
       }
       if(t.reconOverride)statusLine+=`<div style="font-size:10px;color:#B91C1C;margin-top:2px" title="${esc(t.reconOverrideNote||'')}">⚠ ${esc(t.reconOverrideNote||'Imported with reconciliation override')}</div>`;
-      return `<div class="card" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.assigned==='reserve'?'#16A34A':t.matchId?'#059669':t.cls==='SWEEP'?'#0369A1':t.cls==='SWEEP?'?'#D97706':'#DC2626'}">
+      return `<div class="card" id="banktxn-${esc(t.id)}" style="padding:12px;margin-bottom:8px;border-left:3px solid ${t.assigned==='expense'?'#F59E0B':t.assigned==='loan'?'#1E40AF':t.assigned==='asset'?'#0EA5E9':t.assigned==='reserve'?'#16A34A':t.matchId?'#059669':t.cls==='SWEEP'?'#0369A1':t.cls==='SWEEP?'?'#D97706':'#DC2626'}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;color:var(--sub);margin-bottom:2px">${fmtD(t.date)}</div>
