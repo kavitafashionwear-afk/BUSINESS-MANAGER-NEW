@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R87</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R88</div>
   </nav>
 
   <!-- PAGES -->
@@ -900,6 +900,43 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
   </div>
 </div></div>
 
+<!-- OPENING BALANCES MODAL (prior-year Balance Sheet figures) -->
+<div class="ov" id="mo-openingbs">
+<div class="mb">
+  <div class="mhd"><div><h3>Opening Balances</h3><div class="sub">Enter last year's closing figures (as on start date)</div></div><button class="xb" onclick="closeModal('openingbs')">✕</button></div>
+  <div class="mbd">
+    <div class="ibox blu" style="font-size:12px;margin-bottom:8px">💡 For a pre-existing business, enter the previous year's Balance Sheet closing amounts here. These are treated as <b>opening balances</b> and added to the current year's recorded transactions (Tally's "Opening + Current Period" model). <b>Capital, Drawing &amp; Suspense</b> are entered under Reserves; <b>Fixed Assets, Loans &amp; Bank OD</b> under their own screens.</div>
+    <div class="fl"><label>Opening as-on Date</label><input id="ob-date" type="date"></div>
+    <div style="font-size:12px;font-weight:800;color:#DC2626;margin:8px 0 2px">LIABILITIES (opening)</div>
+    <div class="fr">
+      <div class="fl"><label>Profit &amp; Loss A/c (opening) ₹<span style="font-weight:400;color:var(--sub)"> — loss = negative</span></label><input id="ob-pl" type="number" step="0.01" placeholder="0"></div>
+      <div class="fl"><label>Duties &amp; Taxes / GST payable (opening) ₹</label><input id="ob-dutiesTaxes" type="number" step="0.01" min="0" placeholder="0"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Sundry Creditors (opening) ₹</label><input id="ob-creditors" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Advances from Customers (opening) ₹</label><input id="ob-custAdv" type="number" step="0.01" min="0" placeholder="0"></div>
+    </div>
+    <div style="font-size:12px;font-weight:800;color:#059669;margin:10px 0 2px">ASSETS (opening)</div>
+    <div class="fr">
+      <div class="fl"><label>Closing Stock (opening) ₹</label><input id="ob-stock" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Sundry Debtors (opening) ₹</label><input id="ob-debtors" type="number" step="0.01" min="0" placeholder="0"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>Cash-in-Hand (opening) ₹</label><input id="ob-cash" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Bank Accounts (opening) ₹</label><input id="ob-bank" type="number" step="0.01" placeholder="0"></div>
+    </div>
+    <div class="fr">
+      <div class="fl"><label>ITC Receivable (opening) ₹</label><input id="ob-itc" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Advances to Suppliers (opening) ₹</label><input id="ob-supplierAdv" type="number" step="0.01" min="0" placeholder="0"></div>
+    </div>
+    <div class="ibox" style="font-size:11px;color:var(--sub);margin-top:6px">Debtors &amp; Creditors here are lump-sum opening totals. If you prefer per-party opening balances, use each party's Opening Balance field instead (don't enter both, to avoid double counting).</div>
+  </div>
+  <div class="mft">
+    <button class="btn" onclick="closeModal('openingbs')">Cancel</button>
+    <button class="btn pri" onclick="saveOpeningBS()" style="background:#16A34A;border-color:#16A34A">Save Opening Balances</button>
+  </div>
+</div></div>
+
 <!-- RESERVE TXN MODAL -->
 <div class="ov" id="mo-reservetxn">
 <div class="mb">
@@ -1197,7 +1234,7 @@ const FIRMS=['MI','KF'];
 const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
-const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns','cancelledInvs','bankAliases'];
+const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS'];
 
 let unsubscribe=null;
 let _saving=false;
@@ -2506,6 +2543,13 @@ function totalFixedAssets(){return ensureAssets().reduce((s,a)=>s+(parseFloat(a.
 // d.reserves = [{id,name,cat,amount,date,note,txns:[{id,date,dir:'in'|'out',amt,note}]}]
 // 'in' = addition to reserve (profit transferred, capital infused); 'out' = drawdown/withdrawal.
 function ensureReserves(){const d=D();if(!d.reserves)d.reserves=[];if(!d.reserveC)d.reserveC=1;return d.reserves;}
+// Opening balances carried from the previous year's Balance Sheet (pre-existing business).
+// ONE recorded object per firm — not a ledger. These are ADDED to the live current-year
+// movement in classifiedBS (Tally's "Opening Balance + Current Period" model). Only figures
+// that lack a clean per-entity opening path live here; capital/drawing/suspense use reserves,
+// fixed assets/loans/OD use their own screens, per-party OB uses the party field.
+function ensureOpeningBS(){const d=D();if(!d.openingBS)d.openingBS={date:'',pl:0,dutiesTaxes:0,itc:0,debtors:0,creditors:0,stock:0,cash:0,bank:0,custAdv:0,supplierAdv:0};return d.openingBS;}
+function _obNum(k){const o=D().openingBS;return o&&o[k]?(parseFloat(o[k])||0):0;}
 function reserveBalance(r){
   const base=parseFloat(r.amount)||0;
   const txns=r.txns||[];
@@ -2661,6 +2705,7 @@ function renderLoans(){
       <button class="btn" style="background:#F5F3FF;color:#5B21B6;border-color:#DDD6FE" onclick="openLoanModal(null,'od')">+ Add OD Facility</button>
       <button class="btn" style="background:#EFF6FF;color:#0369A1;border-color:#BAE6FD" onclick="openAssetModal()">+ Add Asset</button>
       <button class="btn" style="background:#F0FDF4;color:#166534;border-color:#BBF7D0" onclick="openReserveModal()">+ Add Reserve</button>
+      <button class="btn" style="background:#EFF6FF;color:#1E40AF;border-color:#BFDBFE" onclick="openOpeningBSModal()">📋 Opening Balances</button>
     </div>
     ${reserves.length?`<div class="card-hd" style="padding:0 4px">💰 Reserves &amp; Surplus</div>${reserves.map(reserveCard).join('')}`:''}
     ${od.length?`<div class="card-hd" style="padding:0 4px;margin-top:8px">🏦 Overdraft Facilities</div>${od.map(loanCard).join('')}`:''}
@@ -2815,6 +2860,22 @@ function openReserveModal(rid){
   document.getElementById('rs-date').value=r?(r.date||td()):td();
   document.getElementById('rs-note').value=r?r.note||'':'';
   openModal('reserve');
+}
+function openOpeningBSModal(){
+  const o=ensureOpeningBS();
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=(v||v===0)?v:'';};
+  set('ob-date',o.date||'');
+  ['pl','dutiesTaxes','itc','debtors','creditors','stock','cash','bank','custAdv','supplierAdv'].forEach(k=>set('ob-'+k,o[k]||''));
+  openModal('openingbs');
+}
+function saveOpeningBS(){
+  const d=D();const o=ensureOpeningBS();
+  const num=id=>{const el=document.getElementById(id);const v=el?parseFloat(el.value):0;return isNaN(v)?0:v;};
+  o.date=document.getElementById('ob-date').value||'';
+  ['pl','dutiesTaxes','itc','debtors','creditors','stock','cash','bank','custAdv','supplierAdv'].forEach(k=>{o[k]=num('ob-'+k);});
+  d.openingBS=o;
+  saveToCloud();closeModal('openingbs');renderLoans();
+  toast('✅ Opening balances saved — added to the Balance Sheet as opening figures','ok');
 }
 function saveReserve(){
   const d=D();ensureReserves();
@@ -10327,17 +10388,21 @@ function printTrialBalance(){
 /* ── BALANCE SHEET ── */
 function classifiedBS(){
   const d=D();
+  const _ob=ensureOpeningBS();  // prior-year opening balances (added to live current-year movement)
   let tradeRecv=0,supplierAdv=0,creditors=0,custAdv=0;
   d.parties.filter(p=>!p.deleted).forEach(p=>{
     const b=partyBalance(p.id);
     if(b>0.5){ if(p.type==='S')supplierAdv+=b; else tradeRecv+=b; }
     else if(b<-0.5){ if(p.type==='C')custAdv+=-b; else creditors+=-b; }
   });
+  // + opening (prior-year) lump sums for figures without a per-entity opening path
+  tradeRecv+=_obNum('debtors'); creditors+=_obNum('creditors');
+  supplierAdv+=_obNum('supplierAdv'); custAdv+=_obNum('custAdv');
   let fixed=0,stInvest=0;
   ensureAssets().forEach(a=>{const v=parseFloat(a.value)||0; if(a.cat==='Investment / FD')stInvest+=v; else fixed+=v;});
-  const stock=Math.max(0,pkgClosingStock());
-  const cash=Math.max(0,cashInHand());
-  const bank=bankNet();const bankPos=bank>0?bank:0,bankNeg=bank<0?-bank:0;
+  const stock=Math.max(0,pkgClosingStock())+_obNum('stock');
+  const cash=Math.max(0,cashInHand())+_obNum('cash');
+  const bank=bankNet()+_obNum('bank');const bankPos=bank>0?bank:0,bankNeg=bank<0?-bank:0;
   const loans=totalLoanOutstanding(),od=odUsed();
   // Split reserves into accountant buckets by category (existing reserve records only):
   //   Owner Capital → Capital Account · Retained Earnings → P&L A/c · Drawing → Drawing A/c
@@ -10359,8 +10424,8 @@ function classifiedBS(){
   let outGST=0,inGST=0;
   (d.invoices||[]).forEach(i=>{const g=gstSplit(i);outGST+=(g.cgst||0)+(g.sgst||0)+(g.igst||0);});
   (d.bills||[]).forEach(b=>{if(b.jw)return;const g=gstSplit(b);inGST+=(g.cgst||0)+(g.sgst||0)+(g.igst||0);});
-  const dutiesTaxes=Math.max(0,Math.round((outGST-inGST)*100)/100);
-  const itcCredit=Math.max(0,Math.round((inGST-outGST)*100)/100); // net ITC receivable (asset), if any
+  const dutiesTaxes=Math.max(0,Math.round((outGST-inGST)*100)/100)+_obNum('dutiesTaxes');
+  const itcCredit=Math.max(0,Math.round((inGST-outGST)*100)/100)+_obNum('itc'); // net ITC receivable (asset), if any
   const cashEq=cash+bankPos;
   const curAssetsTot=stock+tradeRecv+supplierAdv+stInvest+cashEq+itcCredit;
   const nonCurAssetsTot=fixed;
@@ -10377,7 +10442,7 @@ function classifiedBS(){
   (d.invoices||[]).forEach(i=>{_sales+=(gstSplit(i).taxable||0);});
   (d.bills||[]).forEach(b=>{if(b.jw)return;_purch+=(gstSplit(b).taxable||0);});
   const _exp=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
-  const plAccount=Math.round((_sales-_purch-_exp)*100)/100;
+  const plAccount=Math.round((_sales-_purch-_exp)*100)/100+_obNum('pl');
   // ── Genuine two-side totals, each from its own recorded/derived data ──
   // Liabilities & Equity side = recorded capital + P&L + drawings + other reserves + loans + current liab.
   const equityLiabTot=capital+plRes+plAccount+drawingRes+otherRes+suspenseRes+nonCurLiab+curLiab;
