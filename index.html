@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R93</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R94</div>
   </nav>
 
   <!-- PAGES -->
@@ -1929,13 +1929,25 @@ function openCashAdjust(dir){
   d.expenses.push({id:'EXP'+uid4(),date:td(),desc:note||'Cash adjustment',amount:amt,cat:'Cash Adjustment',dir:dir,mode:'cash'});
   saveToCloud();renderCash();
 }
+function _fyStartISO(){
+  // Indian FY starts 1 April. If today is Jan–Mar, FY started 1 Apr of previous calendar year.
+  const now=new Date();const y=now.getFullYear();const m=now.getMonth()+1;
+  const startY=(m>=4)?y:y-1;
+  return startY+'-04-01';
+}
 function openCashOpening(){
   const d=D();
-  const cur=d.cashOpening||0;
-  const v=prompt('Opening cash balance for '+BIZ[curBiz].name+' (₹):',cur);
+  const curAmt=d.cashOpening||0;
+  const curDate=d.cashOpeningDate||_fyStartISO();
+  const v=prompt('Opening cash balance for '+BIZ[curBiz].name+' (₹):',curAmt);
   if(v===null)return;
-  d.cashOpening=parseFloat(v)||0;d.cashOpeningDate=d.cashOpeningDate||td();
+  const dt=prompt('Opening date (YYYY-MM-DD) — usually the first day of the financial year:',curDate);
+  if(dt===null)return;
+  const iso=/^\d{4}-\d{2}-\d{2}$/.test((dt||'').trim())?dt.trim():curDate;
+  d.cashOpening=parseFloat(v)||0;
+  d.cashOpeningDate=iso;
   saveToCloud();renderCash();
+  toast('Opening cash set: '+fmt(d.cashOpening)+' as on '+fmtD(iso),'ok');
 }
 // Edit a cash-ledger entry at its source (expense / payment / asset / opening)
 function editCashRow(kind,id){
@@ -10498,7 +10510,12 @@ function classifiedBS(){
   let fixed=0,stInvest=0;
   ensureAssets().forEach(a=>{const v=parseFloat(a.value)||0; if(a.cat==='Investment / FD')stInvest+=v; else fixed+=v;});
   const stock=Math.max(0,pkgClosingStock())+_obNum('stock');
-  const cash=Math.max(0,cashInHand())+_obNum('cash');
+  // Cash-in-Hand: cashInHand() already includes the Cash-section opening (d.cashOpening) and all
+  // cash movements. To avoid double-counting, only add the Opening-Balances-screen cash if the
+  // Cash section opening was NOT used. Negative cash is impossible in reality, so a negative here
+  // means opening cash hasn't been entered — surfaced via the Suspense difference, not floored away.
+  const _cashLive=cashInHand();
+  const cash=_cashLive+((D().cashOpening)?0:_obNum('cash'));
   const bank=bankNet()+_obNum('bank');const bankPos=bank>0?bank:0,bankNeg=bank<0?-bank:0;
   const loans=totalLoanOutstanding(),od=odUsed();
   // Split reserves into accountant buckets by category (existing reserve records only):
