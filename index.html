@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R97</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R98</div>
   </nav>
 
   <!-- PAGES -->
@@ -634,6 +634,13 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <div class="fr">
       <div class="fl"><label>Amount (₹) <span class="req">*</span></label><input id="pay-amt" type="number" placeholder="0" min="1" oninput="previewAlloc()"></div>
       <div class="fl"><label>Date *</label><input id="pay-date" type="date"></div>
+    </div>
+    <div class="fl"><label>Direction</label>
+      <select id="pay-dir">
+        <option value="auto">Auto (based on bill/party)</option>
+        <option value="in">💰 Cash / Amount RECEIVED (money in)</option>
+        <option value="out">📤 Cash / Amount PAID (money out)</option>
+      </select>
     </div>
     <div class="fl"><label>Mode</label>
       <select id="pay-mode" onchange="togglePaySplit()">
@@ -4911,6 +4918,12 @@ function openPayModal(pid,docId,docType){
   }
   document.getElementById('pay-date').value=td();
   document.getElementById('pay-mode').value='NEFT';
+  // Pre-select the sensible direction so it's visible; user can still switch (e.g. refunds).
+  const _pd=document.getElementById('pay-dir');
+  if(_pd){
+    const _auto=payTargetDoc?(payTargetDoc.type==='bill'?'out':'in'):(party&&party.type==='S'?'out':'in');
+    _pd.value=_auto;
+  }
   document.getElementById('pay-ref').value='';
   document.getElementById('pay-rem').value='';
   const pc=document.getElementById('pay-cash'),pb=document.getElementById('pay-bank');if(pc)pc.value='';if(pb)pb.value='';
@@ -5145,9 +5158,13 @@ function savePayment(){
   // Direction: when settling a SPECIFIC document, the document type decides (a purchase
   // bill is always an outflow, a sales invoice an inflow) — this is authoritative even for
   // 'Both' parties. Only fall back to party type for open/on-account payments.
-  const dir=payTargetDoc
-    ?(payTargetDoc.type==='bill'?'out':'in')
-    :(party&&party.type==='S'?'out':'in');
+  // An explicit user choice (pay-dir) overrides both, for cases like refunds or 'Both' parties.
+  const _dirSel=(document.getElementById('pay-dir')||{}).value||'auto';
+  const dir=(_dirSel==='in'||_dirSel==='out')
+    ?_dirSel
+    :(payTargetDoc
+      ?(payTargetDoc.type==='bill'?'out':'in')
+      :(party&&party.type==='S'?'out':'in'));
   const mode=document.getElementById('pay-mode').value;
   const pay={
     id:'PAY'+uid4(),
@@ -5177,9 +5194,11 @@ function openCashSettle(pid){
   // Force Cash mode and label the modal accordingly
   const modeSel=document.getElementById('pay-mode');
   if(modeSel)modeSel.value='Cash';
-  const title=document.getElementById('pay-mo-title');
   const d=D();const party=d.parties.find(p=>p.id===pid);
   const isCust=party&&(party.type==='C'||party.type==='B');
+  // Pre-select the sensible cash direction; the Received/Paid dropdown lets you change it.
+  const _pd=document.getElementById('pay-dir');if(_pd)_pd.value=isCust?'in':'out';
+  const title=document.getElementById('pay-mo-title');
   if(title)title.textContent=isCust?'💵 Settle in Cash (Receipt)':'💵 Settle in Cash (Payment)';
   const ref=document.getElementById('pay-ref');if(ref)ref.value='Cash settlement';
 }
