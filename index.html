@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R95</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R97</div>
   </nav>
 
   <!-- PAGES -->
@@ -913,17 +913,17 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <div class="fl"><label>Opening as-on Date</label><input id="ob-date" type="date"></div>
     <div style="font-size:12px;font-weight:800;color:#DC2626;margin:8px 0 2px">LIABILITIES (opening)</div>
     <div class="fr">
-      <div class="fl"><label>Profit &amp; Loss A/c (opening) ₹<span style="font-weight:400;color:var(--sub)"> — loss = negative</span></label><input id="ob-pl" type="number" step="0.01" placeholder="0"></div>
+      <div class="fl"><label>Profit &amp; Loss A/c (opening) ₹<span style="font-weight:400;color:var(--sub)"> — loss = negative · <span style="font-size:10px">→ saved as a Retained Earnings reserve</span></span></label><input id="ob-pl" type="number" step="0.01" placeholder="0"></div>
       <div class="fl"><label>Duties &amp; Taxes / GST payable (opening) ₹</label><input id="ob-dutiesTaxes" type="number" step="0.01" min="0" placeholder="0"></div>
     </div>
     <div class="fr">
-      <div class="fl"><label>Sundry Creditors (opening) ₹</label><input id="ob-creditors" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Sundry Creditors (opening) ₹ <span style="font-weight:400;color:#B45309;font-size:10px">⚠ lump total — for per-supplier ledgers use each party's Opening Balance</span></label><input id="ob-creditors" type="number" step="0.01" min="0" placeholder="0"></div>
       <div class="fl"><label>Advances from Customers (opening) ₹</label><input id="ob-custAdv" type="number" step="0.01" min="0" placeholder="0"></div>
     </div>
     <div style="font-size:12px;font-weight:800;color:#059669;margin:10px 0 2px">ASSETS (opening)</div>
     <div class="fr">
       <div class="fl"><label>Closing Stock (opening) ₹ <span style="font-weight:400;color:var(--sub);font-size:10px">→ also shows in Stock section</span></label><input id="ob-stock" type="number" step="0.01" min="0" placeholder="0"></div>
-      <div class="fl"><label>Sundry Debtors (opening) ₹</label><input id="ob-debtors" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Sundry Debtors (opening) ₹ <span style="font-weight:400;color:#B45309;font-size:10px">⚠ lump total — for per-customer ledgers use each party's Opening Balance</span></label><input id="ob-debtors" type="number" step="0.01" min="0" placeholder="0"></div>
     </div>
     <div class="fr">
       <div class="fl"><label>Cash-in-Hand (opening) ₹ <span style="font-weight:400;color:var(--sub);font-size:10px">→ also shows in Cash section</span></label><input id="ob-cash" type="number" step="0.01" min="0" placeholder="0"></div>
@@ -1238,7 +1238,7 @@ const FIRMS=['MI','KF'];
 const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
-const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS'];
+const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','cfYear','cfNotes','cashOpening','cashOpeningDate','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS'];
 
 let unsubscribe=null;
 let _saving=false;
@@ -2741,7 +2741,8 @@ function renderLoans(){
       <button class="btn" style="background:#EFF6FF;color:#1E40AF;border-color:#BFDBFE" onclick="openOpeningBSModal()">📋 Opening Balances</button>
     </div>
     ${(()=>{const o=D().openingBS;if(!o)return '';
-      const rows=[['Profit & Loss A/c',o.pl,'L'],['Duties & Taxes (GST payable)',o.dutiesTaxes,'L'],['Sundry Creditors',o.creditors,'L'],['Advances from Customers',o.custAdv,'L'],['Closing Stock',D().cfStock,'A'],['Sundry Debtors',o.debtors,'A'],['Cash-in-Hand',D().cashOpening,'A'],['Bank Accounts',o.bank,'A'],['Duties & Taxes (ITC receivable)',o.itc,'A'],['Advances to Suppliers',o.supplierAdv,'A']].filter(r=>Math.abs(parseFloat(r[1])||0)>0.001);
+      const _plRes=(D().reserves||[]).find(x=>x.id===o.plReserveId);
+      const rows=[['Profit & Loss A/c',_plRes?_plRes.amount:0,'L'],['Duties & Taxes (GST payable)',o.dutiesTaxes,'L'],['Sundry Creditors',o.creditors,'L'],['Advances from Customers',o.custAdv,'L'],['Closing Stock',D().cfStock,'A'],['Sundry Debtors',o.debtors,'A'],['Cash-in-Hand',D().cashOpening,'A'],['Bank Accounts',o.bank,'A'],['Duties & Taxes (ITC receivable)',o.itc,'A'],['Advances to Suppliers',o.supplierAdv,'A']].filter(r=>Math.abs(parseFloat(r[1])||0)>0.001);
       if(!rows.length)return '';
       return `<div class="card" style="border:1.5px solid #BFDBFE;background:#F8FAFF;margin-bottom:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -2926,6 +2927,8 @@ function openOpeningBSModal(){
   // Stock & cash are stored in their real operating fields — show those, not the BS-only copy.
   const stEl=document.getElementById('ob-stock');if(stEl){const v=parseFloat(d.cfStock);stEl.value=(!isNaN(v)&&v!==0)?v:'';}
   const cshEl=document.getElementById('ob-cash');if(cshEl){const v=parseFloat(d.cashOpening);cshEl.value=(!isNaN(v)&&v!==0)?v:'';}
+  // P&L is stored as a Retained Earnings reserve — show its amount.
+  const plEl=document.getElementById('ob-pl');if(plEl){const r=(d.reserves||[]).find(x=>x.id===o.plReserveId);const v=r?parseFloat(r.amount):NaN;plEl.value=(!isNaN(v)&&v!==0)?v:'';}
   openModal('openingbs');
 }
 function clearOpeningBS(){
@@ -2939,20 +2942,30 @@ function saveOpeningBS(){
   const d=D();const o=ensureOpeningBS();
   const num=id=>{const el=document.getElementById(id);const v=el?parseFloat(el.value):0;return isNaN(v)?0:v;};
   o.date=document.getElementById('ob-date').value||'';
-  // Figures with a REAL operating home route there (single source of truth), so they reflect
-  // in that section too — not only the Balance Sheet:
-  //   • Opening Stock  → cfStock (feeds Stock section, stockValue, purchase totals)
-  //   • Opening Cash   → cashOpening (feeds the Cash section ledger)
-  const _stock=num('ob-stock');
-  const _cash=num('ob-cash');
-  if(_stock>0){d.cfStock=_stock;}
+  // Figures with a REAL operating home are ROUTED there (single source of truth), so they
+  // reflect in that section too — never as a Balance-Sheet-only shadow figure:
+  //   • Opening Stock → cfStock (Stock section)
+  //   • Opening Cash  → cashOpening (Cash section)
+  //   • Opening P&L   → a Retained Earnings reserve (Reserves — flows to P&L on the sheet)
+  const _stock=num('ob-stock'), _cash=num('ob-cash'), _pl=num('ob-pl');
+  if(_stock>0)d.cfStock=_stock;
   if(_cash>0){d.cashOpening=_cash;if(!d.cashOpeningDate)d.cashOpeningDate=o.date||_fyStartISO();}
-  o.stock=0;o.cash=0;   // cleared here so the Balance Sheet doesn't double-count (it reads cfStock/cashOpening directly)
-  // The remaining figures have no separate operating section — they exist only as balances:
-  ['pl','dutiesTaxes','itc','debtors','creditors','bank','custAdv','supplierAdv'].forEach(k=>{o[k]=num('ob-'+k);});
+  // P&L → dedicated opening reserve (created once, updated thereafter). id kept on openingBS so we don't duplicate.
+  ensureReserves();
+  if(_pl!==0){
+    let r=d.reserves.find(x=>x.id===o.plReserveId)||d.reserves.find(x=>x.cat==='Retained Earnings'&&x.name==='Opening P&L (b/f)');
+    if(r){r.amount=_pl;r.cat='Retained Earnings';}
+    else{r={id:'RS'+String(d.reserveC||1).padStart(3,'0'),name:'Opening P&L (b/f)',cat:'Retained Earnings',amount:_pl,date:o.date||_fyStartISO(),note:'Opening balance carried forward',txns:[]};d.reserves.push(r);d.reserveC=(d.reserveC||1)+1;}
+    o.plReserveId=r.id;
+  } else if(o.plReserveId){
+    const i=d.reserves.findIndex(x=>x.id===o.plReserveId);if(i>=0)d.reserves.splice(i,1);o.plReserveId=null;
+  }
+  o.stock=0;o.cash=0;o.pl=0;   // cleared so the Balance Sheet reads the real fields (cfStock/cashOpening/reserve), no double-count
+  // Remaining figures have no separate operating section — they exist only as balances on the sheet:
+  ['dutiesTaxes','itc','debtors','creditors','bank','custAdv','supplierAdv'].forEach(k=>{o[k]=num('ob-'+k);});
   d.openingBS=o;
   saveToCloud();closeModal('openingbs');renderLoans();
-  toast('✅ Opening balances saved — stock &amp; cash now also show in their own sections','ok');
+  toast('✅ Opening balances saved — stock, cash &amp; P&amp;L now also live in their own sections','ok');
 }
 function saveReserve(){
   const d=D();ensureReserves();
@@ -10521,7 +10534,7 @@ function classifiedBS(){
   supplierAdv+=_obNum('supplierAdv'); custAdv+=_obNum('custAdv');
   let fixed=0,stInvest=0;
   ensureAssets().forEach(a=>{const v=parseFloat(a.value)||0; if(a.cat==='Investment / FD')stInvest+=v; else fixed+=v;});
-  const stock=Math.max(0,pkgClosingStock())+_obNum('stock');
+  const stock=Math.max(0,pkgClosingStock());  // opening stock now routes to cfStock (inside pkgClosingStock), no BS-only add
   // Cash-in-Hand: cashInHand() already includes the Cash-section opening (d.cashOpening) and all
   // cash movements. To avoid double-counting, only add the Opening-Balances-screen cash if the
   // Cash section opening was NOT used. Negative cash is impossible in reality, so a negative here
@@ -10568,7 +10581,7 @@ function classifiedBS(){
   (d.invoices||[]).forEach(i=>{_sales+=(gstSplit(i).taxable||0);});
   (d.bills||[]).forEach(b=>{if(b.jw)return;_purch+=(gstSplit(b).taxable||0);});
   const _exp=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
-  const plAccount=Math.round((_sales-_purch-_exp)*100)/100+_obNum('pl');
+  const plAccount=Math.round((_sales-_purch-_exp)*100)/100;  // opening P&L now flows via its Retained Earnings reserve (plRes), not a BS-only add
   // ── Genuine two-side totals, each from its own recorded/derived data ──
   // Liabilities & Equity side = recorded capital + P&L + drawings + other reserves + loans + current liab.
   const equityLiabTot=capital+plRes+plAccount+drawingRes+otherRes+suspenseRes+nonCurLiab+curLiab;
