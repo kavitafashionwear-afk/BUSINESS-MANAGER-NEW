@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R98</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R99</div>
   </nav>
 
   <!-- PAGES -->
@@ -2640,9 +2640,9 @@ function renderLoans(){
           ${l.note?`<div style="font-size:11px;color:var(--sub);margin-top:2px">${esc(l.note)}</div>`:''}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:8px">
-          <div style="font-size:10px;color:var(--sub)">${l.kind==='od'?'Drawn':'Outstanding'}</div>
-          <div style="font-size:17px;font-weight:800;color:${bal>0?'#DC2626':'#059669'}">${fmt(bal)}</div>
-          ${l.kind==='od'?`<div style="font-size:10px;color:var(--sub)">of ${fmt(parseFloat(l.principal)||0)} limit</div>`:''}
+          <div style="font-size:10px;color:var(--sub)">${l.kind==='od'?'Drawn':(bal<-0.5?'Receivable':'Outstanding')}</div>
+          <div style="font-size:17px;font-weight:800;color:${bal>0.5?'#DC2626':bal<-0.5?'#059669':'#64748B'}">${fmt(Math.abs(bal))}</div>
+          ${l.kind==='od'?`<div style="font-size:10px;color:var(--sub)">of ${fmt(parseFloat(l.principal)||0)} limit</div>`:(bal<-0.5?`<div style="font-size:10px;color:#059669">overpaid — they owe you</div>`:'')}
         </div>
       </div>
       <div class="btn-row" style="margin-top:10px">
@@ -10561,7 +10561,12 @@ function classifiedBS(){
   const _cashLive=cashInHand();
   const cash=_cashLive+((D().cashOpening)?0:_obNum('cash'));
   const bank=bankNet()+_obNum('bank');const bankPos=bank>0?bank:0,bankNeg=bank<0?-bank:0;
-  const loans=totalLoanOutstanding(),od=odUsed();
+  // Loans: a positive balance is a liability (you owe). A NEGATIVE balance means you've
+  // overpaid that loan, so the counterparty owes you — that's a RECEIVABLE (asset), not a
+  // reduction of your other loan liabilities. Split the two so each lands on the correct side.
+  let loans=0,loanRecv=0;
+  ensureLoans().filter(l=>l.kind!=='od').forEach(l=>{const b=loanBalance(l);if(b>0.5)loans+=b;else if(b<-0.5)loanRecv+=-b;});
+  const od=odUsed();
   // Split reserves into accountant buckets by category (existing reserve records only):
   //   Owner Capital → Capital Account · Retained Earnings → P&L A/c · Drawing → Drawing A/c
   //   Suspense → Suspense A/c · everything else → other reserves.
@@ -10585,7 +10590,7 @@ function classifiedBS(){
   const dutiesTaxes=Math.max(0,Math.round((outGST-inGST)*100)/100)+_obNum('dutiesTaxes');
   const itcCredit=Math.max(0,Math.round((inGST-outGST)*100)/100)+_obNum('itc'); // net ITC receivable (asset), if any
   const cashEq=cash+bankPos;
-  const curAssetsTot=stock+tradeRecv+supplierAdv+stInvest+cashEq+itcCredit;
+  const curAssetsTot=stock+tradeRecv+supplierAdv+stInvest+cashEq+itcCredit+loanRecv;
   const nonCurAssetsTot=fixed;
   const assetTot=curAssetsTot+nonCurAssetsTot;
   const curLiab=creditors+custAdv+od+bankNeg+dutiesTaxes;
@@ -10610,7 +10615,7 @@ function classifiedBS(){
   // NOT touched to absorb it.
   const bsDiff=Math.round((assetTot-equityLiabTot)*100)/100;
   return {tradeRecv,supplierAdv,creditors,custAdv,fixed,stInvest,stock,cash,bank,bankPos,bankNeg,
-    loans,od,reserves,ownerCapRes,plRes,drawingRes,suspenseRes,otherRes,
+    loans,loanRecv,od,reserves,ownerCapRes,plRes,drawingRes,suspenseRes,otherRes,
     dutiesTaxes,itcCredit,cashEq,curAssetsTot,nonCurAssetsTot,assetTot,curLiab,nonCurLiab,
     capital,plAccount,equityLiabTot,bsDiff};
 }
@@ -10646,6 +10651,7 @@ function bsSections(){
   A.push({kind:'line',label:'Closing Stock',amt:b.stock});
   if(b.tradeRecv>0.5)A.push({kind:'line',label:'Sundry Debtors',amt:b.tradeRecv});
   if(b.supplierAdv>0.5)A.push({kind:'line',label:'Advances to Suppliers',amt:b.supplierAdv});
+  if(b.loanRecv>0.5)A.push({kind:'line',label:'Loans & Advances (receivable)',amt:b.loanRecv});
   if(b.itcCredit>0.5)A.push({kind:'line',label:'Duties & Taxes (ITC receivable)',amt:b.itcCredit});
   A.push({kind:'line',label:'Cash-in-Hand',amt:b.cash});
   if(b.bankPos>0.5)A.push({kind:'line',label:'Bank Accounts',amt:b.bankPos});
