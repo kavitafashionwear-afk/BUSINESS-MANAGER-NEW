@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R99</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R100</div>
   </nav>
 
   <!-- PAGES -->
@@ -1283,6 +1283,7 @@ function markLoadedBM(firm, cache){
   normalizeGstData(S[firm]);          // idempotent GST reclassification (totals untouched)
   reconcileCountersBM(firm);
   allocateLegacyPayments(S[firm]);    // derived FIFO allocations for pre-R41 payments (deterministic, in-memory)
+  healBankExpenseMode(S[firm]);       // derive missing mode='bank' on pre-R100 bank-assigned expenses
   pullGstCacheOnce();                 // merge cross-device GST library into local
   saveLocal();
   setSyncDot(cache ? (isOnline?'busy':'offline') : 'ok');
@@ -2019,15 +2020,22 @@ const EXPENSE_CATS=['Office Rent','Electricity','Salary / Wages','Packing','Cour
 let editExpId=null;
 let expMonth=null; // YYYY-MM filter, null = all
 
-// Sum of real expenses (dir 'out', excludes opening cash-adjustment 'in')
+// ── Signed expense model (single source of truth for every expense consumer) ──
+// dir:'out' = a cost.  dir:'in' = a REFUND / REVERSAL of a cost (e.g. a bank charge
+// reversed by the bank).  A refund is a NEGATIVE expense — never income — so it nets
+// against its own category and against the total.
+// 'Cash Adjustment' rows are Cash-ledger pseudo-entries and are never expenses.
+function isExpRow(e){return !!e&&e.cat!=='Cash Adjustment';}
+function expAmt(e){const a=parseFloat(e&&e.amount)||0;return (((e&&e.dir)||'out')==='in')?-a:a;}
+function expRows(list){const d=D();return (list||d.expenses||[]).filter(isExpRow);}
+
+// Sum of real expenses, net of refunds
 function totalExpenses(list){
-  const d=D();
-  const src=list||(d.expenses||[]);
-  return src.filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  return expRows(list).reduce((s,e)=>s+expAmt(e),0);
 }
 function monthExpenses(ym){
-  const d=D();const m=ym||td().slice(0,7);
-  return (d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment'&&(e.date||'').slice(0,7)===m).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const m=ym||td().slice(0,7);
+  return expRows().filter(e=>(e.date||'').slice(0,7)===m).reduce((s,e)=>s+expAmt(e),0);
 }
 
 function renderExpenses(){
@@ -2038,21 +2046,23 @@ function renderExpenses(){
   if(expMonth&&!months.includes(expMonth))expMonth=null;
 
   // Filter (exclude the legacy "Cash Adjustment" pseudo-entries from the expense list — they belong to Cash ledger)
-  let list=(d.expenses||[]).filter(e=>e.cat!=='Cash Adjustment'&&(e.dir||'out')==='out');
+  let list=(d.expenses||[]).filter(isExpRow);
   if(expMonth)list=list.filter(e=>(e.date||'').slice(0,7)===expMonth);
   if(search){const q=search.toLowerCase();list=list.filter(e=>((e.cat||'')+' '+(e.desc||'')+' '+(e.payee||'')+' '+(e.amount||'')).toLowerCase().includes(q));}
   list=list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
-  const total=list.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
-  const cashTot=list.reduce((s,e)=>s+((e.mode==='split')?(parseFloat(e.cashPart)||0):((e.mode||'cash')==='cash'?(parseFloat(e.amount)||0):0)),0);
-  const bankTot=list.reduce((s,e)=>s+((e.mode==='split')?(parseFloat(e.bankPart)||0):((e.mode||'')==='bank'?(parseFloat(e.amount)||0):0)),0);
-  const upiTot=list.filter(e=>(e.mode||'')==='upi').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  // Refunds (dir:'in') carry a negative sign through every total below
+  const sgn=e=>((e.dir||'out')==='in')?-1:1;
+  const total=list.reduce((s,e)=>s+expAmt(e),0);
+  const cashTot=list.reduce((s,e)=>s+sgn(e)*((e.mode==='split')?(parseFloat(e.cashPart)||0):((e.mode||'cash')==='cash'?(parseFloat(e.amount)||0):0)),0);
+  const bankTot=list.reduce((s,e)=>s+sgn(e)*((e.mode==='split')?(parseFloat(e.bankPart)||0):((e.mode||'')==='bank'?(parseFloat(e.amount)||0):0)),0);
+  const upiTot=list.filter(e=>(e.mode||'')==='upi').reduce((s,e)=>s+expAmt(e),0);
 
-  // Category breakdown
+  // Category breakdown (net of refunds)
   const catMap={};
-  list.forEach(e=>{const c=e.cat||'Other';catMap[c]=(catMap[c]||0)+(parseFloat(e.amount)||0);});
-  const catRows=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
-  const maxCat=catRows.length?catRows[0][1]:1;
+  list.forEach(e=>{const c=e.cat||'Other';catMap[c]=(catMap[c]||0)+expAmt(e);});
+  const catRows=Object.entries(catMap).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+  const maxCat=catRows.length?Math.abs(catRows[0][1]):1;
 
   const monthSel=`<select onchange="expMonth=this.value||null;renderExpenses()" style="padding:9px 12px;border:1.5px solid var(--bdr);border-radius:10px;font-size:13px;background:#fff;font-family:inherit">
     <option value="">All time</option>
@@ -2063,14 +2073,15 @@ function renderExpenses(){
 
   const rows=list.length?list.map((e,idx)=>{
     const realIdx=(d.expenses||[]).indexOf(e);
+    const isRef=(e.dir||'out')==='in';
     return`<div class="prow" style="cursor:pointer" onclick="editExpense('${e.id}')">
-      <div class="pav" style="background:#B45309;font-size:16px">🧾</div>
+      <div class="pav" style="background:${isRef?'#15803D':'#B45309'};font-size:16px">${isRef?'↩️':'🧾'}</div>
       <div class="pi">
-        <div class="pn">${esc(e.cat||'Expense')}</div>
+        <div class="pn">${esc(e.cat||'Expense')}${isRef?' <span style="background:#DCFCE7;color:#15803D;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-left:4px">REFUND</span>':''}</div>
         <div class="ps">${fmtD(e.date)} ${modeBadge(e.mode)}${e.desc?' · '+esc(e.desc):''}${e.payee?' · '+esc(e.payee):''}${e.attach?` · <a href="#" onclick="event.stopPropagation();openExpAttach('${e.id}');return false" style="color:#1E40AF">📎 attachment</a>`:''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
-        <div class="pb" style="color:var(--r)">−${fmt(e.amount)}</div>
+        <div class="pb" style="color:${isRef?'var(--g)':'var(--r)'}">${isRef?'+':'−'}${fmt(e.amount)}</div>
         <div style="display:flex;gap:5px;justify-content:flex-end;margin-top:4px">
           <button class="btn sm" style="padding:3px 9px;font-size:11px" onclick="event.stopPropagation();editExpense('${e.id}')" title="Edit category / details">✏️</button>
           <button class="btn sm red" style="padding:3px 9px;font-size:11px" onclick="event.stopPropagation();delExpense('${e.id}')" title="Delete">🗑</button>
@@ -2104,8 +2115,8 @@ function renderExpenses(){
     ${catRows.length?`<div class="card">
       <div class="card-hd">By Category</div>
       ${catRows.map(([c,v])=>`<div style="margin-bottom:9px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600">${esc(c)}</span><span style="font-weight:700;color:var(--r)">${fmt(v)}</span></div>
-        <div style="height:6px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(4,Math.round(v/maxCat*100))}%;background:#D97706"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600">${esc(c)}</span><span style="font-weight:700;color:${v<0?'var(--g)':'var(--r)'}">${v<0?'+'+fmt(-v):fmt(v)}</span></div>
+        <div style="height:6px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(4,Math.round(Math.abs(v)/maxCat*100))}%;background:${v<0?'#16A34A':'#D97706'}"></div></div>
       </div>`).join('')}
     </div>`:''}
     <div class="srch-wrap"><input class="srch" id="exp-srch" placeholder="Search expenses…" oninput="_searchInput('exp-srch',renderExpenses)" value="${esc(search)}"></div>
@@ -2241,7 +2252,8 @@ function saveExpense(){
     const e=d.expenses.find(x=>x.id===editExpId);
     if(e){const ch=[];_chg(ch,'Date',e.date,date);_chg(ch,'Amount',fmt(e.amount),fmt(amount));_chg(ch,'Category',e.cat,cat);_chg(ch,'Mode',e.mode,mode);
       if(!confirmEdit('expense',ch))return;}
-    if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir='out';e.cashPart=cashPart;e.bankPart=bankPart;e.attach=_expAttach||null;}
+    // NOTE: dir is deliberately preserved — editing a refund (dir:'in') must not turn it into a cost
+    if(e){e.date=date;e.amount=amount;e.cat=cat;e.mode=mode;e.desc=desc;e.payee=payee;e.dir=e.dir||'out';e.cashPart=cashPart;e.bankPart=bankPart;e.attach=_expAttach||null;}
   } else {
     d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out',cashPart,bankPart,attach:_expAttach||null});
   }
@@ -4950,6 +4962,18 @@ function calcPaySplit(){
 }
 // Legacy payments (pre-allocation model) get deterministic FIFO allocations at load time.
 // Pure derivation — same result on every device; nothing needs to sync.
+// Pre-R100 assignToExpense() wrote no `mode`, so bank-assigned expenses fell through to the
+// 'cash' display default — mislabelling them and inflating the Cash stat on the Expenses page.
+// Ownership is already recorded on the bank txn (t.createdId), so this derives the mode from
+// existing records. Idempotent; touches no amount, date, category or direction.
+function healBankExpenseMode(d){
+  if(!d||!Array.isArray(d.expenses)||!Array.isArray(d.bankTxns))return 0;
+  const owned=new Set(d.bankTxns.filter(t=>t&&t.assigned==='expense'&&t.createdId).map(t=>t.createdId));
+  let n=0;
+  d.expenses.forEach(e=>{if(e&&!e.mode&&owned.has(e.id)){e.mode='bank';n++;}});
+  return n;
+}
+
 function allocateLegacyPayments(d){
   if(!d||!d.payments||!d.payments.length)return;
   // ── Heal MIS-KEYED allocations: an allocation must key a bill under `bid` and an
@@ -9350,7 +9374,7 @@ function assignToExpense(){
   const d=D();const t=bankTxns[_assignIdx];
   const cat=document.getElementById('asg-cat').value;
   const note=document.getElementById('asg-note').value.trim();
-  const _exp={id:'EXP'+uid4(),date:t.date,desc:note||t.desc.substring(0,80),amount:t.amount,cat:cat,dir:t.type==='CR'?'in':'out'};
+  const _exp={id:'EXP'+uid4(),date:t.date,desc:note||t.desc.substring(0,80),amount:t.amount,cat:cat,dir:t.type==='CR'?'in':'out',mode:'bank'};
   d.expenses.push(_exp);
   t.assigned='expense';t.createdId=_exp.id;
   saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
@@ -10253,7 +10277,7 @@ function profitData(ym){
   let sales=0,purch=0;
   d.invoices.filter(i=>inMonth(i.date,ym)).forEach(i=>{sales+=gstSplit(i).taxable;});
   d.bills.filter(b=>inMonth(b.date,ym)&&!b.jw).forEach(b=>{purch+=gstSplit(b).taxable;});
-  const exp=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment'&&inMonth(e.date,ym)).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const exp=(d.expenses||[]).filter(e=>isExpRow(e)&&inMonth(e.date,ym)).reduce((s,e)=>s+expAmt(e),0);
   const tradingGP=sales-purch;
   const net=tradingGP-exp;
   // Item-level realized gross profit on goods actually sold this month
@@ -10372,23 +10396,23 @@ function csvStockReport(){const items=buildInventory().slice().sort((a,b)=>b.val
 
 /* ── EXPENSE REPORT ── */
 function expReportData(ym){
-  const d=D();const list=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment'&&inMonth(e.date,ym)).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const total=list.reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
-  const byCat={};list.forEach(e=>{byCat[e.cat||'Other']=(byCat[e.cat||'Other']||0)+(parseFloat(e.amount)||0);});
-  return{list,total,cats:Object.entries(byCat).sort((a,b)=>b[1]-a[1])};
+  const d=D();const list=(d.expenses||[]).filter(e=>isExpRow(e)&&inMonth(e.date,ym)).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const total=list.reduce((s,e)=>s+expAmt(e),0);
+  const byCat={};list.forEach(e=>{byCat[e.cat||'Other']=(byCat[e.cat||'Other']||0)+expAmt(e);});
+  return{list,total,cats:Object.entries(byCat).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))};
 }
 function renderExpenseReport(pg){
   if(!repMonth)repMonth=td().slice(0,7);
-  const r=expReportData(repMonth);const maxc=r.cats.length?r.cats[0][1]:1;
-  const catRows=r.cats.map(([c,v])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600">${esc(c)}</span><span style="font-weight:700;color:var(--r)">${fmt(v)}</span></div><div style="height:6px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(4,Math.round(v/maxc*100))}%;background:#D97706"></div></div></div>`).join('')||'<div style="padding:10px;color:var(--sub);font-size:13px;text-align:center">No expenses</div>';
+  const r=expReportData(repMonth);const maxc=r.cats.length?Math.abs(r.cats[0][1]):1;
+  const catRows=r.cats.map(([c,v])=>`<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="font-weight:600">${esc(c)}</span><span style="font-weight:700;color:${v<0?'var(--g)':'var(--r)'}">${v<0?'+'+fmt(-v):fmt(v)}</span></div><div style="height:6px;background:#F3F4F6;border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.max(4,Math.round(Math.abs(v)/maxc*100))}%;background:${v<0?'#16A34A':'#D97706'}"></div></div></div>`).join('')||'<div style="padding:10px;color:var(--sub);font-size:13px;text-align:center">No expenses</div>';
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">🧾 Expense Report</h3>${repMonthInput()}
     <div style="font-size:11px;color:var(--sub);margin-bottom:6px">${monthLabel(repMonth)} · ${r.list.length} entry(s)</div>
     ${repActionBar("printExpenseReport()","csvExpenseReport()")}
     <div class="ibox ora" style="margin-bottom:12px;background:#FFF7ED;border-color:#FED7AA;color:#9A3412">Total expenses: <strong>${fmt(r.total)}</strong></div>
     <h4 style="font-size:13px;margin:6px 0 8px">By Category</h4>${catRows}</div>`;
 }
-function printExpenseReport(){const r=expReportData(repMonth);const body=`<div style="margin-bottom:10px"><strong>Total Expenses:</strong> ₹${m2(r.total)} · ${r.list.length} entries</div><h3 style="font-size:13px;margin:8px 0 4px">By Category</h3><table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px"><tbody>${r.cats.map(c=>`<tr><td style="padding:5px;border:1px solid #ccc">${esc(c[0])}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(c[1])}</td></tr>`).join('')}<tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.total)}</td></tr></tbody></table><h3 style="font-size:13px;margin:8px 0 4px">Detail</h3><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Category</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Mode</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Notes</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${r.list.map(e=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(e.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(e.cat||'')}</td><td style="padding:4px;border:1px solid #ccc">${esc((e.mode||'').toUpperCase())}</td><td style="padding:4px;border:1px solid #ccc">${esc(e.desc||'')}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(e.amount)}</td></tr>`).join('')}</tbody></table>`;printReport('Expense Report — '+monthLabel(repMonth),body);}
-function csvExpenseReport(){const r=expReportData(repMonth);downloadCSV('Expense_Report_'+repMonth+'_'+curBiz+'.csv',['Date','Category','Mode','Payee','Notes','Amount'],r.list.map(e=>[e.date,e.cat||'',e.mode||'',e.payee||'',e.desc||'',(parseFloat(e.amount)||0).toFixed(2)]));}
+function printExpenseReport(){const r=expReportData(repMonth);const body=`<div style="margin-bottom:10px"><strong>Total Expenses:</strong> ₹${m2(r.total)} · ${r.list.length} entries</div><h3 style="font-size:13px;margin:8px 0 4px">By Category</h3><table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px"><tbody>${r.cats.map(c=>`<tr><td style="padding:5px;border:1px solid #ccc">${esc(c[0])}</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(c[1])}</td></tr>`).join('')}<tr style="font-weight:700;background:#eee"><td style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(r.total)}</td></tr></tbody></table><h3 style="font-size:13px;margin:8px 0 4px">Detail</h3><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Date</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Category</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Mode</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Notes</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Amount</th></tr></thead><tbody>${r.list.map(e=>`<tr><td style="padding:4px;border:1px solid #ccc">${fmtD(e.date)}</td><td style="padding:4px;border:1px solid #ccc">${esc(e.cat||'')}</td><td style="padding:4px;border:1px solid #ccc">${esc((e.mode||'').toUpperCase())}</td><td style="padding:4px;border:1px solid #ccc">${esc(e.desc||'')}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(expAmt(e))}</td></tr>`).join('')}</tbody></table>`;printReport('Expense Report — '+monthLabel(repMonth),body);}
+function csvExpenseReport(){const r=expReportData(repMonth);downloadCSV('Expense_Report_'+repMonth+'_'+curBiz+'.csv',['Date','Category','Mode','Payee','Notes','Amount'],r.list.map(e=>[e.date,e.cat||'',e.mode||'',e.payee||'',e.desc||'',expAmt(e).toFixed(2)]));}
 
 /* ── PARTY REPORT ── */
 function partyReportData(){
@@ -10604,7 +10628,7 @@ function classifiedBS(){
   let _sales=0,_purch=0;
   (d.invoices||[]).forEach(i=>{_sales+=(gstSplit(i).taxable||0);});
   (d.bills||[]).forEach(b=>{if(b.jw)return;_purch+=(gstSplit(b).taxable||0);});
-  const _exp=(d.expenses||[]).filter(e=>(e.dir||'out')==='out'&&e.cat!=='Cash Adjustment').reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+  const _exp=(d.expenses||[]).filter(isExpRow).reduce((s,e)=>s+expAmt(e),0);
   const plAccount=Math.round((_sales-_purch-_exp)*100)/100;  // opening P&L now flows via its Retained Earnings reserve (plRes), not a BS-only add
   // ── Genuine two-side totals, each from its own recorded/derived data ──
   // Liabilities & Equity side = recorded capital + P&L + drawings + other reserves + loans + current liab.
