@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R100</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R103</div>
   </nav>
 
   <!-- PAGES -->
@@ -416,9 +416,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <div class="fl"><label>Opening Balance (₹)</label><input id="p-ob" type="number" placeholder="0" min="0"></div>
     <div class="fl"><label>OB Type</label>
       <select id="p-ob-type">
-        <option value="CR">Receivable (they owe you — Sales party)</option>
-        <option value="DR">Payable (you owe them — Purchase party)</option>
+        <option value="CR">Receivable — they owe you</option>
+        <option value="DR">Payable — you owe them</option>
       </select>
+      <div style="font-size:10px;color:var(--sub);margin-top:4px;line-height:1.5">Direction only. The Supplier/Customer tag above decides whether this shows as a trade balance or an advance.</div>
     </div>
     <div class="fl"><label>Remarks</label><input id="p-rem" placeholder="Optional"></div>
   </div>
@@ -10567,10 +10568,42 @@ function classifiedBS(){
   const d=D();
   const _ob=ensureOpeningBS();  // prior-year opening balances (added to live current-year movement)
   let tradeRecv=0,supplierAdv=0,creditors=0,custAdv=0;
+  // ── Trade vs Advance is a property of the DOCUMENTS, not of the party's type tag ──
+  // The S/C/B tag is a static label on a party, but a party can both buy and sell. Bucketing
+  // by that tag mis-files any balance that doesn't match the label (a sales invoice to a
+  // party tagged 'Supplier' is still a receivable). So the split is derived instead:
+  //   net balance is backed by unpaid sales invoices / purchase bills (+ that party's own
+  //   opening balance, net of credit/debit notes and unpaid asset purchases);
+  //   whatever the documents can't back is an unapplied payment — i.e. a genuine advance.
+  // Per-party netting is retained (option B): one figure per party, as before.
+  const _paidOn={};   // allocated amount per document id — mirrors _allocTo(), built once
+  (d.payments||[]).forEach(p=>{
+    const al=p.allocations||[];
+    if(al.length)al.forEach(a=>{const k=a.iid||a.bid;if(k)_paidOn[k]=(_paidOn[k]||0)+(parseFloat(a.amt)||0);});
+    else if(p.iid)_paidOn[p.iid]=(_paidOn[p.iid]||0)+(parseFloat(p.amt)||0);
+    else if(p.bid)_paidOn[p.bid]=(_paidOn[p.bid]||0)+(parseFloat(p.amt)||0);
+  });
+  const _openDocs=(list,pid)=>list.filter(x=>x.pid===pid&&x.mode!=='cash')
+    .reduce((s,x)=>s+Math.max(0,(parseFloat(x.grand)||0)-(_paidOn[x.id]||0)),0);
+  const _notes=d.notes||[];
   d.parties.filter(p=>!p.deleted).forEach(p=>{
     const b=partyBalance(p.id);
-    if(b>0.5){ if(p.type==='S')supplierAdv+=b; else tradeRecv+=b; }
-    else if(b<-0.5){ if(p.type==='C')custAdv+=-b; else creditors+=-b; }
+    if(Math.abs(b)<0.5)return;
+    const ob=parseFloat(p.ob)||0,obT=p.obType||'CR';
+    const cn=_notes.filter(x=>x.pid===p.id&&x.type==='credit').reduce((s,x)=>s+(parseFloat(x.amount)||0),0);
+    const dn=_notes.filter(x=>x.pid===p.id&&x.type==='debit').reduce((s,x)=>s+(parseFloat(x.amount)||0),0);
+    const assetPay=(d.assets||[]).filter(a=>a.supplierPid===p.id).reduce((s,a)=>s+(parseFloat(a.unpaid)||0),0);
+    // Documented backing on each side.
+    // An opening balance has NO document behind it, so its direction (Dr/Cr) tells us the sign
+    // but not the nature. Only there do we fall back to the party's type tag: a supplier who
+    // owes us is an ADVANCE (Sch III "loans & advances"), not a trade debtor — trade receivable
+    // means goods we SOLD. Likewise a customer we owe is an advance received, not a trade payable.
+    const obRecvTrade=(obT==='CR'&&p.type!=='S')?ob:0;   // supplier opening → advance, not debtor
+    const obPayTrade =(obT==='DR'&&p.type!=='C')?ob:0;   // customer opening → advance, not creditor
+    const recvBack=Math.max(0,_openDocs(d.invoices||[],p.id)+obRecvTrade-cn);
+    const payBack =Math.max(0,_openDocs(d.bills||[],p.id)+obPayTrade+assetPay-dn);
+    if(b>0.5){ const t=Math.min(b,recvBack); tradeRecv+=t; supplierAdv+=b-t; }
+    else     { const n=-b,t=Math.min(n,payBack); creditors+=t; custAdv+=n-t; }
   });
   // + opening (prior-year) lump sums for figures without a per-entity opening path
   tradeRecv+=_obNum('debtors'); creditors+=_obNum('creditors');
