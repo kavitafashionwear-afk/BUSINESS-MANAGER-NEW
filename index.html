@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R107</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R108</div>
   </nav>
 
   <!-- PAGES -->
@@ -10040,13 +10040,16 @@ function exportGSTR1JSON(){
   const invs=d.invoices.filter(i=>i.date.slice(0,7)===repMonth);
   if(!invs.length){alert('No invoices in '+monthLabel(repMonth)+'.');return;}
   const fp=_fpFromMonth();
-  const b2bMap={},b2cs={},b2cl={},hsn={};
+  const b2bMap={},b2cs={},b2cl={},hsnB2B={},hsnB2C={};
+  // Zero tax amounts are omitted (csamt always present), matching the offline tool's output.
+  // Declared before the loop below, which uses it.
+  const _tax=o=>{const r={};if(_r2(o.iamt))r.iamt=_r2(o.iamt);if(_r2(o.camt))r.camt=_r2(o.camt);if(_r2(o.samt))r.samt=_r2(o.samt);r.csamt=0;return r;};
   invs.forEach(i=>{
     const g=gstSplit(i);const p=d.parties.find(x=>x.id===i.pid);const gstin=gstinOf(i);
     const si=custStateInfo(i,p);const pos=(gstin?gstin.slice(0,2):(si.code||HOME_STATE));
     const idt=String(i.date).split('-').reverse().join('-'); // DD-MM-YYYY
     if(gstin){
-      const itm={num:1,itm_det:{txval:_r2(g.taxable),rt:g.rate,iamt:_r2(g.igst),camt:_r2(g.cgst),samt:_r2(g.sgst),csamt:0}};
+      const itm={num:1,itm_det:Object.assign({txval:_r2(g.taxable),rt:g.rate},_tax({iamt:g.igst,camt:g.cgst,samt:g.sgst}))};
       (b2bMap[gstin]=b2bMap[gstin]||[]).push({inum:String(i.num||''),idt:idt,val:_r2(i.grand),pos:pos,rchrg:'N',inv_typ:'R',itms:[itm]});
     } else if(!g.intra && (i.grand||0)>250000){
       (b2cl[pos]=b2cl[pos]||[]).push({inum:String(i.num||''),idt:idt,val:_r2(i.grand),itms:[{num:1,itm_det:{txval:_r2(g.taxable),rt:g.rate,iamt:_r2(g.igst),csamt:0}}]});
@@ -10055,19 +10058,25 @@ function exportGSTR1JSON(){
       const e=b2cs[key]||(b2cs[key]={sply_ty:g.intra?'INTRA':'INTER',rt:g.rate,typ:'OE',pos:pos,txval:0,iamt:0,camt:0,samt:0});
       e.txval+=g.taxable;e.iamt+=g.igst;e.camt+=g.cgst;e.samt+=g.sgst;
     }
+    // Table 12 is split by recipient type: registered (B2B) vs unregistered (B2C).
+    // Rows are keyed by HSN + rate + UQC, since each combination is its own line.
+    const _hb=gstin?hsnB2B:hsnB2C;
     const sub=(i.items||[]).reduce((s,it)=>s+(parseFloat(it.amt)||0),0);
-    (i.items||[]).forEach(it=>{const hs=(it.hsn||'').trim();if(!hs)return;const share=sub>0?(parseFloat(it.amt)||0)/sub:0;const tax=g.taxable*share;const taxAmt=tax*(g.rate/100);const h=hsn[hs]||(hsn[hs]={hsn_sc:hs,uqc:_uqcJSON(it.unit),qty:0,txval:0,iamt:0,camt:0,samt:0,rt:g.rate});h.qty+=parseFloat(it.qty)||0;h.txval+=tax;if(g.intra){h.camt+=taxAmt/2;h.samt+=taxAmt/2;}else{h.iamt+=taxAmt;}});
+    (i.items||[]).forEach(it=>{const hs=(it.hsn||'').trim();if(!hs)return;const uq=_uqcJSON(it.unit);const share=sub>0?(parseFloat(it.amt)||0)/sub:0;const tax=g.taxable*share;const taxAmt=tax*(g.rate/100);const k=hs+'|'+g.rate+'|'+uq;const h=_hb[k]||(_hb[k]={hsn_sc:hs,uqc:uq,qty:0,txval:0,iamt:0,camt:0,samt:0,rt:g.rate});h.qty+=parseFloat(it.qty)||0;h.txval+=tax;if(g.intra){h.camt+=taxAmt/2;h.samt+=taxAmt/2;}else{h.iamt+=taxAmt;}});
   });
-  const out={gstin:biz.gstin,fp:fp,version:'GST3.2',hash:'hash'};
+  // Only gstin + fp at the top level: the portal's current schema carries no version/hash keys,
+  // and unknown keys fail validation.
+  const out={gstin:biz.gstin,fp:fp};
   const b2b=Object.keys(b2bMap).map(ctin=>({ctin:ctin,inv:b2bMap[ctin]}));
   if(b2b.length)out.b2b=b2b;
-  const b2csArr=Object.values(b2cs).map(e=>({sply_ty:e.sply_ty,rt:e.rt,typ:e.typ,pos:e.pos,txval:_r2(e.txval),iamt:_r2(e.iamt),camt:_r2(e.camt),samt:_r2(e.samt),csamt:0}));
+  const b2csArr=Object.values(b2cs).map(e=>Object.assign({typ:e.typ,sply_ty:e.sply_ty,rt:e.rt,pos:e.pos,txval:_r2(e.txval)},_tax(e)));
   if(b2csArr.length)out.b2cs=b2csArr;
   const b2clArr=Object.keys(b2cl).map(pos=>({pos:pos,inv:b2cl[pos]}));
   if(b2clArr.length)out.b2cl=b2clArr;
-  const hsnArr=Object.values(hsn).map((h,idx)=>({num:idx+1,hsn_sc:h.hsn_sc,uqc:h.uqc,qty:_r2(h.qty),txval:_r2(h.txval),iamt:_r2(h.iamt),camt:_r2(h.camt),samt:_r2(h.samt),csamt:0,rt:h.rt}));
-  if(hsnArr.length)out.hsn={data:hsnArr};
-  const _probs=_gstr1Problems(biz,invs,hsn);
+  const _hsnRows=m=>Object.values(m).map((h,idx)=>Object.assign({num:idx+1,hsn_sc:h.hsn_sc,txval:_r2(h.txval)},_tax(h),{desc:'',user_desc:'',uqc:h.uqc,qty:_r2(h.qty),rt:h.rt}));
+  const hsnB=_hsnRows(hsnB2B),hsnC=_hsnRows(hsnB2C);
+  if(hsnB.length||hsnC.length){out.hsn={};if(hsnB.length)out.hsn.hsn_b2b=hsnB;if(hsnC.length)out.hsn.hsn_b2c=hsnC;}
+  const _probs=_gstr1Problems(biz,invs,Object.assign({},hsnB2B,hsnB2C));
   if(_probs.length&&!confirm('The GST portal will likely reject this file:\n\n• '+_probs.join('\n• ')+'\n\nDownload anyway?'))return;
   downloadJSON('GSTR1_'+biz.gstin+'_'+fp+'.json',out);
 }
