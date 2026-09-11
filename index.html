@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R112</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R113</div>
   </nav>
 
   <!-- PAGES -->
@@ -1029,6 +1029,11 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 </div></div>
 
 <!-- ITEM MASTER MODAL (Batch 2: item 8) -->
+<div class="ov" id="mo-hsnfix">
+<div class="mb">
+  <div class="mhd"><div><h3>🏷️ HSN Review</h3><div class="sub">Fill the HSN codes missing from existing bills and invoices</div></div><button class="xb" onclick="closeModal('hsnfix')">✕</button></div>
+  <div class="mbd" id="hsnfix-body"></div>
+</div></div>
 <div class="ov" id="mo-imaster">
 <div class="mb">
   <div class="mhd"><div><h3>📦 Item Master</h3><div class="sub">Product catalogue — price is always entered per invoice</div></div><button class="xb" onclick="closeModal('imaster')">✕</button></div>
@@ -1644,6 +1649,7 @@ function renderItemsPage(){
   <div class="card" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
     <div><h3 style="margin-bottom:2px">📦 Item Master</h3><div style="font-size:12px;color:var(--sub)">Product catalogue · price is entered per invoice</div></div>
     <button class="btn pri sm" onclick="openItemMaster()">+ Add Item</button>
+    <button class="btn sm" onclick="openHsnFix()" style="background:#EEF2FF;border-color:#C7D2FE;color:#3730A3">🏷️ HSN Review</button>
   </div>
   <div class="card">
     <div class="srch-wrap"><input class="srch" id="itp-search" placeholder="Search items by name, code or HSN…" oninput="_searchInput('itp-search',renderItemsPage)" value="${esc(q)}"></div>
@@ -2375,6 +2381,120 @@ function buildInventory(){
 // cannot change). So stock is rolled up by HSN + unit — unit is part of the key because
 // KG and MTR are not addable. Derived entirely from bills and invoices via collectMoves();
 // nothing is stored.
+// ── HSN REVIEW ────────────────────────────────────────────────────────────────
+// Temporary clean-up tool for historical documents saved before HSN became mandatory.
+// Lines are grouped by description so one code fixes every line sharing that name.
+// Suggestions are derived from records that already carry an HSN — the Item Master
+// first, then other documents with the same description. Nothing is written until
+// Apply is pressed, and only blank/invalid codes are ever touched.
+function hsnGaps(){
+  const d=D();const groups={};
+  const bad=h=>{h=(h||'').trim();return !h||(!HSN_RE.test(h)&&!isSac(h));};
+  const add=(src,doc,it,n)=>{
+    const key=normItem(it.desc)||'(no description)';
+    const g=groups[key]||(groups[key]={key,desc:it.desc||'(no description)',lines:0,qty:0,
+      units:{},docs:[],sales:0,purch:0});
+    g.lines++;g.qty+=parseFloat(it.qty)||0;
+    const u=(it.unit||'').toUpperCase().trim();if(u)g.units[u]=(g.units[u]||0)+1;
+    if(src==='S')g.sales++;else g.purch++;
+    if(g.docs.length<6)g.docs.push((src==='S'?'INV ':'BILL ')+(doc.num||'?')+' · '+fmtD(doc.date)+(it.hsn?' · has "'+it.hsn+'"':''));
+  };
+  (d.invoices||[]).forEach(inv=>(inv.items||[]).forEach((it,n)=>{if(bad(it.hsn))add('S',inv,it,n);}));
+  (d.bills||[]).forEach(b=>(b.items||[]).forEach((it,n)=>{if(bad(it.hsn))add(b.jw?'J':'P',b,it,n);}));
+  // Suggest a code from anything that already has one for this description
+  const known={};
+  const note=(desc,hsn,why)=>{const k=normItem(desc);if(!k||bad(hsn))return;
+    if(!known[k])known[k]={hsn:(hsn||'').trim(),why};};
+  ((d.items)||[]).forEach(x=>note(x.name,x.hsn,'Item Master'));
+  (d.bills||[]).forEach(b=>(b.items||[]).forEach(it=>note(it.desc,it.hsn,'purchase bill '+(b.num||''))));
+  (d.invoices||[]).forEach(i=>(i.items||[]).forEach(it=>note(it.desc,it.hsn,'invoice '+(i.num||''))));
+  return Object.values(groups).map(g=>{
+    const s=known[g.key];
+    return Object.assign(g,{suggest:s?s.hsn:'',suggestWhy:s?s.why:'',
+      unit:Object.entries(g.units).sort((a,b)=>b[1]-a[1])[0]?.[0]||''});
+  }).sort((a,b)=>b.lines-a.lines||a.desc.localeCompare(b.desc));
+}
+function openHsnFix(){renderHsnFix();openModal('hsnfix');}
+function renderHsnFix(){
+  const gaps=hsnGaps();
+  const el=document.getElementById('hsnfix-body');if(!el)return;
+  if(!gaps.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><p>Every line already has a valid HSN or SAC.</p></div>';return;}
+  const totLines=gaps.reduce((s,g)=>s+g.lines,0);
+  el.innerHTML=`
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:11px;color:#1E40AF;margin-bottom:12px">
+      <b>${totLines} line(s)</b> across <b>${gaps.length} description(s)</b> have no valid HSN.
+      Enter a code and press Apply — it is written to every line with that description.
+      Blank rows are skipped, and lines that already have a valid code are never changed.
+    </div>
+    ${gaps.map((g,i)=>`
+      <div style="background:#F9FAFB;border-radius:10px;padding:11px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:13px">${esc(g.desc)}</div>
+            <div style="font-size:10px;color:var(--sub);margin-top:2px">
+              ${g.lines} line(s) · ${fmtR(g.qty)} ${esc(g.unit)}
+              ${g.sales?` · <span style="color:#1E40AF">${g.sales} sales</span>`:''}${g.purch?` · <span style="color:#B45309">${g.purch} purchase</span>`:''}
+            </div>
+          </div>
+        </div>
+        <div class="fr" style="margin-top:8px">
+          <div class="fl" style="flex:1">
+            <input id="hf-hsn-${i}" value="${esc(g.suggest)}" placeholder="HSN (4/6/8 digits)" oninput="hsnFixHint(${i})">
+            <div id="hf-hint-${i}" style="font-size:10px;line-height:1.5;margin-top:3px"></div>
+          </div>
+        </div>
+        ${g.suggest?`<div style="font-size:10px;color:#059669;margin-top:2px">↳ suggested from ${esc(g.suggestWhy)}</div>`:''}
+        <details style="margin-top:6px"><summary style="font-size:10px;color:var(--sub);cursor:pointer">where it appears</summary>
+          <div style="font-size:10px;color:var(--sub);padding:4px 0 0 8px;line-height:1.7">${g.docs.map(esc).join('<br>')}</div>
+        </details>
+      </div>`).join('')}
+    <button class="btn" onclick="applyHsnFix()" style="width:100%;margin-top:4px">Apply HSN codes</button>
+    <div style="font-size:10px;color:var(--sub);text-align:center;margin-top:6px">You will see a summary of every change before it is saved.</div>`;
+  gaps.forEach((g,i)=>hsnFixHint(i));
+}
+function hsnFixHint(i){
+  const el=document.getElementById('hf-hint-'+i);if(!el)return;
+  const h=(document.getElementById('hf-hsn-'+i)?.value||'').trim();
+  if(!h){el.innerHTML='<span style="color:var(--sub)">leave blank to skip</span>';return;}
+  if(isSac(h)){el.innerHTML='<span style="color:#059669">✓ SAC — service code</span>';return;}
+  if(!HSN_RE.test(h)){el.innerHTML='<span style="color:#DC2626">✕ must be 4, 6 or 8 digits</span>';return;}
+  const info=hsnInfo(h);
+  el.innerHTML=info?'<span style="color:#059669">✓ '+esc(info.desc)+'</span>'
+    :'<span style="color:#B45309">⚠ not a heading I recognise — check it</span>';
+}
+function applyHsnFix(){
+  const d=D();const gaps=hsnGaps();
+  const plan=[];const bad=[];
+  gaps.forEach((g,i)=>{
+    const h=(document.getElementById('hf-hsn-'+i)?.value||'').trim();
+    if(!h)return;
+    if(!HSN_RE.test(h)&&!isSac(h)){bad.push(g.desc+': "'+h+'"');return;}
+    plan.push({key:g.key,hsn:h,desc:g.desc,lines:g.lines});
+  });
+  if(bad.length){alert('Fix these codes first — they are not 4, 6 or 8 digits:\n\n• '+bad.join('\n• '));return;}
+  if(!plan.length){alert('Nothing to apply — enter at least one HSN code.');return;}
+  const isBad=x=>{const v=(x||'').trim();return !v||(!HSN_RE.test(v)&&!isSac(v));};
+  // Collect the exact target lines FIRST, so the confirmation is accurate and cancelling
+  // leaves the data completely untouched (no speculative edits to roll back).
+  let n=0;const touched=[];const targets=[];
+  plan.forEach(pl=>{
+    const hits=[];
+    (d.invoices||[]).forEach(inv=>(inv.items||[]).forEach(it=>{
+      if(normItem(it.desc)===pl.key&&isBad(it.hsn))hits.push(it);}));
+    (d.bills||[]).forEach(b=>(b.items||[]).forEach(it=>{
+      if(normItem(it.desc)===pl.key&&isBad(it.hsn))hits.push(it);}));
+    if(hits.length){n+=hits.length;targets.push({hsn:pl.hsn,hits});
+      touched.push(pl.desc+' → '+pl.hsn+'  ('+hits.length+' line'+(hits.length===1?'':'s')+')');}
+  });
+  if(!n){alert('No matching lines needed changing.');return;}
+  if(!confirm('These HSN codes will be written to existing bills and invoices:\n\n• '
+      +touched.join('\n• ')+'\n\nTotal '+n+' line(s). Quantities, rates and amounts are NOT changed.\n\nApply?'))return;
+  targets.forEach(t=>t.hits.forEach(it=>{it.hsn=t.hsn;}));
+  saveToCloud();
+  alert(n+' line(s) updated. Re-export GSTR-1 to pick up the new codes.');
+  renderHsnFix();
+  if(typeof renderInventory==='function'&&document.getElementById('pg-inventory')?.style.display==='block')renderInventory();
+}
 var _hsnOpen='';
 function buildHsnStock(){
   const moves=collectMoves();const map={};
@@ -2511,6 +2631,7 @@ function renderInventory(){
       </div>${lots}`;}).join(''):'<div class="empty"><div class="ei">📦</div><p>No HSN stock yet.<br><span style="font-size:12px;color:#999">Add HSN codes on purchase bills to use this view.</span></p></div>';
     document.getElementById('pg-inventory').innerHTML=header+`
       <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search HSN, name or description…" oninput="_searchInput('inv-srch',renderInventory)" value="${esc(search)}"></div>
+      ${(()=>{const gp=hsnGaps();const tl=gp.reduce((a,g)=>a+g.lines,0);return gp.length?`<div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:10px 12px;margin-bottom:10px"><div style="font-size:11px;color:#1E40AF;margin-bottom:7px"><b>🏷️ ${tl} line(s)</b> on existing bills/invoices have no HSN — they are missing from this view and from GSTR-1 Table 12.</div><button class="btn sm" onclick="openHsnFix()" style="background:#1E40AF;color:#fff">Review &amp; assign HSN</button></div>`:'';})()}
       ${negRows.length?`<div class="card" style="background:#FEF2F2;border:1px solid #FCA5A5;padding:10px 12px;font-size:11px;color:#991B1B;margin-bottom:10px"><b>⚠ ${negRows.length} HSN line(s) show negative stock</b> — more sold than purchased under that HSN. Usually a missing purchase bill, or goods bought under one HSN and sold under another.</div>`:''}
       <div class="card" style="padding:0 16px">
         <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub);display:flex;justify-content:space-between">
