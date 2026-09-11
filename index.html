@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R113</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R114</div>
   </nav>
 
   <!-- PAGES -->
@@ -1881,7 +1881,11 @@ function renderHome(){
       <div class="stat" style="grid-column:1/-1;background:#EFF6FF;border:1.5px solid #BFDBFE;cursor:pointer" onclick="repView='stockrep';goTab('reports')">
         <div class="sl">📊 Stock in Hand (Purchased - Sold)${info('stock')}</div>
         <div class="sv" style="color:${stockValue()>=0?'#059669':'#DC2626'}">${fmt(Math.abs(stockValue()))}${d.cfStock?'<span style="font-size:11px;color:var(--sub);margin-left:8px">incl. C/F ₹'+new Intl.NumberFormat("en-IN").format(d.cfStock)+'</span>':''}</div>
-        <div style="font-size:11px;color:var(--sub);margin-top:2px">Tap for item-wise stock report →</div>
+        <div style="font-size:11px;color:var(--sub);margin-top:2px">Tap for stock report →</div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();stockRepBy='hsn';repView='stockrep';goTab('reports')">📋 HSN-wise</button>
+          <button class="btn sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();stockRepBy='item';repView='stockrep';goTab('reports')">📦 Item-wise</button>
+        </div>
         <button class="btn sm" style="margin-top:8px;width:100%;justify-content:center" onclick="event.stopPropagation();openCFModal()">📦 Set Last Year C/F Stock</button>
       </div>
     </div>
@@ -10850,12 +10854,15 @@ function printPurchaseReport(){const r=purchReportData(repMonth);const d=D();con
 function csvPurchaseReport(){const r=purchReportData(repMonth);const d=D();downloadCSV('Purchase_Report_'+repMonth+'_'+curBiz+'.csv',['Date','Bill No','Supplier','Taxable','Total'],r.list.map(b=>{const p=d.parties.find(x=>x.id===b.pid);return [b.date,b.num,p?p.name:'?',gstSplit(b).taxable.toFixed(2),b.grand.toFixed(2)];}));}
 
 /* ── STOCK REPORT ── */
+var stockRepBy='item';   // 'item' | 'hsn'
 function renderStockReport(pg){
+  if(stockRepBy==='hsn')return renderStockReportHsn(pg);
   const items=buildInventory().slice().sort((a,b)=>b.value-a.value);
   const totVal=items.reduce((s,i)=>s+i.value,0);
   const rows=items.map((i,k)=>`<tr style="background:${k%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${esc(i.name)}</td><td style="padding:7px;font-size:11px">${esc(i.hsn)}</td><td style="padding:7px;text-align:right">${fmtR(i.stock)} ${esc(i.unit)}</td><td style="padding:7px;text-align:right">${i.avgBuy?fmt(i.avgBuy):'—'}</td><td style="padding:7px;text-align:right;font-weight:600">${fmt(i.value)}</td><td style="padding:7px;text-align:center"><span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${i.status==='out'?'#FEE2E2':i.status==='low'?'#FEF3C7':'#D1FAE5'};color:${i.status==='out'?'#991B1B':i.status==='low'?'#92400E':'#065F46'}">${i.status==='out'?'OUT':i.status==='low'?'LOW':'OK'}</span></td></tr>`).join('');
   pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📦 Stock Report</h3>
     <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${items.length} item(s)</div>
+    ${_stockRepToggle()}
     ${repActionBar("printStockReport()","csvStockReport()")}
     <div class="ibox blu" style="margin-bottom:12px">Total stock value: <strong>${fmt(totVal)}</strong></div>
     <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:540px">
@@ -10863,6 +10870,65 @@ function renderStockReport(pg){
       <tbody>${rows||'<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--sub)">No items</td></tr>'}</tbody>
       <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="4" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totVal)}</td><td></td></tr></tfoot>
     </table></div></div>`;
+}
+function _stockRepToggle(){
+  const b=(v,l)=>`<button class="btn sm" onclick="stockRepBy='${v}';renderReports()" style="${stockRepBy===v?'background:var(--pri);color:#fff':'background:#F3F4F6;color:var(--txt);border-color:var(--bdr)'}">${l}</button>`;
+  return `<div style="display:flex;gap:6px;margin-bottom:10px">${b('item','By Item')}${b('hsn','By HSN')}</div>`;
+}
+// Stock in hand grouped by HSN + unit. Same derivation as the Stock page's HSN view —
+// buildHsnStock() is the single source, so the two can never disagree.
+function renderStockReportHsn(pg){
+  const rows=buildHsnStock();
+  const totVal=rows.reduce((s,r)=>s+r.value,0);
+  const unitCount={};rows.forEach(r=>{unitCount[r.hsn]=(unitCount[r.hsn]||0)+1;});
+  const gaps=hsnGaps();const gapLines=gaps.reduce((a,g)=>a+g.lines,0);
+  const body=rows.map((r,k)=>`<tr style="background:${k%2?'#FAFAFA':'#fff'}">
+    <td style="padding:7px;font-weight:600">${esc(r.hsn)}${unitCount[r.hsn]>1?' <span style="background:#FEF3C7;color:#B45309;font-size:9px;font-weight:700;padding:1px 4px;border-radius:8px">MIXED</span>':''}</td>
+    <td style="padding:7px;font-size:11px;color:var(--sub)">${r.info?esc(r.info.desc):'—'}</td>
+    <td style="padding:7px;text-align:right">${fmtR(r.inQty)}</td>
+    <td style="padding:7px;text-align:right">${fmtR(r.outQty)}</td>
+    <td style="padding:7px;text-align:right;font-weight:700;color:${r.stock<-0.001?'var(--r)':r.stock>0.001?'var(--g)':'var(--sub)'}">${fmtR(r.stock)} ${esc(r.unit)}</td>
+    <td style="padding:7px;text-align:right;font-size:11px">${r.avgBuy?fmt(r.avgBuy):'—'}</td>
+    <td style="padding:7px;text-align:right;font-weight:600">${fmt(r.value)}</td></tr>`).join('');
+  pg.innerHTML=repBack()+`<div class="card"><h3 style="margin-bottom:8px">📦 Stock Report</h3>
+    <div style="font-size:11px;color:var(--sub);margin-bottom:6px">As on ${fmtD(td())} · ${rows.length} HSN/unit line(s)</div>
+    ${_stockRepToggle()}
+    ${repActionBar("printStockReportHsn()","csvStockReportHsn()")}
+    <div class="ibox blu" style="margin-bottom:12px">Total stock value: <strong>${fmt(totVal)}</strong></div>
+    ${gapLines?`<div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:9px 11px;margin-bottom:10px"><div style="font-size:11px;color:#1E40AF;margin-bottom:6px"><b>${gapLines} line(s)</b> have no HSN and are missing from this report.</div><button class="btn sm" onclick="openHsnFix()" style="background:#1E40AF;color:#fff">Review &amp; assign HSN</button></div>`:''}
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:640px">
+      <thead><tr style="background:var(--pri);color:#fff">
+        <th style="padding:7px;text-align:left">HSN</th><th style="padding:7px;text-align:left">Description</th>
+        <th style="padding:7px;text-align:right">Purchased</th><th style="padding:7px;text-align:right">Sold</th>
+        <th style="padding:7px;text-align:right">In Stock</th><th style="padding:7px;text-align:right">Avg Cost</th>
+        <th style="padding:7px;text-align:right">Value</th></tr></thead>
+      <tbody>${body||'<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--sub)">No HSN data — add HSN codes to your bills.</td></tr>'}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="6" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totVal)}</td></tr></tfoot>
+    </table></div></div>`;
+}
+function printStockReportHsn(){
+  const rows=buildHsnStock();const totVal=rows.reduce((s,r)=>s+r.value,0);
+  const body=`<div style="margin-bottom:10px"><strong>Total Stock Value:</strong> ₹${m2(totVal)} · <strong>HSN lines:</strong> ${rows.length} · As on ${fmtD(td())}</div>
+  <table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee">
+    <th style="padding:5px;border:1px solid #ccc;text-align:left">HSN</th><th style="padding:5px;border:1px solid #ccc;text-align:left">Description</th>
+    <th style="padding:5px;border:1px solid #ccc;text-align:right">Purchased</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Sold</th>
+    <th style="padding:5px;border:1px solid #ccc;text-align:right">In Stock</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Avg Cost</th>
+    <th style="padding:5px;border:1px solid #ccc;text-align:right">Value</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td style="padding:4px;border:1px solid #ccc">${esc(r.hsn)}</td><td style="padding:4px;border:1px solid #ccc">${r.info?esc(r.info.desc):''}</td>
+    <td style="padding:4px;border:1px solid #ccc;text-align:right">${fmtR(r.inQty)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${fmtR(r.outQty)}</td>
+    <td style="padding:4px;border:1px solid #ccc;text-align:right">${fmtR(r.stock)} ${esc(r.unit)}</td>
+    <td style="padding:4px;border:1px solid #ccc;text-align:right">${r.avgBuy?m2(r.avgBuy):'—'}</td>
+    <td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(r.value)}</td></tr>`).join('')}
+  </tbody><tfoot><tr style="background:#eee;font-weight:700"><td colspan="6" style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(totVal)}</td></tr></tfoot></table>`;
+  printReport('Stock Report — HSN-wise',body);
+}
+function csvStockReportHsn(){
+  const rows=buildHsnStock();
+  downloadCSV('Stock_HSN_'+curBiz+'.csv',
+    ['HSN','Description','Unit','Purchased','Sold','In Stock','Avg Cost','Min Rate','Max Rate','Last Rate','Value','Bought As'],
+    rows.map(r=>[r.hsn,r.info?r.info.desc:'',r.unit,r.inQty.toFixed(2),r.outQty.toFixed(2),r.stock.toFixed(2),
+      r.avgBuy.toFixed(2),r.minRate.toFixed(2),r.maxRate.toFixed(2),r.lastRate.toFixed(2),r.value.toFixed(2),
+      r.names.join(' | ')]));
 }
 function printStockReport(){const items=buildInventory().slice().sort((a,b)=>b.value-a.value);const totVal=items.reduce((s,i)=>s+i.value,0);const body=`<div style="margin-bottom:10px"><strong>Total Stock Value:</strong> ₹${m2(totVal)} · <strong>Items:</strong> ${items.length} · As on ${fmtD(td())}</div><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#eee"><th style="padding:5px;border:1px solid #ccc;text-align:left">Item</th><th style="padding:5px;border:1px solid #ccc;text-align:left">HSN</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Stock</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Avg Cost</th><th style="padding:5px;border:1px solid #ccc;text-align:right">Value</th></tr></thead><tbody>${items.map(i=>`<tr><td style="padding:4px;border:1px solid #ccc">${esc(i.name)}</td><td style="padding:4px;border:1px solid #ccc">${esc(i.hsn)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${fmtR(i.stock)} ${esc(i.unit)}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${i.avgBuy?m2(i.avgBuy):'—'}</td><td style="padding:4px;border:1px solid #ccc;text-align:right">${m2(i.value)}</td></tr>`).join('')}</tbody><tfoot><tr style="background:#eee;font-weight:700"><td colspan="4" style="padding:5px;border:1px solid #ccc">TOTAL</td><td style="padding:5px;border:1px solid #ccc;text-align:right">${m2(totVal)}</td></tr></tfoot></table>`;printReport('Stock Report',body);}
 function csvStockReport(){const items=buildInventory().slice().sort((a,b)=>b.value-a.value);downloadCSV('Stock_Report_'+curBiz+'.csv',['Item','HSN','Unit','Stock','Purchased','Sold','Avg Cost','Avg Sell','Value','Status'],items.map(i=>[i.name,i.hsn,i.unit,i.stock.toFixed(2),i.inQty.toFixed(2),i.outQty.toFixed(2),i.avgBuy.toFixed(2),i.avgSell.toFixed(2),i.value.toFixed(2),i.status]));}
