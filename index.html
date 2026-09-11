@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R120</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R122</div>
   </nav>
 
   <!-- PAGES -->
@@ -2411,46 +2411,74 @@ function openOpeningHsn(){
   if(!_openRows.length)_openRows.push({hsn:'',unit:'KG',qty:0,amt:0,date:''});
   renderOpeningHsn();openModal('openhsn');
 }
-function openRowAdd(){_openRows.push({hsn:'',unit:'KG',qty:0,amt:0,date:''});renderOpeningHsn();}
+function openRowAdd(){
+  _openRows.push({hsn:'',unit:'KG',qty:0,amt:0,date:''});
+  renderOpeningHsn();
+  const el=document.getElementById('oh-hsn-'+(_openRows.length-1));if(el)el.focus();
+}
 function openRowDel(i){_openRows.splice(i,1);if(!_openRows.length)openRowAdd();else renderOpeningHsn();}
 function openRowSet(i,f,v){
   if(!_openRows[i])return;
   _openRows[i][f]=(f==='qty'||f==='amt')?(parseFloat(v)||0):v;
-  if(f==='qty'||f==='amt')renderOpeningHsn();   // refresh the reconciliation totals
+  openRecalc(i);   // patch derived text only — re-rendering here would steal focus mid-typing
+}
+// Update the reconciliation panel, this row's rate line and its HSN hint without touching
+// the inputs. Rebuilding the form on every keystroke destroys the focused field, which is
+// why a digit could only be entered one at a time.
+function openRecalc(i){
+  const sEl=document.getElementById('oh-summary');
+  if(sEl)sEl.innerHTML=_openSummaryHtml();
+  if(i!=null){
+    const r=_openRows[i]||{};
+    const rEl=document.getElementById('oh-rate-'+i);
+    if(rEl){const rate=r.qty?(r.amt/r.qty):0;
+      rEl.textContent='Rate: '+(rate?fmt(rate):'\u2014')+' per '+unitKey(r.unit);}
+    const hEl=document.getElementById('oh-hint-'+i);
+    if(hEl)hEl.innerHTML=_openHintHtml(r.hsn);
+  }
+}
+function _openSummaryHtml(){
+  const d=D();const cf=parseFloat(d.cfStock)||0;
+  const alloc=_openRows.reduce((s,r)=>s+(parseFloat(r.amt)||0),0);
+  const left=Math.round((cf-alloc)*100)/100;
+  const yr=(d.cfYear?String(d.cfYear).slice(0,4):td().slice(0,4))+'-04-01';
+  return `Carried-forward stock value: <b>${fmt(cf)}</b>${d.cfYear?' (FY '+esc(String(d.cfYear))+')':''}<br>
+      Allocated to HSN: <b>${fmt(alloc)}</b><br>
+      <span style="color:${Math.abs(left)<0.5?'#059669':'#B45309'}">Unallocated: <b>${fmt(left)}</b>${Math.abs(left)<0.5?' \u2713 fully split':''}</span>
+      <br><br><b>This is a working allocation, not an accounting entry.</b> It splits a value you already carry into HSN buckets so prior-year stock is visible and future stock nets off correctly. Nothing here reaches your Balance Sheet, Profit &amp; Loss, Trial Balance or GST returns — ${fmt(cf)} continues to be carried as Closing Stock (opening) exactly as before, and the item-wise Stock Report is unaffected.
+      <br><br>These quantities become an inward lot on ${esc(yr)}, feeding the HSN stock views and weighted average cost only. The split does not have to be exact or complete to be useful.`;
+}
+function _openHintHtml(hsn){
+  const h=(hsn||'').trim();
+  if(!h)return '<span style="color:var(--sub)">&nbsp;</span>';
+  if(!HSN_RE.test(h))return '<span style="color:#DC2626">\u2715 must be 4, 6 or 8 digits</span>';
+  const info=hsnInfo(h);
+  return info?'<span style="color:#059669">\u2713 '+esc(info.desc)+'</span>'
+             :'<span style="color:#B45309">\u26a0 heading not recognised</span>';
 }
 function renderOpeningHsn(){
   const d=D();const el=document.getElementById('openhsn-body');if(!el)return;
-  const cf=parseFloat(d.cfStock)||0;
-  const alloc=_openRows.reduce((s,r)=>s+(parseFloat(r.amt)||0),0);
-  const left=Math.round((cf-alloc)*100)/100;
   const units=['KG','MTR','PCS','SET','DOZ','BOX'];
   el.innerHTML=`
-    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:11px;color:#1E40AF;margin-bottom:12px">
-      Carried-forward stock value: <b>${fmt(cf)}</b>${d.cfYear?' (FY '+esc(String(d.cfYear))+')':''}<br>
-      Allocated to HSN: <b>${fmt(alloc)}</b><br>
-      <span style="color:${Math.abs(left)<0.5?'#059669':'#B45309'}">Unallocated: <b>${fmt(left)}</b>${Math.abs(left)<0.5?' ✓ fully split':''}</span>
-      <br><br><b>This is a working allocation, not an accounting entry.</b> It splits a value you already carry into HSN buckets so prior-year stock is visible and future stock nets off correctly. Nothing here reaches your Balance Sheet, Profit &amp; Loss, Trial Balance or GST returns — ${fmt(cf)} continues to be carried as Closing Stock (opening) exactly as before, and the item-wise Stock Report is unaffected.
-      <br><br>These quantities become an inward lot on ${esc((d.cfYear?String(d.cfYear).slice(0,4):td().slice(0,4))+'-04-01')}, feeding the HSN stock views and weighted average cost only. The split does not have to be exact or complete to be useful.
-    </div>
+    <div id="oh-summary" style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:11px;color:#1E40AF;margin-bottom:12px">${_openSummaryHtml()}</div>
     ${_openRows.map((r,i)=>{
       const rate=r.qty?(r.amt/r.qty):0;
-      const info=hsnInfo((r.hsn||'').trim());
       return `<div style="background:#F9FAFB;border-radius:10px;padding:11px;margin-bottom:8px;position:relative">
         <button onclick="openRowDel(${i})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
         <div class="fr" style="margin-right:32px">
           <div class="fl" style="flex:1.3"><label>HSN</label>
-            <input value="${esc(r.hsn)}" list="hsn-stock-list" placeholder="4/6/8 digits" oninput="openRowSet(${i},'hsn',this.value)" onchange="renderOpeningHsn()">
-            <div style="font-size:10px;margin-top:3px;line-height:1.4">${(r.hsn||'').trim()?(info?'<span style="color:#059669">✓ '+esc(info.desc)+'</span>':(HSN_RE.test((r.hsn||'').trim())?'<span style="color:#B45309">⚠ heading not recognised</span>':'<span style="color:#DC2626">✕ must be 4, 6 or 8 digits</span>')):'<span style="color:var(--sub)">&nbsp;</span>'}</div>
+            <input id="oh-hsn-${i}" value="${esc(r.hsn)}" list="hsn-stock-list" placeholder="4/6/8 digits" oninput="openRowSet(${i},'hsn',this.value)">
+            <div id="oh-hint-${i}" style="font-size:10px;margin-top:3px;line-height:1.4">${_openHintHtml(r.hsn)}</div>
           </div>
           <div class="fl"><label>Unit</label>
             <select onchange="openRowSet(${i},'unit',this.value)">${units.map(u=>`<option value="${u}"${unitKey(r.unit)===unitKey(u)?' selected':''}>${u}</option>`).join('')}</select>
           </div>
         </div>
         <div class="fr">
-          <div class="fl"><label>Quantity</label><input type="number" step="0.01" value="${r.qty||''}" placeholder="0" oninput="openRowSet(${i},'qty',this.value)"></div>
-          <div class="fl"><label>Value ₹</label><input type="number" step="0.01" value="${r.amt||''}" placeholder="0" oninput="openRowSet(${i},'amt',this.value)"></div>
+          <div class="fl"><label>Quantity</label><input type="number" step="any" inputmode="decimal" value="${r.qty||''}" placeholder="0" oninput="openRowSet(${i},'qty',this.value)"></div>
+          <div class="fl"><label>Value ₹</label><input type="number" step="any" inputmode="decimal" value="${r.amt||''}" placeholder="0" oninput="openRowSet(${i},'amt',this.value)"></div>
         </div>
-        <div style="font-size:10px;color:var(--sub);margin-top:4px">Rate: ${rate?fmt(rate):'—'} per ${esc(unitKey(r.unit))}</div>
+        <div id="oh-rate-${i}" style="font-size:10px;color:var(--sub);margin-top:4px">Rate: ${rate?fmt(rate):'—'} per ${esc(unitKey(r.unit))}</div>
       </div>`;}).join('')}
     <button class="btn sm" onclick="openRowAdd()" style="width:100%;margin-bottom:8px">+ Add HSN line</button>
     <button class="btn" onclick="saveOpeningHsn()" style="width:100%">Save opening stock</button>`;
@@ -2698,7 +2726,7 @@ function buildHsnStock(){
     const unit=unitKey(m.unit);
     const k=hsn+'|'+unit;
     const a=map[k]||(map[k]={hsn,unit,key:k,inQty:0,inAmt:0,outQty:0,outAmt:0,
-      names:{},lots:[],lastIn:'',lastOut:''});
+      names:{},lots:[],sales:[],lastIn:'',lastOut:''});
     if(m.kind==='in'){
       a.inQty+=m.qty;a.inAmt+=m.amt;
       if(!a.lastIn||m.date>a.lastIn)a.lastIn=m.date;
@@ -2708,6 +2736,8 @@ function buildHsnStock(){
     }else{
       a.outQty+=m.qty;a.outAmt+=m.amt;
       if(!a.lastOut||m.date>a.lastOut)a.lastOut=m.date;
+      // Outward documents, so a wrong unit or HSN on a sale can be traced and corrected
+      a.sales.push({date:m.date,num:m.num,desc:m.desc,qty:m.qty,rate:m.rate});
     }
   });
   // ── Opening stock carried in from the previous year ──
@@ -2723,7 +2753,7 @@ function buildHsnStock(){
     const unit=unitKey(o.unit);
     const k=hsn+'|'+unit;
     const a=map[k]||(map[k]={hsn,unit,key:k,inQty:0,inAmt:0,outQty:0,outAmt:0,
-      names:{},lots:[],lastIn:'',lastOut:''});
+      names:{},lots:[],sales:[],lastIn:'',lastOut:''});
     a.inQty+=qty;a.inAmt+=amt;a.openQty=(a.openQty||0)+qty;a.openAmt=(a.openAmt||0)+amt;
     a.lots.push({date:o.date||_openDate,num:'OPENING',desc:'Opening stock (previous year)',
       qty:qty,rate:qty?amt/qty:0,amt:amt,opening:true});
@@ -2735,13 +2765,14 @@ function buildHsnStock(){
     const avgSell=a.outQty>0?a.outAmt/a.outQty:0;
     const rates=a.lots.map(l=>l.rate).filter(r=>r>0);
     a.lots.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+    a.sales.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
     return {hsn:a.hsn,unit:a.unit,key:a.key,inQty:a.inQty,outQty:a.outQty,stock,
       openQty:a.openQty||0,openAmt:a.openAmt||0,
       avgBuy,avgSell,value:stock>0?stock*avgBuy:0,
       minRate:rates.length?Math.min(...rates):0,maxRate:rates.length?Math.max(...rates):0,
       lastRate:a.lots.length?a.lots[0].rate:0,
       names:Object.entries(a.names).sort((x,y)=>y[1]-x[1]).map(x=>x[0]),
-      lots:a.lots,lastIn:a.lastIn,lastOut:a.lastOut,
+      lots:a.lots,sales:a.sales,lastIn:a.lastIn,lastOut:a.lastOut,
       info:hsnInfo(a.hsn)};
   }).sort((x,y)=>y.value-x.value||x.hsn.localeCompare(y.hsn));
 }
@@ -2816,7 +2847,8 @@ function renderInventory(){
     if(search){const q=search.toLowerCase();rows=rows.filter(r=>(r.hsn+' '+r.unit+' '+r.names.join(' ')+' '+(r.info?r.info.desc:'')).toLowerCase().includes(q));}
     // Same HSN appearing under more than one unit means purchases and sales were booked
     // in different units — surfaced rather than silently added together.
-    const unitCount={};buildHsnStock().forEach(r=>{unitCount[r.hsn]=(unitCount[r.hsn]||0)+1;});
+    const unitCount={},unitsOf={};
+    buildHsnStock().forEach(r=>{unitCount[r.hsn]=(unitCount[r.hsn]||0)+1;(unitsOf[r.hsn]=unitsOf[r.hsn]||[]).push(r.unit);});
     const totVal=rows.reduce((s,r)=>s+r.value,0);
     const negRows=rows.filter(r=>r.stock<-0.001);
     const body=rows.length?rows.map(r=>{
@@ -2824,11 +2856,20 @@ function renderInventory(){
       const st=r.stock;
       const col=st<-0.001?'var(--r)':st>0.001?'var(--g)':'var(--sub)';
       const lots=open?`<div style="padding:0 0 12px 52px">
-        <div style="font-size:11px;font-weight:700;color:var(--sub);margin:2px 0 6px">PURCHASE RATES (${r.lots.length} lot${r.lots.length===1?'':'s'})</div>
+        <div style="font-size:11px;font-weight:700;color:var(--sub);margin:2px 0 6px">PURCHASED IN ${esc(r.unit)} (${r.lots.length} lot${r.lots.length===1?'':'s'})</div>
         ${r.lots.slice(0,12).map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #F3F4F6">
           <span>${fmtD(l.date)} · ${esc(l.num||'')} · ${esc(l.desc||'')}</span>
           <span style="white-space:nowrap"><b>${fmtR(l.qty)}</b> ${esc(r.unit)} @ ${fmt(l.rate)}</span></div>`).join('')}
         ${r.lots.length>12?`<div style="font-size:10px;color:var(--sub);padding-top:4px">+ ${r.lots.length-12} older lot(s)</div>`:''}
+        ${r.sales.length?`<div style="font-size:11px;font-weight:700;color:var(--sub);margin:10px 0 6px">SOLD IN ${esc(r.unit)} (${r.sales.length} line${r.sales.length===1?'':'s'})</div>
+        ${r.sales.slice(0,12).map(v=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #F3F4F6">
+          <span>${fmtD(v.date)} · ${esc(v.num||'')} · ${esc(v.desc||'')}</span>
+          <span style="white-space:nowrap"><b>${fmtR(v.qty)}</b> ${esc(r.unit)} @ ${fmt(v.rate)}</span></div>`).join('')}
+        ${r.sales.length>12?`<div style="font-size:10px;color:var(--sub);padding-top:4px">+ ${r.sales.length-12} older line(s)</div>`:''}`:''}
+        ${unitCount[r.hsn]>1?`<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:7px 9px;font-size:10px;color:#92400E;margin-top:9px">
+          <b>Mixed units.</b> HSN ${esc(r.hsn)} is also recorded as ${esc(unitsOf[r.hsn].filter(u=>u!==r.unit).join(', '))}. Kilograms and pieces cannot be added, so each unit is its own line.
+          ${r.info&&(r.info.cat==='FABRIC'||r.info.cat==='YARN')&&(r.unit==='PCS'||r.unit==='NOS')?`<br><br>⚠ ${esc(r.hsn)} is a ${esc(r.info.cat.toLowerCase())} heading — it should not be in ${esc(r.unit)}. Open the document(s) above and correct the unit (or the HSN); the two lines will then merge on their own.`:''}
+        </div>`:''}
         ${r.names.length?`<div style="font-size:10px;color:var(--sub);margin-top:7px">Bought as: ${r.names.slice(0,6).map(esc).join(' · ')}</div>`:''}
         <div style="font-size:10px;color:var(--sub);margin-top:4px">In ${fmtR(r.inQty)} · Out ${fmtR(r.outQty)} · Avg buy ${fmt(r.avgBuy)}${r.avgSell?' · Avg sell '+fmt(r.avgSell):''}</div>
       </div>`:'';
