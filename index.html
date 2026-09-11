@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R114</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R120</div>
   </nav>
 
   <!-- PAGES -->
@@ -577,6 +577,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <div class="card-hd" style="margin-top:8px">Items</div>
     <div id="i-items-list"></div>
     <datalist id="item-list"></datalist>
+    <datalist id="hsn-stock-list"></datalist>
     <div style="display:flex;gap:6px;margin-bottom:12px"><button class="btn sm" onclick="addInvItem()">+ Add Item</button><button class="btn sm" type="button" style="background:#EEF2FF;border-color:#C7D2FE;color:#3730A3" onclick="openItemMaster()">📦 Item Master</button></div>
     <!-- CHARGES -->
     <div class="fr">
@@ -1029,6 +1030,16 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 </div></div>
 
 <!-- ITEM MASTER MODAL (Batch 2: item 8) -->
+<div class="ov" id="mo-openhsn">
+<div class="mb">
+  <div class="mhd"><div><h3>📦 Opening Stock by HSN</h3><div class="sub">Split last year's carried-forward stock across HSN codes</div></div><button class="xb" onclick="closeModal('openhsn')">✕</button></div>
+  <div class="mbd" id="openhsn-body"></div>
+</div></div>
+<div class="ov" id="mo-jwfix">
+<div class="mb">
+  <div class="mhd"><div><h3>🔧 Job Work Review</h3><div class="sub">Retype processing bills so they stop adding to stock</div></div><button class="xb" onclick="closeModal('jwfix')">✕</button></div>
+  <div class="mbd" id="jwfix-body"></div>
+</div></div>
 <div class="ov" id="mo-hsnfix">
 <div class="mb">
   <div class="mhd"><div><h3>🏷️ HSN Review</h3><div class="sub">Fill the HSN codes missing from existing bills and invoices</div></div><button class="xb" onclick="closeModal('hsnfix')">✕</button></div>
@@ -1130,7 +1141,7 @@ const BIZ={
 // ═══ DATA ═══
 let S={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],pC:1,bC:1,iC:1};
 
-function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;if(!b.invMeta)b.invMeta={};if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[];if(!Array.isArray(b.bankAliases))b.bankAliases=[];return b;}
+function bData(){const b=S[curBiz]||(S[curBiz]={parties:[],bills:[],invoices:[],payments:[],notes:[],trash:[],expenses:[],trash:[],pC:1,bC:1,iC:1,cfStock:0,nC:1});if(!b.nC)b.nC=1;if(!b.expenses)b.expenses=[];if(!b.bankTxns)b.bankTxns=[];if(!b.loans)b.loans=[];if(!b.loanC)b.loanC=1;if(!b.assets)b.assets=[];if(!b.assetC)b.assetC=1;if(!b.reserves)b.reserves=[];if(!b.reserveC)b.reserveC=1;if(!b.invMeta)b.invMeta={};if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[];if(!Array.isArray(b.bankAliases))b.bankAliases=[];if(!Array.isArray(b.openingHsn))b.openingHsn=[];return b;}
 function D(){return bData();}
 
 // ═══ HELPERS ═══
@@ -1268,7 +1279,7 @@ const FIRMS=['MI','KF'];
 const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
-const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','cfYear','cfNotes','cashOpening','cashOpeningDate','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS'];
+const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','cfYear','cfNotes','cashOpening','cashOpeningDate','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS','openingHsn'];
 
 let unsubscribe=null;
 let _saving=false;
@@ -1284,7 +1295,7 @@ function ensureFirm(firm){
   if(!Array.isArray(b.trash)) b.trash=[];
   if(b.pC==null)b.pC=1; if(b.bC==null)b.bC=1; if(b.iC==null)b.iC=1; if(b.nC==null)b.nC=1;
   if(b.loanC==null)b.loanC=1; if(b.assetC==null)b.assetC=1; if(b.reserveC==null)b.reserveC=1;
-  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={}; if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[]; if(!Array.isArray(b.bankAliases))b.bankAliases=[];
+  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={}; if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[]; if(!Array.isArray(b.bankAliases))b.bankAliases=[]; if(!Array.isArray(b.openingHsn))b.openingHsn=[];
   if(!_lastSaved[firm]) _lastSaved[firm]={};
   return b;
 }
@@ -1650,6 +1661,8 @@ function renderItemsPage(){
     <div><h3 style="margin-bottom:2px">📦 Item Master</h3><div style="font-size:12px;color:var(--sub)">Product catalogue · price is entered per invoice</div></div>
     <button class="btn pri sm" onclick="openItemMaster()">+ Add Item</button>
     <button class="btn sm" onclick="openHsnFix()" style="background:#EEF2FF;border-color:#C7D2FE;color:#3730A3">🏷️ HSN Review</button>
+    <button class="btn sm" onclick="openJwFix()" style="background:#FFFBEB;border-color:#FDE68A;color:#92400E">🔧 Job Work Review</button>
+    <button class="btn sm" onclick="openOpeningHsn()" style="background:#F0FDF4;border-color:#86EFAC;color:#166534">📦 Opening Stock by HSN</button>
   </div>
   <div class="card">
     <div class="srch-wrap"><input class="srch" id="itp-search" placeholder="Search items by name, code or HSN…" oninput="_searchInput('itp-search',renderItemsPage)" value="${esc(q)}"></div>
@@ -2385,6 +2398,180 @@ function buildInventory(){
 // cannot change). So stock is rolled up by HSN + unit — unit is part of the key because
 // KG and MTR are not addable. Derived entirely from bills and invoices via collectMoves();
 // nothing is stored.
+// ── OPENING STOCK BY HSN ──────────────────────────────────────────────────────
+// cfStock is a single carried-forward VALUE from last year's books with no breakdown.
+// This lets that value be split across HSN codes with quantities, so prior-year stock
+// appears in the HSN views instead of being invisible. It is the one stock fact that
+// cannot be derived — there are no prior-year bills in the app — so it is stored in
+// d.openingHsn and reconciled on screen against cfStock.
+var _openRows=null;   // working copy while the modal is open; committed only on Save
+function openOpeningHsn(){
+  _openRows=(D().openingHsn||[]).map(o=>({hsn:o.hsn||'',unit:o.unit||'KG',
+    qty:o.qty||0,amt:o.amt||0,date:o.date||''}));
+  if(!_openRows.length)_openRows.push({hsn:'',unit:'KG',qty:0,amt:0,date:''});
+  renderOpeningHsn();openModal('openhsn');
+}
+function openRowAdd(){_openRows.push({hsn:'',unit:'KG',qty:0,amt:0,date:''});renderOpeningHsn();}
+function openRowDel(i){_openRows.splice(i,1);if(!_openRows.length)openRowAdd();else renderOpeningHsn();}
+function openRowSet(i,f,v){
+  if(!_openRows[i])return;
+  _openRows[i][f]=(f==='qty'||f==='amt')?(parseFloat(v)||0):v;
+  if(f==='qty'||f==='amt')renderOpeningHsn();   // refresh the reconciliation totals
+}
+function renderOpeningHsn(){
+  const d=D();const el=document.getElementById('openhsn-body');if(!el)return;
+  const cf=parseFloat(d.cfStock)||0;
+  const alloc=_openRows.reduce((s,r)=>s+(parseFloat(r.amt)||0),0);
+  const left=Math.round((cf-alloc)*100)/100;
+  const units=['KG','MTR','PCS','SET','DOZ','BOX'];
+  el.innerHTML=`
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:11px;color:#1E40AF;margin-bottom:12px">
+      Carried-forward stock value: <b>${fmt(cf)}</b>${d.cfYear?' (FY '+esc(String(d.cfYear))+')':''}<br>
+      Allocated to HSN: <b>${fmt(alloc)}</b><br>
+      <span style="color:${Math.abs(left)<0.5?'#059669':'#B45309'}">Unallocated: <b>${fmt(left)}</b>${Math.abs(left)<0.5?' ✓ fully split':''}</span>
+      <br><br><b>This is a working allocation, not an accounting entry.</b> It splits a value you already carry into HSN buckets so prior-year stock is visible and future stock nets off correctly. Nothing here reaches your Balance Sheet, Profit &amp; Loss, Trial Balance or GST returns — ${fmt(cf)} continues to be carried as Closing Stock (opening) exactly as before, and the item-wise Stock Report is unaffected.
+      <br><br>These quantities become an inward lot on ${esc((d.cfYear?String(d.cfYear).slice(0,4):td().slice(0,4))+'-04-01')}, feeding the HSN stock views and weighted average cost only. The split does not have to be exact or complete to be useful.
+    </div>
+    ${_openRows.map((r,i)=>{
+      const rate=r.qty?(r.amt/r.qty):0;
+      const info=hsnInfo((r.hsn||'').trim());
+      return `<div style="background:#F9FAFB;border-radius:10px;padding:11px;margin-bottom:8px;position:relative">
+        <button onclick="openRowDel(${i})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
+        <div class="fr" style="margin-right:32px">
+          <div class="fl" style="flex:1.3"><label>HSN</label>
+            <input value="${esc(r.hsn)}" list="hsn-stock-list" placeholder="4/6/8 digits" oninput="openRowSet(${i},'hsn',this.value)" onchange="renderOpeningHsn()">
+            <div style="font-size:10px;margin-top:3px;line-height:1.4">${(r.hsn||'').trim()?(info?'<span style="color:#059669">✓ '+esc(info.desc)+'</span>':(HSN_RE.test((r.hsn||'').trim())?'<span style="color:#B45309">⚠ heading not recognised</span>':'<span style="color:#DC2626">✕ must be 4, 6 or 8 digits</span>')):'<span style="color:var(--sub)">&nbsp;</span>'}</div>
+          </div>
+          <div class="fl"><label>Unit</label>
+            <select onchange="openRowSet(${i},'unit',this.value)">${units.map(u=>`<option value="${u}"${unitKey(r.unit)===unitKey(u)?' selected':''}>${u}</option>`).join('')}</select>
+          </div>
+        </div>
+        <div class="fr">
+          <div class="fl"><label>Quantity</label><input type="number" step="0.01" value="${r.qty||''}" placeholder="0" oninput="openRowSet(${i},'qty',this.value)"></div>
+          <div class="fl"><label>Value ₹</label><input type="number" step="0.01" value="${r.amt||''}" placeholder="0" oninput="openRowSet(${i},'amt',this.value)"></div>
+        </div>
+        <div style="font-size:10px;color:var(--sub);margin-top:4px">Rate: ${rate?fmt(rate):'—'} per ${esc(unitKey(r.unit))}</div>
+      </div>`;}).join('')}
+    <button class="btn sm" onclick="openRowAdd()" style="width:100%;margin-bottom:8px">+ Add HSN line</button>
+    <button class="btn" onclick="saveOpeningHsn()" style="width:100%">Save opening stock</button>`;
+}
+function saveOpeningHsn(){
+  const d=D();
+  const rows=_openRows.map(r=>({hsn:(r.hsn||'').trim(),unit:r.unit||'KG',
+    qty:parseFloat(r.qty)||0,amt:parseFloat(r.amt)||0,date:r.date||''}))
+    .filter(r=>r.hsn||r.qty||r.amt);
+  const bad=[];
+  rows.forEach((r,i)=>{
+    if(!r.hsn)bad.push('Line '+(i+1)+': HSN missing');
+    else if(!HSN_RE.test(r.hsn))bad.push('Line '+(i+1)+': HSN "'+r.hsn+'" must be 4, 6 or 8 digits');
+    if(r.qty<=0)bad.push('Line '+(i+1)+': quantity must be more than 0');
+  });
+  if(bad.length){alert('Fix these first:\n\n• '+bad.join('\n• '));return;}
+  const cf=parseFloat(d.cfStock)||0;
+  const alloc=rows.reduce((s,r)=>s+r.amt,0);
+  const left=Math.round((cf-alloc)*100)/100;
+  let msg='Save opening stock for '+rows.length+' HSN line(s):\n\n'
+    +rows.map(r=>'• '+r.hsn+' — '+fmtR(r.qty)+' '+unitKey(r.unit)+' · '+fmt(r.amt)).join('\n')
+    +'\n\nAllocated '+fmt(alloc)+' of '+fmt(cf)+' carried-forward stock.';
+  if(Math.abs(left)>0.5)msg+='\n⚠ '+fmt(Math.abs(left))+(left>0?' still unallocated.':' MORE than the carried-forward value.');
+  msg+='\n\nThis adds opening quantities to the HSN stock views. It does NOT change the Balance Sheet, your purchases, or any invoice.\n\nSave?';
+  if(!confirm(msg))return;
+  d.openingHsn=rows;
+  saveToCloud();
+  closeModal('openhsn');
+  alert(rows.length+' opening HSN line(s) saved.');
+  if(typeof renderInventory==='function')renderInventory();
+  if(typeof syncHsnDatalist==='function')syncHsnDatalist();
+}
+// ── JOB WORK REVIEW ───────────────────────────────────────────────────────────
+// Printing, dyeing and similar processing bills are SERVICES: they add cost, not
+// quantity. If such a bill is saved as type "Purchase" it carries jw=false, and every
+// consumer that filters !b.jw then treats it as goods — it enters stock, purchases,
+// COGS and the GSTR-1 purchase register, and shows up in HSN Review.
+// This tool retypes them in bulk. It only ever sets jw=true; it never edits an amount,
+// a date, a quantity or a party, and nothing is written until Apply is confirmed.
+// Suggestions are hints for the eye only — nothing is pre-selected, because a fabric
+// can legitimately be named "PIGMENT PRINT" while a printing charge is named the same.
+const JW_WORDS=/job\s*work|jobwork|charge|labour|labor|stitch|embroid|process|dye|dyi|wash|finish|making|cutting|print|mill/i;
+function jwCandidates(){
+  const d=D();const by={};
+  (d.bills||[]).filter(b=>!b.jw).forEach(b=>{
+    const p=(d.parties||[]).find(x=>x.id===b.pid);
+    const pname=p?p.name:'(no party)';
+    const g=by[b.pid||'_']||(by[b.pid||'_']={pid:b.pid||'_',party:pname,bills:[],amt:0,hits:0});
+    const descs=(b.items||[]).map(i=>i.desc||'').join(' ');
+    const hit=JW_WORDS.test(pname)||JW_WORDS.test(descs)||JW_WORDS.test(b.num||'');
+    g.bills.push({id:b.id,num:b.num,date:b.date,grand:b.grand,hit,
+      descs:(b.items||[]).map(i=>i.desc).filter(Boolean).slice(0,3).join(' · '),
+      qty:(b.items||[]).reduce((s,i)=>s+(parseFloat(i.qty)||0),0)});
+    g.amt+=parseFloat(b.grand)||0;if(hit)g.hits++;
+  });
+  return Object.values(by).map(g=>{g.bills.sort((a,b)=>(b.date||'').localeCompare(a.date||''));return g;})
+    .sort((a,b)=>b.hits-a.hits||b.bills.length-a.bills.length);
+}
+function openJwFix(){renderJwFix();openModal('jwfix');}
+function jwToggleParty(pid,on){
+  document.querySelectorAll('[data-jwpid="'+pid+'"]').forEach(el=>{el.checked=on;});
+}
+function renderJwFix(){
+  const groups=jwCandidates();
+  const el=document.getElementById('jwfix-body');if(!el)return;
+  const flagged=(D().bills||[]).filter(b=>b.jw).length;
+  if(!groups.length){el.innerHTML='<div class="empty"><div class="ei">✅</div><p>No purchase bills to review.</p></div>';return;}
+  el.innerHTML=`
+    <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 12px;font-size:11px;color:#92400E;margin-bottom:12px">
+      Tick any bill that is really <b>job work</b> (printing, dyeing, stitching, processing).
+      On Apply it is retyped to Job Work, which removes it from <b>stock, purchases, COGS and the
+      GST purchase register</b> — its amount, date and party are untouched.
+      <br><br>⚠ Bills with a <span style="background:#FEF3C7;padding:1px 5px;border-radius:8px;font-weight:700">?</span> match a processing keyword. That is a hint, not a verdict — a fabric can be named "PIGMENT PRINT" too. Check before ticking.
+      <br><br>Currently flagged as job work: <b>${flagged}</b>
+    </div>
+    ${groups.map(g=>`
+      <div style="background:#F9FAFB;border-radius:10px;padding:11px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+          <div style="min-width:0">
+            <div style="font-weight:700;font-size:13px">${esc(g.party)}${g.hits?' <span style="background:#FEF3C7;color:#B45309;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px">'+g.hits+' ?</span>':''}</div>
+            <div style="font-size:10px;color:var(--sub)">${g.bills.length} purchase bill(s) · ${fmt(g.amt)}</div>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <button class="btn sm" onclick="jwToggleParty('${g.pid}',true)" style="font-size:10px;padding:3px 7px">all</button>
+            <button class="btn sm" onclick="jwToggleParty('${g.pid}',false)" style="font-size:10px;padding:3px 7px">none</button>
+          </div>
+        </div>
+        <div style="margin-top:7px">
+          ${g.bills.map(b=>`<label style="display:flex;gap:7px;align-items:flex-start;padding:4px 0;border-top:1px solid #F3F4F6;cursor:pointer">
+            <input type="checkbox" data-jwpid="${g.pid}" data-jwid="${b.id}" style="width:auto;margin:3px 0 0">
+            <span style="font-size:11px;line-height:1.5;min-width:0">
+              <b>${esc(b.num||'?')}</b> · ${fmtD(b.date)} · ${fmt(b.grand)}${b.hit?' <span style="background:#FEF3C7;color:#B45309;font-size:9px;font-weight:700;padding:0 4px;border-radius:8px">?</span>':''}
+              <br><span style="color:var(--sub)">${esc(b.descs||'—')}${b.qty?' · '+fmtR(b.qty):''}</span>
+            </span></label>`).join('')}
+        </div>
+      </div>`).join('')}
+    <button class="btn" onclick="applyJwFix()" style="width:100%;margin-top:4px">Retype selected bills as Job Work</button>
+    <div style="font-size:10px;color:var(--sub);text-align:center;margin-top:6px">You will see a full summary before anything is saved.</div>`;
+}
+function applyJwFix(){
+  const d=D();
+  const ids=[...document.querySelectorAll('[data-jwid]')].filter(el=>el.checked).map(el=>el.dataset.jwid);
+  if(!ids.length){alert('Tick at least one bill.');return;}
+  // Resolve the actual records FIRST so the summary is exact and cancelling changes nothing.
+  const targets=(d.bills||[]).filter(b=>ids.includes(b.id)&&!b.jw);
+  if(!targets.length){alert('Those bills are already typed as Job Work.');return;}
+  const tot=targets.reduce((s,b)=>s+(parseFloat(b.grand)||0),0);
+  const qty=targets.reduce((s,b)=>s+(b.items||[]).reduce((t,i)=>t+(parseFloat(i.qty)||0),0),0);
+  const lines=targets.slice(0,15).map(b=>{
+    const p=(d.parties||[]).find(x=>x.id===b.pid);
+    return (b.num||'?')+' · '+fmtD(b.date)+' · '+(p?p.name:'?')+' · '+fmt(b.grand);
+  });
+  if(!confirm('Retype '+targets.length+' bill(s) as JOB WORK:\n\n• '+lines.join('\n• ')
+    +(targets.length>15?'\n• … and '+(targets.length-15)+' more':'')
+    +'\n\nEffect:\n– '+fmtR(qty)+' units leave stock\n– '+fmt(tot)+' moves out of Purchases and COGS\n'
+    +'– these bills leave the GSTR-1 purchase register\n\nAmounts, dates, parties and payments are NOT changed.\nSupplier balances are NOT changed.\n\nApply?'))return;
+  targets.forEach(b=>{b.jw=true;});
+  saveToCloud();
+  alert(targets.length+' bill(s) retyped as Job Work.\n\n'+fmtR(qty)+' units removed from stock. Re-check your Stock Report and HSN Review.');
+  renderJwFix();
+}
 // ── HSN REVIEW ────────────────────────────────────────────────────────────────
 // Temporary clean-up tool for historical documents saved before HSN became mandatory.
 // Lines are grouped by description so one code fixes every line sharing that name.
@@ -2399,18 +2586,20 @@ function hsnGaps(){
     const g=groups[key]||(groups[key]={key,desc:it.desc||'(no description)',lines:0,qty:0,
       units:{},docs:[],sales:0,purch:0});
     g.lines++;g.qty+=parseFloat(it.qty)||0;
-    const u=(it.unit||'').toUpperCase().trim();if(u)g.units[u]=(g.units[u]||0)+1;
+    const u=unitKey(it.unit);if(u!=='\u2014')g.units[u]=(g.units[u]||0)+1;
     if(src==='S')g.sales++;else g.purch++;
     if(g.docs.length<6)g.docs.push((src==='S'?'INV ':'BILL ')+(doc.num||'?')+' · '+fmtD(doc.date)+(it.hsn?' · has "'+it.hsn+'"':''));
   };
   (d.invoices||[]).forEach(inv=>(inv.items||[]).forEach((it,n)=>{if(bad(it.hsn))add('S',inv,it,n);}));
-  (d.bills||[]).forEach(b=>(b.items||[]).forEach((it,n)=>{if(bad(it.hsn))add(b.jw?'J':'P',b,it,n);}));
+  // Job-work bills buy a service: SAC is optional there (see hsnCheck opts.optional), so a
+  // blank code on one is not a gap and must not be listed for review.
+  (d.bills||[]).filter(b=>!b.jw).forEach(b=>(b.items||[]).forEach((it,n)=>{if(bad(it.hsn))add('P',b,it,n);}));
   // Suggest a code from anything that already has one for this description
   const known={};
   const note=(desc,hsn,why)=>{const k=normItem(desc);if(!k||bad(hsn))return;
     if(!known[k])known[k]={hsn:(hsn||'').trim(),why};};
   ((d.items)||[]).forEach(x=>note(x.name,x.hsn,'Item Master'));
-  (d.bills||[]).forEach(b=>(b.items||[]).forEach(it=>note(it.desc,it.hsn,'purchase bill '+(b.num||''))));
+  (d.bills||[]).filter(b=>!b.jw).forEach(b=>(b.items||[]).forEach(it=>note(it.desc,it.hsn,'purchase bill '+(b.num||''))));
   (d.invoices||[]).forEach(i=>(i.items||[]).forEach(it=>note(it.desc,it.hsn,'invoice '+(i.num||''))));
   return Object.values(groups).map(g=>{
     const s=known[g.key];
@@ -2429,6 +2618,8 @@ function renderHsnFix(){
       <b>${totLines} line(s)</b> across <b>${gaps.length} description(s)</b> have no valid HSN.
       Enter a code and press Apply — it is written to every line with that description.
       Blank rows are skipped, and lines that already have a valid code are never changed.
+      <br><br>Seeing printing or dyeing lines here? Those bills are typed <b>Purchase</b>, not Job Work — that is also why they sit in your stock.
+      <button class="btn sm" onclick="closeModal('hsnfix');openJwFix()" style="background:#1E40AF;color:#fff;margin-top:6px">Open Job Work Review</button>
     </div>
     ${gaps.map((g,i)=>`
       <div style="background:#F9FAFB;border-radius:10px;padding:11px;margin-bottom:8px">
@@ -2485,7 +2676,7 @@ function applyHsnFix(){
     const hits=[];
     (d.invoices||[]).forEach(inv=>(inv.items||[]).forEach(it=>{
       if(normItem(it.desc)===pl.key&&isBad(it.hsn))hits.push(it);}));
-    (d.bills||[]).forEach(b=>(b.items||[]).forEach(it=>{
+    (d.bills||[]).filter(b=>!b.jw).forEach(b=>(b.items||[]).forEach(it=>{
       if(normItem(it.desc)===pl.key&&isBad(it.hsn))hits.push(it);}));
     if(hits.length){n+=hits.length;targets.push({hsn:pl.hsn,hits});
       touched.push(pl.desc+' → '+pl.hsn+'  ('+hits.length+' line'+(hits.length===1?'':'s')+')');}
@@ -2501,10 +2692,10 @@ function applyHsnFix(){
 }
 var _hsnOpen='';
 function buildHsnStock(){
-  const moves=collectMoves();const map={};
+  const d=D();const moves=collectMoves();const map={};
   moves.forEach(m=>{
     const hsn=(m.hsn||'').trim();if(!hsn)return;
-    const unit=(m.unit||'').toUpperCase().trim()||'—';
+    const unit=unitKey(m.unit);
     const k=hsn+'|'+unit;
     const a=map[k]||(map[k]={hsn,unit,key:k,inQty:0,inAmt:0,outQty:0,outAmt:0,
       names:{},lots:[],lastIn:'',lastOut:''});
@@ -2519,6 +2710,25 @@ function buildHsnStock(){
       if(!a.lastOut||m.date>a.lastOut)a.lastOut=m.date;
     }
   });
+  // ── Opening stock carried in from the previous year ──
+  // There are no prior-year bills in the app, so this cannot be derived — it is the only
+  // stock fact that must be stored (d.openingHsn, allocated by the user out of cfStock).
+  // Treated as an inward lot dated the opening date, so it flows through qty, value and
+  // weighted average cost exactly like a purchase.
+  const _openDate=(d.cfYear?String(d.cfYear).slice(0,4):(td().slice(0,4)))+'-04-01';
+  (d.openingHsn||[]).forEach(o=>{
+    const hsn=(o.hsn||'').trim();if(!hsn)return;
+    const qty=parseFloat(o.qty)||0,amt=parseFloat(o.amt)||0;
+    if(!qty&&!amt)return;
+    const unit=unitKey(o.unit);
+    const k=hsn+'|'+unit;
+    const a=map[k]||(map[k]={hsn,unit,key:k,inQty:0,inAmt:0,outQty:0,outAmt:0,
+      names:{},lots:[],lastIn:'',lastOut:''});
+    a.inQty+=qty;a.inAmt+=amt;a.openQty=(a.openQty||0)+qty;a.openAmt=(a.openAmt||0)+amt;
+    a.lots.push({date:o.date||_openDate,num:'OPENING',desc:'Opening stock (previous year)',
+      qty:qty,rate:qty?amt/qty:0,amt:amt,opening:true});
+    a.names['Opening stock']=(a.names['Opening stock']||0)+qty;
+  });
   return Object.values(map).map(a=>{
     const stock=a.inQty-a.outQty;
     const avgBuy=a.inQty>0?a.inAmt/a.inQty:0;
@@ -2526,6 +2736,7 @@ function buildHsnStock(){
     const rates=a.lots.map(l=>l.rate).filter(r=>r>0);
     a.lots.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
     return {hsn:a.hsn,unit:a.unit,key:a.key,inQty:a.inQty,outQty:a.outQty,stock,
+      openQty:a.openQty||0,openAmt:a.openAmt||0,
       avgBuy,avgSell,value:stock>0?stock*avgBuy:0,
       minRate:rates.length?Math.min(...rates):0,maxRate:rates.length?Math.max(...rates):0,
       lastRate:a.lots.length?a.lots[0].rate:0,
@@ -2540,7 +2751,7 @@ function hsnAvail(hsn,unit){
   const h=(hsn||'').trim();if(!h)return null;
   const rows=buildHsnStock().filter(r=>r.hsn===h);
   if(!rows.length)return null;
-  const u=(unit||'').toUpperCase().trim();
+  const u=unit?unitKey(unit):'';
   const exact=u?rows.filter(r=>r.unit===u):rows;
   return {rows,exact,other:rows.filter(r=>!u||r.unit!==u)};
 }
@@ -3708,6 +3919,22 @@ function syncItemDatalist(){
   const dl=document.getElementById('item-list');if(!dl)return;
   dl.innerHTML=(D().items||[]).map(i=>'<option value="'+esc(i.name)+'">').join('');
 }
+// HSN suggestions for a sales line: every HSN actually holding stock, most first, each
+// labelled with what is available and at what cost. Derived from buildHsnStock(), so it
+// can never disagree with the Stock Report. The field stays a free-text input — typing a
+// new HSN (e.g. a garment code that has no fabric stock) is unaffected.
+function syncHsnDatalist(){
+  const dl=document.getElementById('hsn-stock-list');if(!dl)return;
+  // Every HSN the books know about, in stock or not — a negative or nil balance still needs
+  // to be billable. Positive stock is listed first, then nil, then short.
+  const rows=buildHsnStock().sort((a,b)=>b.stock-a.stock);
+  dl.innerHTML=rows.map(r=>{
+    const q=fmtR(r.stock)+' '+r.unit;
+    const tag=r.stock>0.001?q+' available':(r.stock<-0.001?q+' (short)':'nil in stock');
+    return '<option value="'+esc(r.hsn)+'" label="'
+      +esc(tag+(r.avgBuy?' · '+fmt(r.avgBuy):'')+(r.info?' · '+r.info.desc:''))+'">';
+  }).join('');
+}
 // When an invoice line's description matches a master item, auto-fill HSN + Unit.
 function applyItemMaster(idx){
   const it=(D().items||[]).find(x=>(x.name||'').toLowerCase()===(document.getElementById('ii-desc-'+idx)?.value||'').trim().toLowerCase());
@@ -4565,7 +4792,7 @@ function editInvoice(iid){
     div.style.cssText='background:#F9FAFB;border-radius:10px;padding:12px;margin-bottom:8px;position:relative';
     div.innerHTML=`<button onclick="removeInvItem(${idx})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
       <div class="fl"><label>Description *</label><input id="ii-desc-${idx}" value="${esc(it.desc||'')}" oninput="calcInvTotal();hsnHint('ii',${idx})"></div>
-      <div class="fr"><div class="fl"><label>HSN *</label><input id="ii-hsn-${idx}" value="${esc(it.hsn||'')}" oninput="hsnHint('ii',${idx})"><div id="ii-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
+      <div class="fr"><div class="fl"><label>HSN *</label><input id="ii-hsn-${idx}" list="hsn-stock-list" value="${esc(it.hsn||'')}" oninput="hsnHint('ii',${idx})" onchange="hsnPickUnit(${idx});hsnHint('ii',${idx})"><div id="ii-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
       <div class="fl"><label>Unit</label><select id="ii-unit-${idx}" onchange="hsnHint('ii',${idx})"><option value="PCS"${it.unit==='PCS'?' selected':''}>Pieces</option><option value="KG"${it.unit==='KG'?' selected':''}>KG</option><option value="MTR"${it.unit==='MTR'?' selected':''}>Metres</option></select></div></div>
       <div class="fr"><div class="fl"><label>Qty *</label><input id="ii-qty-${idx}" type="number" value="${it.qty||0}" oninput="calcInvTotal();hsnHint('ii',${idx})"></div>
       <div class="fl"><label>Rate *</label><input id="ii-rate-${idx}" type="number" value="${it.rate||0}" oninput="calcInvTotal()"></div></div>
@@ -4574,7 +4801,7 @@ function editInvoice(iid){
   calcInvTotal();
   // Reset invoice modal title and open
   document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';var _ib=document.getElementById('inv-save-btn');if(_ib)_ib.textContent='Update Invoice';
-  syncItemDatalist();openModal('inv');
+  syncItemDatalist();syncHsnDatalist();openModal('inv');
 }
 function confirmDelInv(iid){
   const d=D();
@@ -4732,7 +4959,7 @@ function openInvModal(pid){
   document.getElementById('cus-list').innerHTML=custs.map(p=>`<option value="${esc(p.name)}">`).join('');
   if(pid){const p=d.parties.find(x=>x.id===pid);if(p){document.getElementById('i-cust').value=p.name;if(p.gstin)document.getElementById('i-cust-gstin').value=p.gstin;if(p.addr)document.getElementById('i-cust-addr').value=p.addr;if(p.pin)document.getElementById('i-cust-pin').value=p.pin;if(p.phone)document.getElementById('i-cust-phone').value=p.phone;const stc=p.gstin?stateFromGstin(p.gstin):'';document.getElementById('i-cust-state').value=p.stateName||stateName(stc)||(stc?'State '+stc:'');autoSetGST(p);}}
   addInvItem();
-  syncItemDatalist();openModal('inv');
+  syncItemDatalist();syncHsnDatalist();openModal('inv');
 }
 function onInvModeChange(){
   const mode=document.getElementById('i-mode').value;
@@ -4944,7 +5171,7 @@ function addInvItem(){
     <button onclick="removeInvItem(${idx})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
     <div class="fl"><label>Description *</label><input id="ii-desc-${idx}" list="item-list" placeholder="e.g. Leggings — type to search Item Master" oninput="calcInvTotal()" onchange="applyItemMaster(${idx})"></div>
     <div class="fr">
-      <div class="fl"><label>HSN Code *</label><input id="ii-hsn-${idx}" placeholder="e.g. 61099090" oninput="hsnHint('ii',${idx})"><div id="ii-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
+      <div class="fl"><label>HSN Code *</label><input id="ii-hsn-${idx}" list="hsn-stock-list" placeholder="type or pick from stock" oninput="hsnHint('ii',${idx})" onchange="hsnPickUnit(${idx});hsnHint('ii',${idx})"><div id="ii-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
       <div class="fl"><label>Unit</label>
         <select id="ii-unit-${idx}" onchange="calcInvTotal();hsnHint('ii',${idx})">
           <option value="PCS">Pieces</option>
@@ -10363,6 +10590,16 @@ function _uqc(u){u=(u||'').toUpperCase().trim();return _UQC[u]||(u?'OTH-OTHERS':
 // above so there is a single mapping, not two. Raw unit text must never reach the JSON:
 // the item dropdown offers "KG", which is not a valid UQC and fails portal validation.
 function _uqcJSON(u){return _uqc(u).split('-')[0];}
+// Canonical unit for stock keying. The same unit is typed several ways across documents
+// ("KG" on a purchase, "KGS" on an invoice, "MTRS"/"M" for metres), which would otherwise
+// split one HSN into separate buckets that never net off. Routed through the _UQC table
+// above so units and UQC codes can never disagree. Blank stays blank, shown as "—".
+function unitKey(u){
+  const t=(u||'').toUpperCase().trim();
+  if(!t)return '\u2014';
+  const c=_uqcJSON(t);
+  return c==='OTH'?t:c;   // unknown units keep their own text rather than collapsing into OTH
+}
 // HSN must be 4, 6 or 8 digits (Notification 78/2020). One rule, used by both the
 // save-time check on invoices/bills and the GSTR-1 pre-export validator.
 const HSN_RE=/^(\d{4}|\d{6}|\d{8})$/;
@@ -10490,7 +10727,7 @@ function _stockConfirm(items,editingId){
   const need={};
   (items||[]).forEach(it=>{
     const h=(it.hsn||'').trim();if(!h)return;
-    const u=(it.unit||'').toUpperCase().trim()||'—';
+    const u=unitKey(it.unit);
     const k=h+'|'+u;
     need[k]=need[k]||{hsn:h,unit:u,qty:0,descs:[]};
     need[k].qty+=parseFloat(it.qty)||0;
@@ -10505,7 +10742,7 @@ function _stockConfirm(items,editingId){
     if(editingId){
       const d=D();const old=(d.invoices||[]).find(x=>x.id===editingId);
       (old&&old.items||[]).forEach(oi=>{
-        if((oi.hsn||'').trim()===n.hsn&&((oi.unit||'').toUpperCase().trim()||'—')===n.unit)
+        if((oi.hsn||'').trim()===n.hsn&&unitKey(oi.unit)===n.unit)
           have+=parseFloat(oi.qty)||0;
       });
     }
@@ -10515,6 +10752,21 @@ function _stockConfirm(items,editingId){
   });
   if(!w.length)return true;
   return confirm('Stock check:\n\n• '+w.join('\n• ')+'\n\nThis usually means a purchase bill has not been entered yet. Save the invoice anyway?');
+}
+// When an HSN is picked from the stock list and it is held in exactly one unit, set the
+// row's unit to match — otherwise the availability line would compare against the wrong
+// bucket. Never overrides a unit the user has already changed away from the default.
+function hsnPickUnit(idx){
+  const h=(document.getElementById('ii-hsn-'+idx)?.value||'').trim();
+  const uEl=document.getElementById('ii-unit-'+idx);
+  if(!h||!uEl)return;
+  const av=hsnAvail(h);
+  if(!av)return;
+  const held=av.rows.filter(r=>r.stock>0.001);
+  if(held.length!==1)return;                       // ambiguous — leave the user's choice alone
+  const want=held[0].unit;
+  const opt=[...uEl.options].find(o=>unitKey(o.value)===want);
+  if(opt)uEl.value=opt.value;
 }
 // Live hint under an HSN field. prefix is 'bi' (bill) or 'ii' (invoice).
 function hsnHint(prefix,idx){
@@ -10543,7 +10795,7 @@ function hsnHint(prefix,idx){
             +(shortfall>0.001?' — short by '+fmtR(shortfall)+' '+esc(mine.unit):'')+'</span>';
       }
       // Same HSN held in a different unit (e.g. bought in KG, being sold in MTR)
-      const others=av.rows.filter(r=>r.unit!==(unit||'').toUpperCase().trim());
+      const others=av.rows.filter(r=>r.unit!==unitKey(unit));
       if(others.length&&!mine)
         out+=(out?'<br>':'')+'<span style="color:#B45309">⚠ HSN '+esc(h)+' is held in '
             +others.map(r=>fmtR(r.stock)+' '+esc(r.unit)).join(', ')+' — not '+esc(unit||'this unit')+'</span>';
@@ -10885,7 +11137,8 @@ function renderStockReportHsn(pg){
   const body=rows.map((r,k)=>`<tr style="background:${k%2?'#FAFAFA':'#fff'}">
     <td style="padding:7px;font-weight:600">${esc(r.hsn)}${unitCount[r.hsn]>1?' <span style="background:#FEF3C7;color:#B45309;font-size:9px;font-weight:700;padding:1px 4px;border-radius:8px">MIXED</span>':''}</td>
     <td style="padding:7px;font-size:11px;color:var(--sub)">${r.info?esc(r.info.desc):'—'}</td>
-    <td style="padding:7px;text-align:right">${fmtR(r.inQty)}</td>
+    <td style="padding:7px;text-align:right;color:${r.openQty?'#1E40AF':'var(--sub)'}">${r.openQty?fmtR(r.openQty):'—'}</td>
+    <td style="padding:7px;text-align:right">${fmtR(r.inQty-(r.openQty||0))}</td>
     <td style="padding:7px;text-align:right">${fmtR(r.outQty)}</td>
     <td style="padding:7px;text-align:right;font-weight:700;color:${r.stock<-0.001?'var(--r)':r.stock>0.001?'var(--g)':'var(--sub)'}">${fmtR(r.stock)} ${esc(r.unit)}</td>
     <td style="padding:7px;text-align:right;font-size:11px">${r.avgBuy?fmt(r.avgBuy):'—'}</td>
@@ -10895,15 +11148,18 @@ function renderStockReportHsn(pg){
     ${_stockRepToggle()}
     ${repActionBar("printStockReportHsn()","csvStockReportHsn()")}
     <div class="ibox blu" style="margin-bottom:12px">Total stock value: <strong>${fmt(totVal)}</strong></div>
+    ${(()=>{const cf=parseFloat(D().cfStock)||0;const al=(D().openingHsn||[]).reduce((a,o)=>a+(parseFloat(o.amt)||0),0);const lf=Math.round((cf-al)*100)/100;
+      return cf?`<div class="card" style="background:${Math.abs(lf)<0.5?'#F0FDF4':'#FFFBEB'};border:1px solid ${Math.abs(lf)<0.5?'#86EFAC':'#FDE68A'};padding:9px 11px;margin-bottom:10px"><div style="font-size:11px;color:${Math.abs(lf)<0.5?'#166534':'#92400E'};margin-bottom:6px">Opening stock ${fmt(cf)} · allocated to HSN ${fmt(al)}${Math.abs(lf)<0.5?' ✓':' · <b>'+fmt(lf)+' not yet split</b>'}<br><span style="opacity:.8">Working allocation for these HSN views only — not an accounting entry.</span></div><button class="btn sm" onclick="openOpeningHsn()" style="background:#1E40AF;color:#fff">Allot opening stock to HSN</button></div>`:'';})()}
     ${gapLines?`<div class="card" style="background:#EFF6FF;border:1px solid #BFDBFE;padding:9px 11px;margin-bottom:10px"><div style="font-size:11px;color:#1E40AF;margin-bottom:6px"><b>${gapLines} line(s)</b> have no HSN and are missing from this report.</div><button class="btn sm" onclick="openHsnFix()" style="background:#1E40AF;color:#fff">Review &amp; assign HSN</button></div>`:''}
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:640px">
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:720px">
       <thead><tr style="background:var(--pri);color:#fff">
         <th style="padding:7px;text-align:left">HSN</th><th style="padding:7px;text-align:left">Description</th>
+        <th style="padding:7px;text-align:right">Opening</th>
         <th style="padding:7px;text-align:right">Purchased</th><th style="padding:7px;text-align:right">Sold</th>
         <th style="padding:7px;text-align:right">In Stock</th><th style="padding:7px;text-align:right">Avg Cost</th>
         <th style="padding:7px;text-align:right">Value</th></tr></thead>
-      <tbody>${body||'<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--sub)">No HSN data — add HSN codes to your bills.</td></tr>'}</tbody>
-      <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="6" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totVal)}</td></tr></tfoot>
+      <tbody>${body||'<tr><td colspan="8" style="padding:16px;text-align:center;color:var(--sub)">No HSN data — add HSN codes to your bills.</td></tr>'}</tbody>
+      <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="7" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totVal)}</td></tr></tfoot>
     </table></div></div>`;
 }
 function printStockReportHsn(){
@@ -10925,8 +11181,8 @@ function printStockReportHsn(){
 function csvStockReportHsn(){
   const rows=buildHsnStock();
   downloadCSV('Stock_HSN_'+curBiz+'.csv',
-    ['HSN','Description','Unit','Purchased','Sold','In Stock','Avg Cost','Min Rate','Max Rate','Last Rate','Value','Bought As'],
-    rows.map(r=>[r.hsn,r.info?r.info.desc:'',r.unit,r.inQty.toFixed(2),r.outQty.toFixed(2),r.stock.toFixed(2),
+    ['HSN','Description','Unit','Opening','Purchased','Sold','In Stock','Avg Cost','Min Rate','Max Rate','Last Rate','Value','Bought As'],
+    rows.map(r=>[r.hsn,r.info?r.info.desc:'',r.unit,(r.openQty||0).toFixed(2),(r.inQty-(r.openQty||0)).toFixed(2),r.outQty.toFixed(2),r.stock.toFixed(2),
       r.avgBuy.toFixed(2),r.minRate.toFixed(2),r.maxRate.toFixed(2),r.lastRate.toFixed(2),r.value.toFixed(2),
       r.names.join(' | ')]));
 }
