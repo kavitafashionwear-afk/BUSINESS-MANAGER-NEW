@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R108</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R111</div>
   </nav>
 
   <!-- PAGES -->
@@ -2369,6 +2369,57 @@ function buildInventory(){
   });
 }
 
+// ── HSN-wise stock ────────────────────────────────────────────────────────────
+// HSN is the stable identity of the goods; the trade name on a bill is not (the same
+// cloth arrives as "FEELGOOD TUBE" and may be sold under another name, but the HSN
+// cannot change). So stock is rolled up by HSN + unit — unit is part of the key because
+// KG and MTR are not addable. Derived entirely from bills and invoices via collectMoves();
+// nothing is stored.
+var _hsnOpen='';
+function buildHsnStock(){
+  const moves=collectMoves();const map={};
+  moves.forEach(m=>{
+    const hsn=(m.hsn||'').trim();if(!hsn)return;
+    const unit=(m.unit||'').toUpperCase().trim()||'—';
+    const k=hsn+'|'+unit;
+    const a=map[k]||(map[k]={hsn,unit,key:k,inQty:0,inAmt:0,outQty:0,outAmt:0,
+      names:{},lots:[],lastIn:'',lastOut:''});
+    if(m.kind==='in'){
+      a.inQty+=m.qty;a.inAmt+=m.amt;
+      if(!a.lastIn||m.date>a.lastIn)a.lastIn=m.date;
+      // Purchase lots, newest first later — this is the "rates on the purchase bill" view
+      a.lots.push({date:m.date,num:m.num,desc:m.desc,qty:m.qty,rate:m.rate,amt:m.amt});
+      a.names[m.desc]=(a.names[m.desc]||0)+m.qty;
+    }else{
+      a.outQty+=m.qty;a.outAmt+=m.amt;
+      if(!a.lastOut||m.date>a.lastOut)a.lastOut=m.date;
+    }
+  });
+  return Object.values(map).map(a=>{
+    const stock=a.inQty-a.outQty;
+    const avgBuy=a.inQty>0?a.inAmt/a.inQty:0;
+    const avgSell=a.outQty>0?a.outAmt/a.outQty:0;
+    const rates=a.lots.map(l=>l.rate).filter(r=>r>0);
+    a.lots.sort((x,y)=>(y.date||'').localeCompare(x.date||''));
+    return {hsn:a.hsn,unit:a.unit,key:a.key,inQty:a.inQty,outQty:a.outQty,stock,
+      avgBuy,avgSell,value:stock>0?stock*avgBuy:0,
+      minRate:rates.length?Math.min(...rates):0,maxRate:rates.length?Math.max(...rates):0,
+      lastRate:a.lots.length?a.lots[0].rate:0,
+      names:Object.entries(a.names).sort((x,y)=>y[1]-x[1]).map(x=>x[0]),
+      lots:a.lots,lastIn:a.lastIn,lastOut:a.lastOut,
+      info:hsnInfo(a.hsn)};
+  }).sort((x,y)=>y.value-x.value||x.hsn.localeCompare(y.hsn));
+}
+// Available stock for one HSN. Unit optional: when given, only that unit's bucket is
+// returned; otherwise every unit bucket carrying this HSN.
+function hsnAvail(hsn,unit){
+  const h=(hsn||'').trim();if(!h)return null;
+  const rows=buildHsnStock().filter(r=>r.hsn===h);
+  if(!rows.length)return null;
+  const u=(unit||'').toUpperCase().trim();
+  const exact=u?rows.filter(r=>r.unit===u):rows;
+  return {rows,exact,other:rows.filter(r=>!u||r.unit!==u)};
+}
 // Roll-up stock by an attribute dimension (hsn|design|color) for the grouped views.
 function buildGroupStock(dim){
   const moves=collectMoves();const map={};
@@ -2424,6 +2475,53 @@ function renderInventory(){
     </div>`;
 
   // ---- GROUPED VIEWS (HSN / Design / Colour) ----
+  // ---- HSN VIEW (stock keyed by HSN + unit, with purchase rates) ----
+  if(invDim==='hsn'){
+    let rows=buildHsnStock();
+    if(search){const q=search.toLowerCase();rows=rows.filter(r=>(r.hsn+' '+r.unit+' '+r.names.join(' ')+' '+(r.info?r.info.desc:'')).toLowerCase().includes(q));}
+    // Same HSN appearing under more than one unit means purchases and sales were booked
+    // in different units — surfaced rather than silently added together.
+    const unitCount={};buildHsnStock().forEach(r=>{unitCount[r.hsn]=(unitCount[r.hsn]||0)+1;});
+    const totVal=rows.reduce((s,r)=>s+r.value,0);
+    const negRows=rows.filter(r=>r.stock<-0.001);
+    const body=rows.length?rows.map(r=>{
+      const open=_hsnOpen===r.key;
+      const st=r.stock;
+      const col=st<-0.001?'var(--r)':st>0.001?'var(--g)':'var(--sub)';
+      const lots=open?`<div style="padding:0 0 12px 52px">
+        <div style="font-size:11px;font-weight:700;color:var(--sub);margin:2px 0 6px">PURCHASE RATES (${r.lots.length} lot${r.lots.length===1?'':'s'})</div>
+        ${r.lots.slice(0,12).map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid #F3F4F6">
+          <span>${fmtD(l.date)} · ${esc(l.num||'')} · ${esc(l.desc||'')}</span>
+          <span style="white-space:nowrap"><b>${fmtR(l.qty)}</b> ${esc(r.unit)} @ ${fmt(l.rate)}</span></div>`).join('')}
+        ${r.lots.length>12?`<div style="font-size:10px;color:var(--sub);padding-top:4px">+ ${r.lots.length-12} older lot(s)</div>`:''}
+        ${r.names.length?`<div style="font-size:10px;color:var(--sub);margin-top:7px">Bought as: ${r.names.slice(0,6).map(esc).join(' · ')}</div>`:''}
+        <div style="font-size:10px;color:var(--sub);margin-top:4px">In ${fmtR(r.inQty)} · Out ${fmtR(r.outQty)} · Avg buy ${fmt(r.avgBuy)}${r.avgSell?' · Avg sell '+fmt(r.avgSell):''}</div>
+      </div>`:'';
+      return `<div class="prow" style="cursor:pointer;align-items:flex-start" onclick="_hsnOpen=(_hsnOpen==='${r.key}'?'':'${r.key}');renderInventory()">
+        <div class="pav" style="background:#1E40AF;font-size:12px">#</div>
+        <div class="pi">
+          <div class="pn">${esc(r.hsn)} <span style="font-size:10px;font-weight:600;color:var(--sub)">${esc(r.unit)}</span>${unitCount[r.hsn]>1?' <span style="background:#FEF3C7;color:#B45309;font-size:9px;font-weight:700;padding:1px 5px;border-radius:20px">MIXED UNITS</span>':''}</div>
+          <div class="ps">${r.info?esc(r.info.desc):'<span style="color:#B45309">heading not recognised</span>'}</div>
+          <div class="ps" style="font-size:10px">Rate ${r.minRate===r.maxRate?fmt(r.lastRate):fmt(r.minRate)+'–'+fmt(r.maxRate)} · last ${fmt(r.lastRate)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div class="pb" style="color:${col}">${fmtR(st)} <span style="font-size:10px">${esc(r.unit)}</span></div>
+          <div style="font-size:11px;color:var(--sub)">${fmt(r.value)}</div>
+        </div>
+      </div>${lots}`;}).join(''):'<div class="empty"><div class="ei">📦</div><p>No HSN stock yet.<br><span style="font-size:12px;color:#999">Add HSN codes on purchase bills to use this view.</span></p></div>';
+    document.getElementById('pg-inventory').innerHTML=header+`
+      <div class="srch-wrap"><input class="srch" id="inv-srch" placeholder="Search HSN, name or description…" oninput="_searchInput('inv-srch',renderInventory)" value="${esc(search)}"></div>
+      ${negRows.length?`<div class="card" style="background:#FEF2F2;border:1px solid #FCA5A5;padding:10px 12px;font-size:11px;color:#991B1B;margin-bottom:10px"><b>⚠ ${negRows.length} HSN line(s) show negative stock</b> — more sold than purchased under that HSN. Usually a missing purchase bill, or goods bought under one HSN and sold under another.</div>`:''}
+      <div class="card" style="padding:0 16px">
+        <div style="padding:12px 0;font-size:13px;font-weight:700;color:var(--sub);display:flex;justify-content:space-between">
+          <span>HSN-WISE STOCK (${rows.length})</span><span>${fmt(totVal)}</span></div>
+        ${body}
+      </div>`;
+    ['home','parties','bills','invoices','detail','notes','bank','cash','expenses','loans','trash'].forEach(pp=>{const el=document.getElementById('pg-'+pp);if(el)el.style.display='none';});
+    document.getElementById('pg-inventory').style.display='block';
+    return;
+  }
+
   if(invDim!=='item'){
     let groups=buildGroupStock(invDim);
     if(search){const q=search.toLowerCase();groups=groups.filter(g=>g.key.toLowerCase().includes(q));}
@@ -4067,7 +4165,7 @@ function addBillItem(){
     <button onclick="removeBillItem(${idx})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
     <div class="fl"><label>Description *</label><input id="bi-desc-${idx}" placeholder="e.g. Feelgood Tube 44 Naked" oninput="calcBillTotal()"></div>
     <div class="fr">
-      <div class="fl"><label>HSN Code</label><input id="bi-hsn-${idx}" placeholder="e.g. 60063100"></div>
+      <div class="fl"><label>HSN Code</label><input id="bi-hsn-${idx}" placeholder="e.g. 60063100" oninput="hsnHint('bi',${idx})"><div id="bi-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
       <div class="fl"><label>Unit</label>
         <select id="bi-unit-${idx}" onchange="calcBillTotal()">
           <option value="KG">KG</option>
@@ -4205,6 +4303,9 @@ function saveBill(){
   if(!num){alert('Bill number required');return;}
   const items=getBillItems();
   if(!items.length){alert('Add at least one item');return;}
+  const _hsnBadB=hsnCheck(items);
+  if(_hsnBadB.length){alert('HSN is required on every line — it is needed for ITC matching and stock reporting.\n\n• '+_hsnBadB.join('\n• '));return;}
+  if(!_hsnConfirm(items,d))return;
   const sub=items.reduce((s,i)=>s+i.amt,0);
   const disc=parseFloat(document.getElementById('b-disc').value)||0;
   const freight=parseFloat(document.getElementById('b-freight').value)||0;
@@ -4271,7 +4372,7 @@ function editBill(bid){
     div.style.cssText='background:#F9FAFB;border-radius:10px;padding:12px;margin-bottom:8px;position:relative';
     div.innerHTML=`<button onclick="removeBillItem(${idx})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
       <div class="fl"><label>Description *</label><input id="bi-desc-${idx}" value="${esc(it.desc||'')}" oninput="calcBillTotal()"></div>
-      <div class="fr"><div class="fl"><label>HSN</label><input id="bi-hsn-${idx}" value="${esc(it.hsn||'')}"></div>
+      <div class="fr"><div class="fl"><label>HSN</label><input id="bi-hsn-${idx}" value="${esc(it.hsn||'')}" oninput="hsnHint('bi',${idx})"><div id="bi-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
       <div class="fl"><label>Unit</label><select id="bi-unit-${idx}"><option value="KG"${it.unit==='KG'?' selected':''}>KG</option><option value="MTR"${it.unit==='MTR'?' selected':''}>Metres</option><option value="PCS"${it.unit==='PCS'?' selected':''}>Pieces</option></select></div></div>
       <div class="fr"><div class="fl"><label>Pack</label><input id="bi-pack-${idx}" value="${esc(it.pack||'')}"></div>
       <div class="fl"><label>PCS</label><input id="bi-pcs-${idx}" type="number" value="${it.pcs||0}"></div>
@@ -4337,10 +4438,10 @@ function editInvoice(iid){
   inv.items.forEach(it=>{invItemCount++;const idx=invItemCount;const div=document.createElement('div');div.id='ii-'+idx;
     div.style.cssText='background:#F9FAFB;border-radius:10px;padding:12px;margin-bottom:8px;position:relative';
     div.innerHTML=`<button onclick="removeInvItem(${idx})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
-      <div class="fl"><label>Description *</label><input id="ii-desc-${idx}" value="${esc(it.desc||'')}" oninput="calcInvTotal()"></div>
-      <div class="fr"><div class="fl"><label>HSN *</label><input id="ii-hsn-${idx}" value="${esc(it.hsn||'')}"></div>
-      <div class="fl"><label>Unit</label><select id="ii-unit-${idx}"><option value="PCS"${it.unit==='PCS'?' selected':''}>Pieces</option><option value="KG"${it.unit==='KG'?' selected':''}>KG</option><option value="MTR"${it.unit==='MTR'?' selected':''}>Metres</option></select></div></div>
-      <div class="fr"><div class="fl"><label>Qty *</label><input id="ii-qty-${idx}" type="number" value="${it.qty||0}" oninput="calcInvTotal()"></div>
+      <div class="fl"><label>Description *</label><input id="ii-desc-${idx}" value="${esc(it.desc||'')}" oninput="calcInvTotal();hsnHint('ii',${idx})"></div>
+      <div class="fr"><div class="fl"><label>HSN *</label><input id="ii-hsn-${idx}" value="${esc(it.hsn||'')}" oninput="hsnHint('ii',${idx})"><div id="ii-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
+      <div class="fl"><label>Unit</label><select id="ii-unit-${idx}" onchange="hsnHint('ii',${idx})"><option value="PCS"${it.unit==='PCS'?' selected':''}>Pieces</option><option value="KG"${it.unit==='KG'?' selected':''}>KG</option><option value="MTR"${it.unit==='MTR'?' selected':''}>Metres</option></select></div></div>
+      <div class="fr"><div class="fl"><label>Qty *</label><input id="ii-qty-${idx}" type="number" value="${it.qty||0}" oninput="calcInvTotal();hsnHint('ii',${idx})"></div>
       <div class="fl"><label>Rate *</label><input id="ii-rate-${idx}" type="number" value="${it.rate||0}" oninput="calcInvTotal()"></div></div>
       <div class="fl"><label>Amount</label><input id="ii-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700" value="${fmt(it.amt||it.amount||(it.qty*it.rate)||0)}"></div>`+textileRowHTML('ii',idx,it);
     document.getElementById('i-items-list').appendChild(div);});
@@ -4717,9 +4818,9 @@ function addInvItem(){
     <button onclick="removeInvItem(${idx})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
     <div class="fl"><label>Description *</label><input id="ii-desc-${idx}" list="item-list" placeholder="e.g. Leggings — type to search Item Master" oninput="calcInvTotal()" onchange="applyItemMaster(${idx})"></div>
     <div class="fr">
-      <div class="fl"><label>HSN Code *</label><input id="ii-hsn-${idx}" placeholder="e.g. 61099090"></div>
+      <div class="fl"><label>HSN Code *</label><input id="ii-hsn-${idx}" placeholder="e.g. 61099090" oninput="hsnHint('ii',${idx})"><div id="ii-hint-${idx}" style="font-size:10px;line-height:1.5;margin-top:3px"></div></div>
       <div class="fl"><label>Unit</label>
-        <select id="ii-unit-${idx}" onchange="calcInvTotal()">
+        <select id="ii-unit-${idx}" onchange="calcInvTotal();hsnHint('ii',${idx})">
           <option value="PCS">Pieces</option>
           <option value="KG">KG</option>
           <option value="MTR">Metres</option>
@@ -4728,7 +4829,7 @@ function addInvItem(){
       </div>
     </div>
     <div class="fr">
-      <div class="fl"><label>Quantity *</label><input id="ii-qty-${idx}" type="number" placeholder="0" min="0" step="0.01" oninput="calcInvTotal()"></div>
+      <div class="fl"><label>Quantity *</label><input id="ii-qty-${idx}" type="number" placeholder="0" min="0" step="0.01" oninput="calcInvTotal();hsnHint('ii',${idx})"></div>
       <div class="fl"><label>Rate (₹) *</label><input id="ii-rate-${idx}" type="number" placeholder="0" min="0" step="0.01" oninput="calcInvTotal()"></div>
     </div>
     <div class="fl"><label>Amount</label><input id="ii-amt-${idx}" readonly style="background:#F0FFF4;font-weight:700"></div>`+textileRowHTML('ii',idx,{});
@@ -4835,6 +4936,10 @@ function saveInvoice(){
   if(custStateEntered)customer.stateName=custStateEntered;
   const items=getInvItems();
   if(!items.length){alert('Add at least one item');return;}
+  const _hsnBad=hsnCheck(items);
+  if(_hsnBad.length){alert('HSN is required on every line — GSTR-1 cannot be filed without it.\n\n• '+_hsnBad.join('\n• '));return;}
+  if(!_hsnConfirm(items,d))return;
+  if(!_stockConfirm(items,editInvId))return;
   const sub=items.reduce((s,i)=>s+i.amt,0);
   const disc=parseFloat(document.getElementById('i-disc').value)||0;
   const trans=parseFloat(document.getElementById('i-trans').value)||0;
@@ -10132,6 +10237,185 @@ function _uqc(u){u=(u||'').toUpperCase().trim();return _UQC[u]||(u?'OTH-OTHERS':
 // above so there is a single mapping, not two. Raw unit text must never reach the JSON:
 // the item dropdown offers "KG", which is not a valid UQC and fails portal validation.
 function _uqcJSON(u){return _uqc(u).split('-')[0];}
+// HSN must be 4, 6 or 8 digits (Notification 78/2020). One rule, used by both the
+// save-time check on invoices/bills and the GSTR-1 pre-export validator.
+const HSN_RE=/^(\d{4}|\d{6}|\d{8})$/;
+// Returns a list of human-readable problems, empty when every line is fine.
+function hsnCheck(items){
+  const bad=[];
+  (items||[]).forEach((it,n)=>{
+    const h=(it.hsn||'').trim();
+    const who='Line '+(n+1)+(it.desc?' ('+it.desc+')':'');
+    if(!h)bad.push(who+': HSN missing');
+    else if(!HSN_RE.test(h))bad.push(who+': HSN "'+h+'" must be 4, 6 or 8 digits');
+  });
+  return bad;
+}
+
+// ── Textile HSN reference (Chapters 50-63) ─────────────────────────────────────
+// Keyed by 4-digit heading. cat drives the plausibility checks below:
+//   YARN | FABRIC | GARMENT | MADEUP
+// This is a REFERENCE AID, not the GST tariff. It tells you what a heading covers so
+// you can see whether it matches what you actually bought; it can never certify that a
+// code is legally correct for a given cloth. Warnings never block a save.
+const HSN_REF={
+ '5004':['Silk yarn','YARN'],'5007':['Woven fabrics of silk','FABRIC'],
+ '5106':['Yarn of carded wool','YARN'],'5111':['Woven fabrics of carded wool','FABRIC'],'5112':['Woven fabrics of combed wool','FABRIC'],
+ '5205':['Cotton yarn, >=85% cotton','YARN'],'5206':['Cotton yarn, <85% cotton','YARN'],
+ '5208':['Woven cotton fabrics, >=85%, <=200 g/m2','FABRIC'],'5209':['Woven cotton fabrics, >=85%, >200 g/m2','FABRIC'],
+ '5210':['Woven cotton fabrics, <85%, mixed w/ man-made','FABRIC'],'5211':['Woven cotton fabrics, <85%, >200 g/m2','FABRIC'],'5212':['Other woven cotton fabrics','FABRIC'],
+ '5402':['Synthetic filament yarn','YARN'],'5403':['Artificial filament yarn','YARN'],'5404':['Synthetic monofilament','YARN'],
+ '5407':['Woven fabrics of synthetic filament yarn','FABRIC'],'5408':['Woven fabrics of artificial filament yarn','FABRIC'],
+ '5509':['Yarn of synthetic staple fibres','YARN'],'5510':['Yarn of artificial staple fibres','YARN'],
+ '5512':['Woven fabrics, >=85% synthetic staple','FABRIC'],'5513':['Woven fabrics, <85% synthetic staple w/ cotton, light','FABRIC'],
+ '5514':['Woven fabrics, <85% synthetic staple w/ cotton, heavy','FABRIC'],'5515':['Other woven synthetic staple fabrics','FABRIC'],'5516':['Woven fabrics of artificial staple fibres','FABRIC'],
+ '5601':['Wadding; textile flock','FABRIC'],'5602':['Felt','FABRIC'],'5603':['Nonwovens','FABRIC'],
+ '5801':['Woven pile fabrics, chenille','FABRIC'],'5802':['Terry towelling','FABRIC'],'5804':['Tulle, lace','FABRIC'],
+ '5806':['Narrow woven fabrics','FABRIC'],'5807':['Labels, badges','MADEUP'],'5810':['Embroidery in the piece','FABRIC'],
+ '5903':['Textile fabrics impregnated/coated with plastics','FABRIC'],'5906':['Rubberised textile fabrics','FABRIC'],
+ '6001':['Pile fabrics, knitted or crocheted','FABRIC'],'6002':['Knitted fabrics <=30cm, >=5% elastomeric','FABRIC'],
+ '6003':['Knitted fabrics <=30cm','FABRIC'],'6004':['Knitted fabrics >30cm, >=5% elastomeric (lycra)','FABRIC'],
+ '6005':['Warp knit fabrics','FABRIC'],'6006':['Other knitted or crocheted fabrics','FABRIC'],
+ '6104':['Women\'s suits, dresses, skirts, trousers — KNITTED','GARMENT'],
+ '6106':['Women\'s blouses & shirts — KNITTED','GARMENT'],
+ '6108':['Women\'s slips, briefs, nightdresses — KNITTED','GARMENT'],
+ '6109':['T-shirts, singlets, vests — KNITTED','GARMENT'],
+ '6110':['Jerseys, pullovers, cardigans — KNITTED','GARMENT'],
+ '6114':['Other garments — KNITTED','GARMENT'],
+ '6115':['Tights, leggings, hosiery, socks — KNITTED','GARMENT'],
+ '6117':['Other made-up clothing accessories — KNITTED','GARMENT'],
+ '6204':['Women\'s suits, dresses, skirts, trousers — WOVEN','GARMENT'],
+ '6206':['Women\'s blouses & shirts — WOVEN','GARMENT'],
+ '6208':['Women\'s slips, briefs, nightdresses — WOVEN','GARMENT'],
+ '6211':['Track suits, other garments — WOVEN','GARMENT'],
+ '6214':['Shawls, scarves, dupattas','MADEUP'],'6217':['Other made-up clothing accessories','GARMENT'],
+ '6301':['Blankets and travelling rugs','MADEUP'],'6302':['Bed, table, toilet & kitchen linen','MADEUP'],
+ '6303':['Curtains, blinds','MADEUP'],'6304':['Other furnishing articles','MADEUP'],
+ '6305':['Sacks and bags for packing','MADEUP'],'6307':['Other made-up articles','MADEUP'],
+ '6309':['Worn clothing','MADEUP'],'6310':['Used rags','MADEUP']
+};
+function hsnInfo(code){
+  const c=(code||'').trim();
+  if(!HSN_RE.test(c))return null;
+  const r=HSN_REF[c.slice(0,4)];
+  return r?{h4:c.slice(0,4),desc:r[0],cat:r[1]}:null;
+}
+// Keyword signals read off the line description
+const _HSN_WORDS={
+ GARMENT:['legging','jegging','top','kurti','kurta','tunic','shirt','blouse','dress','trouser','pant','palazzo','plazo','skirt','capri','nighty','nightwear','suit','jacket','tshirt','t-shirt','camisole','slip','bra','lower','pyjama','payjama','short'],
+ FABRIC:['fabric','lycra','jersey','knit','woven','cloth','rib','interlock','sinker','tube','feelgood','dyed','dying','greige','mesh','net','satin','crepe','chiffon','georgette','denim','twill','poplin','sarina','delta','ola','pigment','print','printed','hosiery cloth','roll','than'],
+ MADEUP:['blanket','bedsheet','bed sheet','linen','towel','curtain','pillow','cushion','napkin','rug','dupatta','scarf','stole']
+};
+function _hsnDescCat(desc){
+  const t=(desc||'').toLowerCase();
+  for(const k of ['MADEUP','GARMENT','FABRIC'])
+    if(_HSN_WORDS[k].some(w=>t.includes(w)))return k;
+  return null;
+}
+// Non-blocking plausibility warnings for one line. Empty array means nothing looks odd.
+function hsnWarnings(it){
+  const w=[],h=(it&&it.hsn||'').trim();
+  if(!HSN_RE.test(h))return w;              // format errors are handled by hsnCheck()
+  const info=hsnInfo(h);
+  const ch=h.slice(0,2);
+  if(!info){
+    if(ch>='50'&&ch<='63')w.push('HSN '+h+' is not a heading I recognise in textile Chapter '+ch+' — please double-check it.');
+    else w.push('HSN '+h+' is outside the textile chapters (50-63) — unusual for this business.');
+    return w;
+  }
+  const dcat=_hsnDescCat(it.desc);
+  if(dcat&&dcat!==info.cat)
+    w.push('"'+(it.desc||'')+'" reads like a '+dcat.toLowerCase()+', but HSN '+h+' = '+info.desc+'.');
+  const u=(it.unit||'').toUpperCase();
+  if(info.cat==='GARMENT'&&(u==='KG'||u==='MTR'))
+    w.push('HSN '+h+' is a garment heading but the unit is '+u+' — garments are normally counted in PCS.');
+  if((info.cat==='FABRIC'||info.cat==='YARN')&&u==='PCS')
+    w.push('HSN '+h+' is a '+info.cat.toLowerCase()+' heading but the unit is PCS — fabric is normally KG or MTR.');
+  return w;
+}
+// Collects plausibility warnings across all lines, plus a cross-check against the item
+// master (the existing d.items records — no new store). Returns true to proceed.
+function _hsnConfirm(items,d){
+  const w=[];
+  (items||[]).forEach((it,n)=>{
+    const pre='Line '+(n+1)+': ';
+    hsnWarnings(it).forEach(m=>w.push(pre+m));
+    const key=(it.desc||'').trim().toLowerCase();
+    const known=((d&&d.items)||[]).find(x=>(x.name||'').trim().toLowerCase()===key&&(x.hsn||'').trim());
+    if(known&&(known.hsn||'').trim()!==(it.hsn||'').trim())
+      w.push(pre+'"'+it.desc+'" is saved in Items with HSN '+known.hsn+', but this line uses '+it.hsn+'.');
+  });
+  if(!w.length)return true;
+  return confirm('Please check these HSN codes:\n\n• '+w.join('\n• ')+'\n\nThese are warnings, not errors. Save anyway?');
+}
+// Stock shortfall check for a SALES invoice: compares each line against what is available
+// under its HSN + unit. Warning only — a genuine sale is never blocked by a stock gap,
+// which is usually an unentered purchase bill.
+function _stockConfirm(items,editingId){
+  const w=[];
+  const need={};
+  (items||[]).forEach(it=>{
+    const h=(it.hsn||'').trim();if(!h)return;
+    const u=(it.unit||'').toUpperCase().trim()||'—';
+    const k=h+'|'+u;
+    need[k]=need[k]||{hsn:h,unit:u,qty:0,descs:[]};
+    need[k].qty+=parseFloat(it.qty)||0;
+    if(it.desc)need[k].descs.push(it.desc);
+  });
+  const stock={};buildHsnStock().forEach(r=>{stock[r.key]=r;});
+  Object.values(need).forEach(n=>{
+    const r=stock[n.hsn+'|'+n.unit];
+    // When editing, this invoice's own outward quantity is already inside r.stock —
+    // add it back so the line isn't counted against itself.
+    let have=r?r.stock:0;
+    if(editingId){
+      const d=D();const old=(d.invoices||[]).find(x=>x.id===editingId);
+      (old&&old.items||[]).forEach(oi=>{
+        if((oi.hsn||'').trim()===n.hsn&&((oi.unit||'').toUpperCase().trim()||'—')===n.unit)
+          have+=parseFloat(oi.qty)||0;
+      });
+    }
+    if(!r)w.push('HSN '+n.hsn+' ('+n.unit+'): no purchases recorded — selling '+fmtR(n.qty));
+    else if(n.qty-have>0.001)
+      w.push('HSN '+n.hsn+': selling '+fmtR(n.qty)+' '+n.unit+' but only '+fmtR(have)+' '+n.unit+' in stock (short '+fmtR(n.qty-have)+')');
+  });
+  if(!w.length)return true;
+  return confirm('Stock check:\n\n• '+w.join('\n• ')+'\n\nThis usually means a purchase bill has not been entered yet. Save the invoice anyway?');
+}
+// Live hint under an HSN field. prefix is 'bi' (bill) or 'ii' (invoice).
+function hsnHint(prefix,idx){
+  const el=document.getElementById(prefix+'-hint-'+idx);if(!el)return;
+  const h=(document.getElementById(prefix+'-hsn-'+idx)?.value||'').trim();
+  const desc=(document.getElementById(prefix+'-desc-'+idx)?.value||'').trim();
+  const unit=document.getElementById(prefix+'-unit-'+idx)?.value||'';
+  if(!h){el.innerHTML='';return;}
+  if(!HSN_RE.test(h)){el.innerHTML='<span style="color:#DC2626">✕ must be 4, 6 or 8 digits</span>';return;}
+  const info=hsnInfo(h),warns=hsnWarnings({hsn:h,desc:desc,unit:unit});
+  let out=info?'<span style="color:#059669">✓ '+esc(info.desc)+'</span>':'';
+  if(warns.length)out+=(out?'<br>':'')+'<span style="color:#B45309">⚠ '+warns.map(esc).join('<br>⚠ ')+'</span>';
+  // On a SALES invoice, show what is actually available under this HSN and flag over-selling.
+  if(prefix==='ii'){
+    const av=hsnAvail(h,unit);
+    if(!av)out+=(out?'<br>':'')+'<span style="color:#B45309">⚠ no purchases recorded under HSN '+esc(h)+'</span>';
+    else{
+      const mine=av.exact[0];
+      const have=mine?mine.stock:0;
+      const qty=parseFloat(document.getElementById(prefix+'-qty-'+idx)?.value)||0;
+      if(mine){
+        const shortfall=qty-have;
+        const col=shortfall>0.001?'#DC2626':have>0.001?'#059669':'#B45309';
+        out+=(out?'<br>':'')+'<span style="color:'+col+'">Stock: <b>'+fmtR(have)+' '+esc(mine.unit)+'</b> · avg cost '+fmt(mine.avgBuy)
+            +(shortfall>0.001?' — short by '+fmtR(shortfall)+' '+esc(mine.unit):'')+'</span>';
+      }
+      // Same HSN held in a different unit (e.g. bought in KG, being sold in MTR)
+      const others=av.rows.filter(r=>r.unit!==(unit||'').toUpperCase().trim());
+      if(others.length&&!mine)
+        out+=(out?'<br>':'')+'<span style="color:#B45309">⚠ HSN '+esc(h)+' is held in '
+            +others.map(r=>fmtR(r.stock)+' '+esc(r.unit)).join(', ')+' — not '+esc(unit||'this unit')+'</span>';
+    }
+  }
+  el.innerHTML=out;
+}
 // Pre-flight schema checks — surfaced before download so the portal doesn't reject the file
 // 20 minutes later. Reports only; never alters the data.
 function _gstr1Problems(biz,invs,hsnMap){
@@ -10144,7 +10428,7 @@ function _gstr1Problems(biz,invs,hsnMap){
     if(noHsn)p.push('Invoice "'+i.num+'" has '+noHsn+' item(s) with no HSN — the HSN summary will not tie to the invoice totals.');
   });
   Object.values(hsnMap).forEach(h=>{
-    if(!/^(\d{4}|\d{6}|\d{8})$/.test(h.hsn_sc))p.push('HSN "'+h.hsn_sc+'" must be exactly 4, 6 or 8 digits.');
+    if(!HSN_RE.test(h.hsn_sc))p.push('HSN "'+h.hsn_sc+'" must be exactly 4, 6 or 8 digits.');
   });
   return p;
 }
