@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R111</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R112</div>
   </nav>
 
   <!-- PAGES -->
@@ -4303,9 +4303,10 @@ function saveBill(){
   if(!num){alert('Bill number required');return;}
   const items=getBillItems();
   if(!items.length){alert('Add at least one item');return;}
-  const _hsnBadB=hsnCheck(items);
-  if(_hsnBadB.length){alert('HSN is required on every line — it is needed for ITC matching and stock reporting.\n\n• '+_hsnBadB.join('\n• '));return;}
-  if(!_hsnConfirm(items,d))return;
+  const _isJW=billType==='jobwork';
+  const _hsnBadB=hsnCheck(items,{optional:_isJW});
+  if(_hsnBadB.length){alert((_isJW?'Check the SAC code on these lines:':'HSN is required on every line — it is needed for ITC matching and stock reporting.')+'\n\n• '+_hsnBadB.join('\n• '));return;}
+  if(!_isJW&&!_hsnConfirm(items,d))return;
   const sub=items.reduce((s,i)=>s+i.amt,0);
   const disc=parseFloat(document.getElementById('b-disc').value)||0;
   const freight=parseFloat(document.getElementById('b-freight').value)||0;
@@ -10240,14 +10241,21 @@ function _uqcJSON(u){return _uqc(u).split('-')[0];}
 // HSN must be 4, 6 or 8 digits (Notification 78/2020). One rule, used by both the
 // save-time check on invoices/bills and the GSTR-1 pre-export validator.
 const HSN_RE=/^(\d{4}|\d{6}|\d{8})$/;
+// A job-work bill buys a SERVICE, not goods, so it carries a 6-digit SAC beginning 99
+// (e.g. 998821 = textile manufacturing services) — never a textile HSN. SAC is optional
+// on job work: opts.optional skips the "missing" error.
+const SAC_RE=/^99\d{4}$/;
+function isSac(code){return SAC_RE.test((code||'').trim());}
 // Returns a list of human-readable problems, empty when every line is fine.
-function hsnCheck(items){
-  const bad=[];
+function hsnCheck(items,opts){
+  opts=opts||{};const bad=[];
   (items||[]).forEach((it,n)=>{
     const h=(it.hsn||'').trim();
     const who='Line '+(n+1)+(it.desc?' ('+it.desc+')':'');
-    if(!h)bad.push(who+': HSN missing');
-    else if(!HSN_RE.test(h))bad.push(who+': HSN "'+h+'" must be 4, 6 or 8 digits');
+    const lbl=opts.optional?'SAC':'HSN';
+    if(!h){if(!opts.optional)bad.push(who+': HSN missing');return;}
+    if(isSac(h))return;                                    // valid service code
+    if(!HSN_RE.test(h))bad.push(who+': '+lbl+' "'+h+'" must be 4, 6 or 8 digits');
   });
   return bad;
 }
@@ -10315,6 +10323,7 @@ function _hsnDescCat(desc){
 // Non-blocking plausibility warnings for one line. Empty array means nothing looks odd.
 function hsnWarnings(it){
   const w=[],h=(it&&it.hsn||'').trim();
+  if(isSac(h))return w;                     // service code (SAC) — textile rules don't apply
   if(!HSN_RE.test(h))return w;              // format errors are handled by hsnCheck()
   const info=hsnInfo(h);
   const ch=h.slice(0,2);
@@ -10389,6 +10398,7 @@ function hsnHint(prefix,idx){
   const desc=(document.getElementById(prefix+'-desc-'+idx)?.value||'').trim();
   const unit=document.getElementById(prefix+'-unit-'+idx)?.value||'';
   if(!h){el.innerHTML='';return;}
+  if(isSac(h)){el.innerHTML='<span style="color:#059669">✓ SAC '+esc(h)+' — service code (job work)</span>';return;}
   if(!HSN_RE.test(h)){el.innerHTML='<span style="color:#DC2626">✕ must be 4, 6 or 8 digits</span>';return;}
   const info=hsnInfo(h),warns=hsnWarnings({hsn:h,desc:desc,unit:unit});
   let out=info?'<span style="color:#059669">✓ '+esc(info.desc)+'</span>':'';
