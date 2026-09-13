@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R124</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R125</div>
   </nav>
 
   <!-- PAGES -->
@@ -4351,7 +4351,10 @@ function renderBills(){
   const filter=billListFilter;
   let bills=d.bills.filter(b=>{
     const _bp=d.parties.find(p=>p.id===b.pid);
-    const ms=!search||((b.num||'')+' '+(_bp?(_bp.name||'')+' '+(_bp.gstin||'')+' '+(_bp.phone||''):'')+' '+Math.round(b.grand||0)+' '+(b.date||'')).toLowerCase().includes(search.toLowerCase());
+    // HSN and line descriptions are searchable too — the quickest way to find every
+    // document touching a given code.
+    const _hay=(b.items||[]).map(it=>(it.hsn||'')+' '+(it.desc||'')).join(' ');
+    const ms=!search||((b.num||'')+' '+(_bp?(_bp.name||'')+' '+(_bp.gstin||'')+' '+(_bp.phone||''):'')+' '+Math.round(b.grand||0)+' '+(b.date||'')+' '+_hay).toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='pending'&&billBalance(b.id)>0)||(filter==='settled'&&billBalance(b.id)<=0)||(filter==='jw'&&b.jw);
     return ms&&mf;
   }).sort((a,b)=>b.date.localeCompare(a.date));
@@ -4386,7 +4389,7 @@ function renderBills(){
             </div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-            <div class="bm" style="margin-top:0">${party?esc(party.name):''} · ${b.items.length} item(s)</div>
+            <div class="bm" style="margin-top:0">${party?esc(party.name):''} · ${b.items.length} item(s)${hsnChips(b,b.jw)}</div>
             <div style="display:flex;gap:6px">
               <button class="btn sm" onclick="event.stopPropagation();viewBill('${b.id}')" title="Print">🖨️</button>
               ${b.attach?`<button class="btn sm" style="background:#ECFDF5;border-color:#6EE7B7;color:#065F46" onclick="event.stopPropagation();viewBillAttachment('${b.id}')" title="Original invoice PDF">📎</button>`:''}
@@ -4407,7 +4410,8 @@ function renderInvoices(){
   const filter=invListFilter;
   let invs=d.invoices.filter(i=>{
     const _ip=d.parties.find(p=>p.id===i.pid);
-    const ms=!search||((i.num||'')+' '+(_ip?(_ip.name||'')+' '+(_ip.gstin||'')+' '+(_ip.phone||''):'')+' '+Math.round(i.grand||0)+' '+(i.date||'')).toLowerCase().includes(search.toLowerCase());
+    const _hay=(i.items||[]).map(it=>(it.hsn||'')+' '+(it.desc||'')).join(' ');
+    const ms=!search||((i.num||'')+' '+(_ip?(_ip.name||'')+' '+(_ip.gstin||'')+' '+(_ip.phone||''):'')+' '+Math.round(i.grand||0)+' '+(i.date||'')+' '+_hay).toLowerCase().includes(search.toLowerCase());
     const mf=filter==='all'||(filter==='pending'&&invBalance(i.id)>0)||(filter==='settled'&&invBalance(i.id)<=0);
     return ms&&mf;
   }).sort((a,b)=>b.date.localeCompare(a.date));
@@ -4437,7 +4441,7 @@ function renderInvoices(){
             </div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-            <div class="bm" style="margin-top:0">${party?esc(party.name):''} · ${inv.items.length} item(s)</div>
+            <div class="bm" style="margin-top:0">${party?esc(party.name):''} · ${inv.items.length} item(s)${hsnChips(inv,false)}</div>
             <div style="display:flex;gap:6px">
               <button class="btn sm" onclick="event.stopPropagation();printInvoice('${inv.id}')" title="Print">🖨️</button>
               <button class="btn sm" onclick="event.stopPropagation();editInvoice('${inv.id}')" title="Edit">✏️</button>
@@ -10673,6 +10677,29 @@ function _uqcJSON(u){return _uqc(u).split('-')[0];}
 // ("KG" on a purchase, "KGS" on an invoice, "MTRS"/"M" for metres), which would otherwise
 // split one HSN into separate buckets that never net off. Routed through the _UQC table
 // above so units and UQC codes can never disagree. Blank stays blank, shown as "—".
+// HSN chips for a document row. Codes are de-duplicated and kept in the order they appear
+// on the document; a missing code is shown as a warning rather than silently omitted, since
+// a blank HSN is what keeps a line out of GSTR-1 Table 12.
+function hsnChips(doc,isJW){
+  const items=(doc&&doc.items)||[];
+  if(!items.length)return '';
+  const seen=[],miss=[];
+  items.forEach(it=>{
+    const h=(it.hsn||'').trim();
+    if(!h){if(!miss.length)miss.push(1);return;}
+    if(seen.indexOf(h)<0)seen.push(h);
+  });
+  const chip=(txt,bg,fg,ttl)=>'<span title="'+esc(ttl||'')+'" style="background:'+bg+';color:'+fg
+    +';font-size:9px;font-weight:700;padding:1px 6px;border-radius:20px;white-space:nowrap">'+esc(txt)+'</span>';
+  const out=seen.slice(0,4).map(h=>{
+    const i=hsnInfo(h);
+    return isSac(h)?chip(h,'#EEF2FF','#3730A3','Service code (SAC)')
+                   :chip(h,'#E0F2FE','#075985',i?i.desc:'HSN not recognised');
+  });
+  if(seen.length>4)out.push(chip('+'+(seen.length-4),'#F3F4F6','#6B7280',seen.slice(4).join(', ')));
+  if(miss.length&&!isJW)out.push(chip('no HSN','#FEF3C7','#B45309','Some lines have no HSN — they will be missing from GSTR-1 Table 12'));
+  return out.length?'<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">'+out.join('')+'</div>':'';
+}
 function unitKey(u){
   const t=(u||'').toUpperCase().trim();
   if(!t)return '\u2014';
