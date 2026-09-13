@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R122</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R124</div>
   </nav>
 
   <!-- PAGES -->
@@ -932,6 +932,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <div style="font-size:12px;font-weight:800;color:#059669;margin:10px 0 2px">ASSETS (opening)</div>
     <div class="fr">
       <div class="fl"><label>Closing Stock (opening) ₹ <span style="font-weight:400;color:var(--sub);font-size:10px">→ also shows in Stock section</span></label><input id="ob-stock" type="number" step="0.01" min="0" placeholder="0"></div>
+      <div class="fl"><label>Gross Profit % <span style="font-weight:400;color:var(--sub);font-size:10px">→ values closing stock from sales</span></label>
+        <input id="ob-gp" type="number" step="any" inputmode="decimal" min="0" max="99" placeholder="blank = keep old item-wise valuation" oninput="obGpPreview()">
+        <div id="ob-gp-preview" style="font-size:10px;line-height:1.6;margin-top:5px"></div>
+      </div>
       <div class="fl"><label>Sundry Debtors (opening) ₹ <span style="font-weight:400;color:#B45309;font-size:10px">⚠ lump total — for per-customer ledgers use each party's Opening Balance</span></label><input id="ob-debtors" type="number" step="0.01" min="0" placeholder="0"></div>
     </div>
     <div class="fr">
@@ -1279,7 +1283,7 @@ const FIRMS=['MI','KF'];
 const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loans','assets','reserves','items'];
 // Non-list fields kept together in the per-firm meta doc (bankTxns is bulk-replaced import
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
-const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','cfYear','cfNotes','cashOpening','cashOpeningDate','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS','openingHsn'];
+const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','cfYear','cfNotes','cashOpening','cashOpeningDate','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS','openingHsn','gpPct'];
 
 let unsubscribe=null;
 let _saving=false;
@@ -1896,8 +1900,7 @@ function renderHome(){
         <div class="sv" style="color:${stockValue()>=0?'#059669':'#DC2626'}">${fmt(Math.abs(stockValue()))}${d.cfStock?'<span style="font-size:11px;color:var(--sub);margin-left:8px">incl. C/F ₹'+new Intl.NumberFormat("en-IN").format(d.cfStock)+'</span>':''}</div>
         <div style="font-size:11px;color:var(--sub);margin-top:2px">Tap for stock report →</div>
         <div style="display:flex;gap:6px;margin-top:8px">
-          <button class="btn sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();stockRepBy='hsn';repView='stockrep';goTab('reports')">📋 HSN-wise</button>
-          <button class="btn sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();stockRepBy='item';repView='stockrep';goTab('reports')">📦 Item-wise</button>
+          <button class="btn sm" style="flex:1;justify-content:center" onclick="event.stopPropagation();repView='stockrep';goTab('reports')">📋 HSN-wise stock</button>
         </div>
         <button class="btn sm" style="margin-top:8px;width:100%;justify-content:center" onclick="event.stopPropagation();openCFModal()">📦 Set Last Year C/F Stock</button>
       </div>
@@ -3438,6 +3441,8 @@ function openOpeningBSModal(){
   });
   // Stock & cash are stored in their real operating fields — show those, not the BS-only copy.
   const stEl=document.getElementById('ob-stock');if(stEl){const v=parseFloat(d.cfStock);stEl.value=(!isNaN(v)&&v!==0)?v:'';}
+  const gpEl=document.getElementById('ob-gp');if(gpEl){const g=parseFloat(d.gpPct);gpEl.value=isNaN(g)?'':g;}
+  if(typeof obGpPreview==='function')obGpPreview();
   const cshEl=document.getElementById('ob-cash');if(cshEl){const v=parseFloat(d.cashOpening);cshEl.value=(!isNaN(v)&&v!==0)?v:'';}
   // P&L is stored as a Retained Earnings reserve — show its amount.
   const plEl=document.getElementById('ob-pl');if(plEl){const r=(d.reserves||[]).find(x=>x.id===o.plReserveId);const v=r?parseFloat(r.amount):NaN;plEl.value=(!isNaN(v)&&v!==0)?v:'';}
@@ -3460,6 +3465,23 @@ function saveOpeningBS(){
   //   • Opening Cash  → cashOpening (Cash section)
   //   • Opening P&L   → a Retained Earnings reserve (Reserves — flows to P&L on the sheet)
   const _stock=num('ob-stock'), _cash=num('ob-cash'), _pl=num('ob-pl');
+  // Gross Profit % — blank clears it and restores the previous item-wise valuation.
+  const _gpRaw=(document.getElementById('ob-gp')?.value||'').trim();
+  if(_gpRaw===''){delete d.gpPct;}
+  else{
+    const _gp=parseFloat(_gpRaw);
+    if(!(_gp>=0&&_gp<100)){alert('Gross Profit % must be between 0 and 99.');return;}
+    const _before=Math.max(0,closingStockCalc().value);
+    const f=stockFlows();
+    const _after=Math.max(0,Math.round((f.opening+f.purch+f.jw-f.sales*(1-_gp/100))*100)/100);
+    if(Math.abs(_after-_before)>0.5&&!confirm(
+      'Closing Stock will change from '+fmt(_before)+' to '+fmt(_after)+'.\n\n'
+      +'Opening '+fmt(f.opening)+' + Purchases '+fmt(f.purch)+(f.jw?' + Job work '+fmt(f.jw):'')
+      +' − COGS '+fmt(Math.round(f.sales*(1-_gp/100)*100)/100)+'\n\n'
+      +'Reported profit moves by '+fmt(Math.abs(_after-_before))+' in the same direction.\n'
+      +'No invoice, bill or payment is altered — only how closing stock is valued.\n\nApply?'))return;
+    d.gpPct=_gp;
+  }
   if(_stock>0)d.cfStock=_stock;
   if(_cash>0){d.cashOpening=_cash;if(!d.cashOpeningDate)d.cashOpeningDate=o.date||_fyStartISO();}
   // P&L → dedicated opening reserve (created once, updated thereafter). id kept on openingBS so we don't duplicate.
@@ -10575,6 +10597,22 @@ function exportGSTR1JSON(){
   const _hsnRows=m=>Object.values(m).map((h,idx)=>Object.assign({num:idx+1,hsn_sc:h.hsn_sc,txval:_r2(h.txval)},_tax(h),{desc:'',user_desc:'',uqc:h.uqc,qty:_r2(h.qty),rt:h.rt}));
   const hsnB=_hsnRows(hsnB2B),hsnC=_hsnRows(hsnB2C);
   if(hsnB.length||hsnC.length){out.hsn={};if(hsnB.length)out.hsn.hsn_b2b=hsnB;if(hsnC.length)out.hsn.hsn_b2c=hsnC;}
+  // Table 13 — documents issued. b2cs is a consolidated summary and carries no invoice
+  // numbers by design, so without this table the return shows no invoice series at all.
+  // Cancelled invoices are counted in totnum and in cancel, per the return's own arithmetic.
+  const _serial=x=>{const m=String(x||'').match(/(\d+)\s*$/);return m?parseInt(m[1],10):null;};
+  const _issued=invs.map(i=>String(i.num||'')).filter(Boolean);
+  const _cancelled=(d.cancelledInvs||[])
+    .filter(c=>String(c.date||'').slice(0,7)===repMonth).map(c=>String(c.num||'')).filter(Boolean);
+  const _all=[..._issued,..._cancelled];
+  if(_all.length){
+    const sorted=_all.slice().sort((a,b)=>{const x=_serial(a),y=_serial(b);
+      return (x!=null&&y!=null)?x-y:String(a).localeCompare(String(b));});
+    out.doc_issue={doc_det:[{doc_num:1,docs:[{num:1,
+      from:sorted[0],to:sorted[sorted.length-1],
+      totnum:sorted.length,cancel:_cancelled.length,
+      net_issue:sorted.length-_cancelled.length}]}]};
+  }
   const _probs=_gstr1Problems(biz,invs,Object.assign({},hsnB2B,hsnB2C));
   if(_probs.length&&!confirm('The GST portal will likely reject this file:\n\n• '+_probs.join('\n• ')+'\n\nDownload anyway?'))return;
   downloadJSON('GSTR1_'+biz.gstin+'_'+fp+'.json',out);
@@ -11147,9 +11185,11 @@ function printPurchaseReport(){const r=purchReportData(repMonth);const d=D();con
 function csvPurchaseReport(){const r=purchReportData(repMonth);const d=D();downloadCSV('Purchase_Report_'+repMonth+'_'+curBiz+'.csv',['Date','Bill No','Supplier','Taxable','Total'],r.list.map(b=>{const p=d.parties.find(x=>x.id===b.pid);return [b.date,b.num,p?p.name:'?',gstSplit(b).taxable.toFixed(2),b.grand.toFixed(2)];}));}
 
 /* ── STOCK REPORT ── */
-var stockRepBy='item';   // 'item' | 'hsn'
+var stockRepBy='hsn';    // HSN is the stock identity; the item-name view is retired
 function renderStockReport(pg){
-  if(stockRepBy==='hsn')return renderStockReportHsn(pg);
+  // Stock is held and reported by HSN. The old item-name grouping could not follow goods
+  // that arrive under one trade name and leave under another, so it is no longer offered.
+  return renderStockReportHsn(pg);
   const items=buildInventory().slice().sort((a,b)=>b.value-a.value);
   const totVal=items.reduce((s,i)=>s+i.value,0);
   const rows=items.map((i,k)=>`<tr style="background:${k%2?'#FAFAFA':'#fff'}"><td style="padding:7px">${esc(i.name)}</td><td style="padding:7px;font-size:11px">${esc(i.hsn)}</td><td style="padding:7px;text-align:right">${fmtR(i.stock)} ${esc(i.unit)}</td><td style="padding:7px;text-align:right">${i.avgBuy?fmt(i.avgBuy):'—'}</td><td style="padding:7px;text-align:right;font-weight:600">${fmt(i.value)}</td><td style="padding:7px;text-align:center"><span style="font-size:10px;padding:2px 6px;border-radius:8px;background:${i.status==='out'?'#FEE2E2':i.status==='low'?'#FEF3C7':'#D1FAE5'};color:${i.status==='out'?'#991B1B':i.status==='low'?'#92400E':'#065F46'}">${i.status==='out'?'OUT':i.status==='low'?'LOW':'OK'}</span></td></tr>`).join('');
@@ -11164,10 +11204,7 @@ function renderStockReport(pg){
       <tfoot><tr style="background:var(--pri3);font-weight:700"><td colspan="4" style="padding:8px">TOTAL</td><td style="padding:8px;text-align:right">${fmt(totVal)}</td><td></td></tr></tfoot>
     </table></div></div>`;
 }
-function _stockRepToggle(){
-  const b=(v,l)=>`<button class="btn sm" onclick="stockRepBy='${v}';renderReports()" style="${stockRepBy===v?'background:var(--pri);color:#fff':'background:#F3F4F6;color:var(--txt);border-color:var(--bdr)'}">${l}</button>`;
-  return `<div style="display:flex;gap:6px;margin-bottom:10px">${b('item','By Item')}${b('hsn','By HSN')}</div>`;
-}
+function _stockRepToggle(){return '';}   // retired: the report is HSN-wise only
 // Stock in hand grouped by HSN + unit. Same derivation as the Stock page's HSN view —
 // buildHsnStock() is the single source, so the two can never disagree.
 function renderStockReportHsn(pg){
@@ -11325,7 +11362,69 @@ function printBankReport(){const r=bankReportData(repMonth);const body=`<div sty
    Reuses balanceSheet() components + buildInventory cost-based closing stock.
 ════════════════════════════════════════ */
 function bankNet(){return (D().bankTxns||[]).reduce((s,t)=>s+(t.type==='CR'?t.amount:-t.amount),0);}
-function pkgClosingStock(){return buildInventory().reduce((s,i)=>s+i.value,0)+(D().cfStock||0);}
+// ── CLOSING STOCK ─────────────────────────────────────────────────────────────
+// Periodic (gross-profit) valuation, the standard method between physical counts:
+//     Closing = Opening + Purchases + Job Work − COGS,   COGS = Sales × (1 − GP%)
+// Every sale therefore reduces stock by its cost, which the old item-name valuation
+// could not do: it floored a negative line at zero, so goods sold under a different
+// name from the one they were bought under never relieved anything.
+// The HSN opening allocation plays no part — it only splits cfStock, which is already
+// the Opening term here, so allocating changes the split but never the total.
+// Used only when a GP% is set; with none, the previous item-derived value is kept so
+// nothing changes silently.
+// Live preview of the closing-stock change while a GP% is being typed. Shows the working
+// so the figure can be checked by hand, and states the effect on profit before saving.
+function obGpPreview(){
+  const el=document.getElementById('ob-gp-preview');if(!el)return;
+  const raw=(document.getElementById('ob-gp')?.value||'').trim();
+  const f=stockFlows();
+  const cur=closingStockCalc();
+  if(!raw){
+    const sug=derivedGpPct();
+    el.innerHTML='<span style="color:var(--sub)">Blank keeps the current item-wise valuation ('
+      +fmt(Math.max(0,cur.value))+').'
+      +(sug>0?' Your own bills suggest about <b>'+sug+'%</b>.':'')+'</span>';
+    return;
+  }
+  const gp=parseFloat(raw);
+  if(!(gp>=0&&gp<100)){el.innerHTML='<span style="color:#DC2626">Enter a percentage between 0 and 99</span>';return;}
+  const cogs=Math.round(f.sales*(1-gp/100)*100)/100;
+  const val=Math.max(0,Math.round((f.opening+f.purch+f.jw-cogs)*100)/100);
+  const now=Math.max(0,cur.value);
+  const diff=Math.round((val-now)*100)/100;
+  el.innerHTML='Opening '+fmt(f.opening)+' + Purchases '+fmt(f.purch)
+    +(f.jw?' + Job work '+fmt(f.jw):'')+' − COGS '+fmt(cogs)+'<br>'
+    +'<b>Closing Stock '+fmt(val)+'</b> <span style="color:var(--sub)">(now '+fmt(now)+')</span><br>'
+    +'<span style="color:'+(diff<0?'#B45309':'#059669')+'">Stock '+(diff<0?'falls':'rises')+' by '+fmt(Math.abs(diff))
+    +' → profit '+(diff<0?'falls':'rises')+' by the same amount.</span>';
+}
+function stockFlows(){
+  const d=D();let sales=0,purch=0,jw=0;
+  (d.invoices||[]).forEach(i=>{sales+=(gstSplit(i).taxable||0);});
+  (d.bills||[]).forEach(b=>{const t=gstSplit(b).taxable||0;if(b.jw)jw+=t;else purch+=t;});
+  return{opening:parseFloat(d.cfStock)||0,sales,purch,jw};
+}
+// A starting GP% read off the user's own trade: for every HSN with both a purchase and a
+// sale, margin = (avg sell − avg buy) / avg sell, weighted by sales value.
+function derivedGpPct(){
+  let num=0,den=0;
+  buildHsnStock().forEach(r=>{
+    if(!(r.avgBuy>0)||!(r.avgSell>0)||!(r.outQty>0))return;
+    const sv=r.outQty*r.avgSell;
+    num+=sv*((r.avgSell-r.avgBuy)/r.avgSell);den+=sv;
+  });
+  return den>0?Math.round((num/den)*1000)/10:0;
+}
+function closingStockCalc(){
+  const d=D();const f=stockFlows();
+  const gp=parseFloat(d.gpPct);
+  if(!(gp>0)&&gp!==0)
+    return{method:'item',value:buildInventory().reduce((s,i)=>s+i.value,0)+f.opening,flows:f,gp:null};
+  const cogs=Math.round(f.sales*(1-gp/100)*100)/100;
+  const val=Math.round((f.opening+f.purch+f.jw-cogs)*100)/100;
+  return{method:'gp',value:val,cogs,flows:f,gp};
+}
+function pkgClosingStock(){return closingStockCalc().value;}
 function pkgFinancials(){
   const d=D();
   let debtors=0,creditors=0;
