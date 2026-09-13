@@ -299,7 +299,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
     <button class="ditem" data-tab="notes" onclick="navTo('notes')"><span class="di">📋</span> Notes</button>
     <button class="ditem" data-tab="reports" onclick="navTo('reports')"><span class="di">📊</span> Reports</button>
     <button class="ditem" data-tab="trash" onclick="navTo('trash')"><span class="di">🗑️</span> Recycle Bin <span id="drawer-trash-badge" style="display:none;background:#DC2626;color:#fff;border-radius:8px;padding:0 5px;font-size:10px;margin-left:auto"></span></button>
-    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R125</div>
+    <div style="margin-top:14px;padding:10px 12px 4px;font-size:10px;color:var(--sub);opacity:.7;border-top:1px solid var(--bdr)">Business Manager · build 28Jun-R126</div>
   </nav>
 
   <!-- PAGES -->
@@ -2409,20 +2409,26 @@ function buildInventory(){
 // d.openingHsn and reconciled on screen against cfStock.
 var _openRows=null;   // working copy while the modal is open; committed only on Save
 function openOpeningHsn(){
-  _openRows=(D().openingHsn||[]).map(o=>({hsn:o.hsn||'',unit:o.unit||'KG',
-    qty:o.qty||0,amt:o.amt||0,date:o.date||''}));
-  if(!_openRows.length)_openRows.push({hsn:'',unit:'KG',qty:0,amt:0,date:''});
+  // Rate per unit is what gets typed; value is derived. Older rows stored only a value,
+  // so the rate is back-calculated from it on load.
+  _openRows=(D().openingHsn||[]).map(o=>{
+    const q=parseFloat(o.qty)||0,a=parseFloat(o.amt)||0;
+    return {hsn:o.hsn||'',unit:o.unit||'KG',qty:q,
+      rate:(o.rate!=null&&o.rate!=='')?(parseFloat(o.rate)||0):(q?a/q:0),
+      date:o.date||''};
+  });
+  if(!_openRows.length)_openRows.push({hsn:'',unit:'KG',qty:0,rate:0,date:''});
   renderOpeningHsn();openModal('openhsn');
 }
 function openRowAdd(){
-  _openRows.push({hsn:'',unit:'KG',qty:0,amt:0,date:''});
+  _openRows.push({hsn:'',unit:'KG',qty:0,rate:0,date:''});
   renderOpeningHsn();
   const el=document.getElementById('oh-hsn-'+(_openRows.length-1));if(el)el.focus();
 }
 function openRowDel(i){_openRows.splice(i,1);if(!_openRows.length)openRowAdd();else renderOpeningHsn();}
 function openRowSet(i,f,v){
   if(!_openRows[i])return;
-  _openRows[i][f]=(f==='qty'||f==='amt')?(parseFloat(v)||0):v;
+  _openRows[i][f]=(f==='qty'||f==='rate')?(parseFloat(v)||0):v;
   openRecalc(i);   // patch derived text only — re-rendering here would steal focus mid-typing
 }
 // Update the reconciliation panel, this row's rate line and its HSN hint without touching
@@ -2434,15 +2440,16 @@ function openRecalc(i){
   if(i!=null){
     const r=_openRows[i]||{};
     const rEl=document.getElementById('oh-rate-'+i);
-    if(rEl){const rate=r.qty?(r.amt/r.qty):0;
-      rEl.textContent='Rate: '+(rate?fmt(rate):'\u2014')+' per '+unitKey(r.unit);}
+    if(rEl)rEl.innerHTML=_openValHtml(r);
     const hEl=document.getElementById('oh-hint-'+i);
     if(hEl)hEl.innerHTML=_openHintHtml(r.hsn);
   }
 }
+// Value of one opening line — always quantity x rate, never typed directly.
+function _openAmt(r){return Math.round(((parseFloat(r&&r.qty)||0)*(parseFloat(r&&r.rate)||0))*100)/100;}
 function _openSummaryHtml(){
   const d=D();const cf=parseFloat(d.cfStock)||0;
-  const alloc=_openRows.reduce((s,r)=>s+(parseFloat(r.amt)||0),0);
+  const alloc=_openRows.reduce((s,r)=>s+_openAmt(r),0);
   const left=Math.round((cf-alloc)*100)/100;
   const yr=(d.cfYear?String(d.cfYear).slice(0,4):td().slice(0,4))+'-04-01';
   return `Carried-forward stock value: <b>${fmt(cf)}</b>${d.cfYear?' (FY '+esc(String(d.cfYear))+')':''}<br>
@@ -2450,6 +2457,10 @@ function _openSummaryHtml(){
       <span style="color:${Math.abs(left)<0.5?'#059669':'#B45309'}">Unallocated: <b>${fmt(left)}</b>${Math.abs(left)<0.5?' \u2713 fully split':''}</span>
       <br><br><b>This is a working allocation, not an accounting entry.</b> It splits a value you already carry into HSN buckets so prior-year stock is visible and future stock nets off correctly. Nothing here reaches your Balance Sheet, Profit &amp; Loss, Trial Balance or GST returns — ${fmt(cf)} continues to be carried as Closing Stock (opening) exactly as before, and the item-wise Stock Report is unaffected.
       <br><br>These quantities become an inward lot on ${esc(yr)}, feeding the HSN stock views and weighted average cost only. The split does not have to be exact or complete to be useful.`;
+}
+function _openValHtml(r){
+  const a=_openAmt(r);
+  return a?'Value: <b>'+fmt(a)+'</b> &nbsp;<span style="opacity:.7">'+fmtR(parseFloat(r.qty)||0)+' '+esc(unitKey(r.unit))+' \u00d7 '+fmt(parseFloat(r.rate)||0)+'</span>':'<span style="opacity:.7">Enter quantity and rate</span>';
 }
 function _openHintHtml(hsn){
   const h=(hsn||'').trim();
@@ -2465,7 +2476,6 @@ function renderOpeningHsn(){
   el.innerHTML=`
     <div id="oh-summary" style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:10px 12px;font-size:11px;color:#1E40AF;margin-bottom:12px">${_openSummaryHtml()}</div>
     ${_openRows.map((r,i)=>{
-      const rate=r.qty?(r.amt/r.qty):0;
       return `<div style="background:#F9FAFB;border-radius:10px;padding:11px;margin-bottom:8px;position:relative">
         <button onclick="openRowDel(${i})" style="position:absolute;top:8px;right:8px;background:#FEF2F2;border:none;color:#DC2626;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:12px">✕</button>
         <div class="fr" style="margin-right:32px">
@@ -2474,14 +2484,14 @@ function renderOpeningHsn(){
             <div id="oh-hint-${i}" style="font-size:10px;margin-top:3px;line-height:1.4">${_openHintHtml(r.hsn)}</div>
           </div>
           <div class="fl"><label>Unit</label>
-            <select onchange="openRowSet(${i},'unit',this.value)">${units.map(u=>`<option value="${u}"${unitKey(r.unit)===unitKey(u)?' selected':''}>${u}</option>`).join('')}</select>
+            <select onchange="openRowSet(${i},'unit',this.value);renderOpeningHsn()">${units.map(u=>`<option value="${u}"${unitKey(r.unit)===unitKey(u)?' selected':''}>${u}</option>`).join('')}</select>
           </div>
         </div>
         <div class="fr">
           <div class="fl"><label>Quantity</label><input type="number" step="any" inputmode="decimal" value="${r.qty||''}" placeholder="0" oninput="openRowSet(${i},'qty',this.value)"></div>
-          <div class="fl"><label>Value ₹</label><input type="number" step="any" inputmode="decimal" value="${r.amt||''}" placeholder="0" oninput="openRowSet(${i},'amt',this.value)"></div>
+          <div class="fl"><label>Rate ₹ per ${esc(unitKey(r.unit))}</label><input type="number" step="any" inputmode="decimal" value="${r.rate||''}" placeholder="0" oninput="openRowSet(${i},'rate',this.value)"></div>
         </div>
-        <div id="oh-rate-${i}" style="font-size:10px;color:var(--sub);margin-top:4px">Rate: ${rate?fmt(rate):'—'} per ${esc(unitKey(r.unit))}</div>
+        <div id="oh-rate-${i}" style="font-size:10px;color:var(--sub);margin-top:4px">${_openValHtml(r)}</div>
       </div>`;}).join('')}
     <button class="btn sm" onclick="openRowAdd()" style="width:100%;margin-bottom:8px">+ Add HSN line</button>
     <button class="btn" onclick="saveOpeningHsn()" style="width:100%">Save opening stock</button>`;
@@ -2489,20 +2499,21 @@ function renderOpeningHsn(){
 function saveOpeningHsn(){
   const d=D();
   const rows=_openRows.map(r=>({hsn:(r.hsn||'').trim(),unit:r.unit||'KG',
-    qty:parseFloat(r.qty)||0,amt:parseFloat(r.amt)||0,date:r.date||''}))
-    .filter(r=>r.hsn||r.qty||r.amt);
+    qty:parseFloat(r.qty)||0,rate:parseFloat(r.rate)||0,amt:_openAmt(r),date:r.date||''}))
+    .filter(r=>r.hsn||r.qty||r.rate);
   const bad=[];
   rows.forEach((r,i)=>{
     if(!r.hsn)bad.push('Line '+(i+1)+': HSN missing');
     else if(!HSN_RE.test(r.hsn))bad.push('Line '+(i+1)+': HSN "'+r.hsn+'" must be 4, 6 or 8 digits');
     if(r.qty<=0)bad.push('Line '+(i+1)+': quantity must be more than 0');
+    if(r.rate<=0)bad.push('Line '+(i+1)+': rate must be more than 0');
   });
   if(bad.length){alert('Fix these first:\n\n• '+bad.join('\n• '));return;}
   const cf=parseFloat(d.cfStock)||0;
   const alloc=rows.reduce((s,r)=>s+r.amt,0);
   const left=Math.round((cf-alloc)*100)/100;
   let msg='Save opening stock for '+rows.length+' HSN line(s):\n\n'
-    +rows.map(r=>'• '+r.hsn+' — '+fmtR(r.qty)+' '+unitKey(r.unit)+' · '+fmt(r.amt)).join('\n')
+    +rows.map(r=>'• '+r.hsn+' — '+fmtR(r.qty)+' '+unitKey(r.unit)+' @ '+fmt(r.rate)+' = '+fmt(r.amt)).join('\n')
     +'\n\nAllocated '+fmt(alloc)+' of '+fmt(cf)+' carried-forward stock.';
   if(Math.abs(left)>0.5)msg+='\n⚠ '+fmt(Math.abs(left))+(left>0?' still unallocated.':' MORE than the carried-forward value.');
   msg+='\n\nThis adds opening quantities to the HSN stock views. It does NOT change the Balance Sheet, your purchases, or any invoice.\n\nSave?';
