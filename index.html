@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><meta name="application-version" content="2026-09-21.1"><script>function bmOfflineNotice(){alert("You are offline. Editing is paused until all cloud records can be loaded. No offline changes will be uploaded.");}window.addEventListener("offline",bmOfflineNotice);if(navigator.onLine===false)bmOfflineNotice();</script>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -286,7 +286,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
       <div class="dsub" id="drawer-sub">Navigate</div>
     </div>
     <div class="dgroup">Main</div>
-    <button class="ditem" data-tab="home" onclick="navTo('home')"><span class="di">🏠</span> Home</button>
+    <button class="ditem" onclick="bmBackupPanel()"><span class="di">💾</span> Backup &amp; recovery</button>
+<button class="ditem" data-tab="home" onclick="navTo('home')"><span class="di">🏠</span> Home</button>
     <button class="ditem" data-tab="parties" onclick="navTo('parties')"><span class="di">👥</span> Parties</button>
     <button class="ditem" data-tab="bills" onclick="navTo('bills')"><span class="di">🧾</span> Bills <span style="font-size:11px;color:var(--sub);font-weight:500;margin-left:2px">· Sales &amp; Purchase</span></button>
     <button class="ditem" data-tab="items" onclick="navTo('items')"><span class="di">📦</span> Item Master</button>
@@ -1087,26 +1088,27 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
   <div id="print-body" style="max-width:800px;margin:0 auto;padding:24px 16px 80px;overflow-x:auto"></div>
 </div>
 <style>@media print{#print-toolbar{display:none!important}body>*:not(#print-overlay){display:none!important}#print-overlay{position:static!important;overflow:visible!important}}</style>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+<style>#bm-gate{position:fixed;inset:0;z-index:2147483647;background:#0f172a55;backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:24px}.bm-loadcard{max-width:400px;background:white;border-radius:22px;padding:30px;text-align:center;box-shadow:0 20px 70px #0002}.bm-spin{width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;margin:0 auto;animation:bm-spin 1s linear infinite}@keyframes bm-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.bm-spin{animation:none}}</style><div id="bm-gate" role="dialog" aria-modal="true" aria-labelledby="bm-title"><div class="bm-loadcard"><div class="bm-spin" aria-hidden="true"></div><h2 id="bm-title">Loading your records…</h2><p id="bm-detail" role="status"></p><div id="bm-help"><button class="btn pri" id="bm-retry" onclick="bmRetry()">Try again</button><button class="btn" onclick="bmExport()">Download complete JSON</button><button class="btn" onclick="bmOldBackup()">Old local backup</button></div></div></div>
 <script>
 // ═══ FIREBASE ═══
-firebase.initializeApp({
+const bmApp=firebase.initializeApp({
   apiKey:"AIzaSyDRfRBzqdg8LCUjZKdGRNIsKCBszbtM7ok",
   authDomain:"challan-manager-85768.firebaseapp.com",
   projectId:"challan-manager-85768"
-});
-const auth=firebase.auth(),db=firebase.firestore();
-/* ── OFFLINE-FIRST: local cache so writes queue offline and auto-flush online ── */
+},"business-manager-online-safe-v1");
+const auth=firebase.auth(bmApp),db=firebase.firestore(bmApp);
+/* Read cache only. Ledger writes use online transactions and are never queued. */
 try{ db.enablePersistence({synchronizeTabs:true}).catch(function(err){console.warn('Offline persistence not enabled:',err&&err.code);}); }catch(e){console.warn('Persistence setup skipped',e);}
 let isOnline=(typeof navigator!=='undefined')?navigator.onLine:true;
 let loadedOnce=false; // true after a successful cloud read; guards against blank overwrites
-// On reconnect we do NOT push local data — Firestore auto-flushes its own queued writes,
+// On reconnect, fetch confirmed cloud state. This build does not queue ledger writes,
 // and the live snapshot brings down anything changed elsewhere while we were offline.
 // (Pushing here would overwrite newer remote data with our stale copy — the bug that lost bills.)
-window.addEventListener('online',function(){isOnline=true;if(typeof updateSyncUI==='function')updateSyncUI();});
-window.addEventListener('offline',function(){isOnline=false;if(typeof updateSyncUI==='function')updateSyncUI();});
+window.addEventListener('online',bmOnline);
+window.addEventListener('offline',bmOffline);
 let uid=null,ready=false,curBiz=(function(){try{return localStorage.getItem('bm_curBiz')||'MI';}catch(e){return 'MI';}})(),curTab='home',curParty=null,curDoc=null;
 let editPartyId=null,editBillId=null,editInvId=null,payTargetId=null,payTargetType=null;
 let billItemCount=0,invItemCount=0;
@@ -1189,7 +1191,7 @@ const uniqId=(p)=>p+'-'+uid4();
 const colors=['#1E40AF','#065F46','#7C3AED','#B45309','#BE123C','#0369A1','#4D7C0F'];
 const avc=i=>colors[i%colors.length];
 
-function setSyncDot(s){const d=document.getElementById('sync-dot');if(!d)return;d.className='sync-dot'+(s==='busy'?' busy':s==='offline'?' offline':s==='err'?' err':'');d.title=s==='busy'?'Saving…':s==='offline'?'Offline — saved on this device, will sync when back online':s==='err'?'Sync issue — saved locally, will retry':'Synced ✓';}
+function setSyncDot(s){const d=document.getElementById('sync-dot');if(!d)return;d.className='sync-dot'+(s==='busy'?' busy':s==='offline'?' offline':s==='err'?' err':'');d.title=s==='busy'?'Saving…':s==='offline'?'Offline — editing paused':s==='err'?'Cloud read or save needs attention':'Synced ✓';}
 
 // ═══ AUTH ═══
 let appIsReady=false;
@@ -1199,14 +1201,14 @@ var _authTimeout=setTimeout(function(){
 },6000);
 
 function _resolveAuth(user){
-  if(_authResolved)return;
+  if(user&&uid===user.uid&&appIsReady)return;
   _authResolved=true;
   clearTimeout(_authTimeout);
   if(user)showApp(user);else showLogin();
 }
 
 function showApp(user){
-  if(!user)return;
+  if(!user)return;if(uid===user.uid&&unsubscribe)return;bmSnapshot=null;bmRevision++;
   clearTimeout(_authTimeout);
   _authResolved=true;
   uid=user.uid;ready=true;appIsReady=true;
@@ -1222,7 +1224,7 @@ function showApp(user){
 }
 
 function showLogin(){
-  appIsReady=false;ready=false;uid=null;
+  appIsReady=false;ready=false;uid=null;loadedOnce=false;bmEpoch++;bmRevision++;bmSnapshot=null;bmHydrated=false;S={};bmHistoryRows=[];bmBackupRows=[];document.querySelectorAll("[data-bm-form]").forEach(e=>e.remove());bmGate();
   if(typeof unsubscribe!=='undefined'&&unsubscribe){unsubscribe();unsubscribe=null;}
   document.getElementById('pg-load').style.display='none';
   document.getElementById('pg-login').style.display='flex';
@@ -1257,7 +1259,7 @@ function doLogin(){
     });
 }
 
-function doLogout(){
+function doLogout(){if(_saving){alert("Please wait for the save result.");return;}
   if(confirm('Sign out?')){
     appIsReady=false;_authResolved=false;uid=null;loadedOnce=false;
     auth.signOut().then(function(){showLogin();});
@@ -1285,95 +1287,92 @@ const ENTITIES=['parties','bills','invoices','payments','notes','expenses','loan
 // scratch, invMeta is a map, the rest are counters/scalars — none are concurrent-edit hotspots).
 const META_FIELDS=['pC','bC','iC','nC','loanC','assetC','reserveC','cfStock','cfYear','cfNotes','cashOpening','cashOpeningDate','invMeta','trash','bankTxns','cancelledInvs','bankAliases','openingBS','openingHsn','gpPct'];
 
-let unsubscribe=null;
-let _saving=false;
-function _col(name){ return db.collection('users').doc(uid).collection(name); }
-let _lastSaved={}; // _lastSaved[firm][entity] = {id: record}
-function _indexById(arr){ const m={}; (arr||[]).forEach(x=>{ if(x&&x.id!=null) m[x.id]=JSON.parse(JSON.stringify(x)); }); return m; }
+/* Business Manager safety build 2026-09-21.1 */
+let unsubscribe=null,_saving=false,_lastSaved={};
+var bmStates={},bmBase={},bmMeta={},bmIntent={},bmEpoch=0,bmRevision=0,bmHydrated=false,bmFatal=false,bmJobs=[],bmTimer=null,bmError='',bmSnapshot=null,bmDraft=null,bmViewBase={},bmViewMeta={};
+function _col(n){return db.collection('users').doc(uid).collection(n);}
+function bmClone(x){if(x==null||typeof x!=='object')return x;if(Array.isArray(x))return x.map(bmClone);if(x instanceof Date)return new Date(x);if(typeof x.toDate==='function')return x;var o=Object.create(null);Object.keys(x).forEach(k=>o[k]=bmClone(x[k]));return o;}
+function bmCanon(x){if(typeof x==='number'&&!Number.isFinite(x))return 'number:'+x;if(Array.isArray(x))return '['+x.map(bmCanon).join(',')+']';if(x&&typeof x==='object')return '{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+bmCanon(x[k])).join(',')+'}';return JSON.stringify(x);}
+function bmSame(a,b){return bmCanon(a)===bmCanon(b);}
+function bmValidate(x,p){if(typeof x==='number'&&!Number.isFinite(x))throw Error('Invalid number at '+p+'. Correct it before saving.');if(x&&typeof x==='object')Object.keys(x).forEach(k=>bmValidate(x[k],p+'.'+k));}
+function _clean(x){bmValidate(x,'record');return bmClone(x);}
+function deepSanitize(x){bmValidate(x,'record');}
+function _indexById(rows){var out=Object.create(null);rows.forEach(r=>{if(!r||r.id==null||!String(r.id)||String(r.id).includes('/'))throw Error('Invalid record ID');if(out[r.id])throw Error('Duplicate record ID '+r.id);out[r.id]=bmClone(r);});return out;}
+function ensureFirm(firm){if(!S[firm])S[firm]={};var b=S[firm];ENTITIES.forEach(e=>{if(!Array.isArray(b[e]))b[e]=[];});['bankTxns','trash','cancelledInvs','bankAliases','openingHsn'].forEach(e=>{if(!Array.isArray(b[e]))b[e]=[];});['pC','bC','iC','nC','loanC','assetC','reserveC'].forEach(k=>{if(b[k]==null)b[k]=1;});if(b.cfStock==null)b.cfStock=0;if(!b.invMeta)b.invMeta={};return b;}
+const LS_KEY=()=> 'bizmgr_backup_'+(uid||'anon');
+function saveLocal(){}function loadLocal(){return false;}function flushPendingSave(){}
+async function bmRecheckBank(){if(!bmCanEdit())return;autoMatchBank();if(!await saveToCloud())return;bm2Recheck({notify:true});renderBank();}
+function bmComplete(){if(!uid||!isOnline||navigator.onLine===false||bmFatal)return false;return FIRMS.every(f=>{
+ if(!ENTITIES.concat('meta').every(e=>bmStates[f+'_'+e]&&bmStates[f+'_'+e].ok))return false;
+ if(!bmMeta[f]&&ENTITIES.some(e=>Object.keys(bmBase[f+'_'+e]||{}).length)){bmError=f+' settings are missing; entries are protected until they are recovered.';return false;}
+ return Object.entries(bmMeta[f]?._bmHeads||{}).every(([e,heads])=>!ENTITIES.includes(e)||heads.every(h=>{var r=bmBase[f+'_'+e]?.[h.id];return h.deleted?!r:!!r&&r._bmVersion===h.version;}));
+});}
+function bmGate(){loadedOnce=bmComplete()&&bmHydrated;var visible=!!(uid&&(!loadedOnce||_saving)),g=document.getElementById('bm-gate'),app=document.getElementById('pg-app');if(app){app.style.visibility=uid&&!loadedOnce?'hidden':'visible';app.inert=visible;}document.querySelectorAll('.ov').forEach(e=>e.inert=visible);if(g){g.style.display=visible?'flex':'none';document.getElementById('bm-title').textContent=_saving?'Saving changes…':bmFatal?'Restart the connection':!isOnline?'You’re offline':bmError?'Unable to load records':'Loading your records…';document.getElementById('bm-detail').textContent=_saving?'Please keep this page open until your update is confirmed.':!isOnline?'Reconnect to continue. No offline entries will be uploaded.':bmError||'Getting both firms ready for you.';document.getElementById('bm-retry').disabled=_saving;document.getElementById('bm-retry').textContent=bmFatal?'Restart app':'Try again';document.getElementById('bm-help').style.display=_saving?'none':'block';}setSyncDot(_saving?'busy':!isOnline?'offline':loadedOnce?'ok':'err');}
+function updateSyncUI(){bmGate();}
+function bmCanEdit(){if(_saving||!bmComplete()||!bmHydrated){bmGate();alert(_saving?'Please wait for the current save.':'Editing is paused until all cloud records are confirmed.');return false;}var stale=Array.from(document.querySelectorAll('.ov.show,[data-bm-form]')).some(el=>el._bmRevision!=null&&(el._bmRevision!==bmRevision||el._bmFirm!==curBiz));if(stale){alert('Records or the selected firm changed. Close this form and reopen it before saving.');return false;}return true;}
+function bmApply(){FIRMS.forEach(f=>{S[f]={};ENTITIES.forEach(e=>S[f][e]=Object.values(bmClone(bmBase[f+'_'+e]||{})));META_FIELDS.forEach(k=>{if(bmMeta[f]?.[k]!==undefined)S[f][k]=bmClone(bmMeta[f][k]);});ensureFirm(f);S[f].bankTxns.forEach((t,i)=>{if(!t.id)t.id='LEGACYBANK-'+i+'-'+bmHash(bmCanon(t));});bmViewMeta[f]={};META_FIELDS.forEach(k=>bmViewMeta[f][k]=bmClone(S[f][k]));allocateLegacyPayments(S[f]);healBankExpenseMode(S[f]);ENTITIES.forEach(e=>bmViewBase[f+'_'+e]=_indexById(S[f][e]));});bankTxns=D().bankTxns;}
+function bmSchedule(){clearTimeout(bmTimer);bmTimer=setTimeout(()=>{if(bmComplete()&&!_saving){bmApply();bmHydrated=true;bmSnapshot={_app:'business-manager',ownerUid:uid,confirmedAt:new Date().toISOString(),firms:bmRawFirms()};bmDailySnapshot(bmSnapshot);bmGate();renderAll();}},40);}
+function bmIsFatal(e){return /INTERNAL ASSERTION FAILED|Unexpected state|AsyncQueue is already failed/i.test(String(e?.message||e||''));}
+function bmReadError(key,e){bmStates[key]={ok:false,error:e.code||e.message};bmHydrated=false;bmRevision++;bmFatal=bmFatal||bmIsFatal(e);bmError=bmFatal?'Restart the app and check your records before retrying.':key+': '+(e.code||e.message||'read failed');bmGate();}
+function bmAccept(f,e,snap){var key=f+'_'+e,m=snap.metadata||{};if(m.fromCache!==false||m.hasPendingWrites!==false){bmStates[key]={ok:false};bmGate();return;}
+ try{var next=e==='meta'?(snap.exists?snap.data():null):_indexById(snap.docs.map(d=>{var r=d.data();if(String(r.id)!==d.id)throw Error('Record ID mismatch: '+key+'/'+d.id);return r;})),old=e==='meta'?bmMeta[f]:bmBase[key];
+ if(!bmSame(old,next)){var own=_saving&&(e==='meta'?bmJobs.some(j=>j.coll===key&&bmSame(j.data,next)):Object.keys(Object.assign({},old||{},next||{})).every(id=>bmSame(old?.[id],next[id])||bmJobs.some(j=>j.coll===key&&j.id===id&&bmSame(next[id]||null,j.data))));if(!own){bmRevision++;bmHydrated=false;}}
+ if(e==='meta')bmMeta[f]=bmClone(next);else bmBase[key]=next;bmStates[key]={ok:true};bmError=Object.entries(bmStates).filter(([_,s])=>s.error).map(([k,s])=>k+': '+s.error).join('; ');bmGate();bmSchedule();}catch(err){bmReadError(key,err);}}
+function subscribeData(){if(_saving||bmFatal)return;if(unsubscribe)unsubscribe();var epoch=++bmEpoch,owner=uid;bmRevision++;bmHydrated=false;bmStates={};bmIntent={};bmBase={};bmMeta={};bmError='';var subs=[];FIRMS.forEach(f=>{ENTITIES.concat('meta').forEach(e=>{var ref=_col(f+'_'+e);if(e==='meta')ref=ref.doc('state');subs.push(ref.onSnapshot({includeMetadataChanges:true},s=>{if(epoch===bmEpoch&&owner===uid)bmAccept(f,e,s);},err=>{if(epoch===bmEpoch&&owner===uid)bmReadError(f+'_'+e,err);}));});});unsubscribe=()=>subs.forEach(u=>{try{u();}catch(e){console.warn(e);}});bmGate();}
+function bmRetry(){if(_saving)return;if(bmFatal){location.reload();return;}subscribeData();}
+function bmOffline(){isOnline=false;bmRevision++;bmHydrated=false;Object.values(bmStates).forEach(s=>s.ok=false);bmGate();}
+function bmOnline(){isOnline=true;if(uid&&!_saving)subscribeData();}
+function bmArrayKey(arr){for(var f of FIRMS)for(var e of ENTITIES.concat('bankTxns'))if(S[f]?.[e]===arr)return f+'_'+e;return null;}
+function bmMark(arr,rows){var key=bmArrayKey(arr);if(key)rows.forEach(r=>{if(r?.id!=null)bmIntent[key+'/'+r.id]=true;});}
+function bmFilter(arr,predicate){var removed=[],out=arr.filter((r,i,a)=>{var keep=predicate(r,i,a);if(!keep)removed.push(r);return keep;});bmMark(arr,removed);return out;}
+function bmSplice(arr,...args){var before=arr.slice(),out=arr.splice(...args);bmMark(arr,out);return out;}
+function bmBytes(x){return new TextEncoder().encode(JSON.stringify(x)).length;}
+function bmDiff(coll,arr){if(!Array.isArray(arr))throw Error('Missing collection '+coll);var old=bmBase[coll]||{},now=_indexById(arr),jobs=[];Object.keys(now).forEach(id=>{if(!bmSame((bmViewBase[coll]||old)[id],now[id])){bmValidate(now[id],coll+'/'+id);jobs.push({coll,id,prev:bmClone(old[id]||null),data:now[id]});}});Object.keys(old).forEach(id=>{if(!now[id]){if(!bmIntent[coll+'/'+id])throw Error('Stopped an unrequested deletion in '+coll);jobs.push({coll,id,prev:bmClone(old[id]),data:null});}});return jobs;}
+function bmCheckNumbers(f){var seen=new Map();(S[f].invoices||[]).forEach(i=>{if(!i.num)return;var key=String(i.num).trim().toUpperCase();if(seen.has(key)&&seen.get(key)!==i.id){var old=bmBase[f+'_invoices']||{};if(!bmSame(old[i.id],i)||!bmSame(old[seen.get(key)],S[f].invoices.find(x=>x.id===seen.get(key))))throw Error('Invoice number '+i.num+' is already in use in '+f+'.');}seen.set(key,i.id);});}
+async function saveToCloud(){if(_saving)return false;if(!bmCanEdit()){bmIntent={};bmApply();return false;}var owner=uid,epoch=bmEpoch,revision=bmRevision,jobs=[],failed=false;try{
+ for(var f of FIRMS){bmClearRemovedPaymentLinks(f);bmCheckNumbers(f);var fj=[];for(var e of ENTITIES)fj.push(...bmDiff(f+'_'+e,S[f][e]));var meta=bmClone(bmMeta[f])||{},changed=false;for(var k of META_FIELDS){if(S[f][k]!==undefined){if(!bmSame(bmViewMeta[f]?.[k],S[f][k]))changed=true;meta[k]=bmClone(S[f][k]);}}
+ var oldBank=bmViewMeta[f]?.bankTxns||[],newBank=S[f].bankTxns||[];oldBank.forEach(t=>{if(t.id&&!newBank.some(n=>n.id===t.id)&&!bmIntent[f+'_bankTxns/'+t.id])throw Error('Stopped an unrequested bank-entry deletion in '+f);});
+ if(fj.length||changed){var token=uniqId('BM');meta._bmRevision=token;meta.updated=new Date().toISOString();meta._bmHeads=bmClone(meta._bmHeads)||{};ENTITIES.forEach(e=>{var list=fj.filter(j=>j.coll===f+'_'+e);if(list.length)meta._bmHeads[e]=list.map(j=>{if(j.data)j.data._bmVersion=token;return{id:j.id,deleted:!j.data,version:token};});});fj.push({coll:f+'_meta',id:'state',prev:bmClone(bmMeta[f]||null),data:meta});jobs.push(...fj);}}
+ if(!jobs.length){bmIntent={};bmSuccess++;return true;}var at=new Date().toISOString(),operation=uniqId('H');jobs.forEach((j,i)=>{bmValidate(j.data,j.coll+'/'+j.id);if(j.prev)j.history={kind:'history',operation,createdAt:at,collection:j.coll,recordId:j.id,reason:j.data?'Before edit':'Before deletion',record:j.prev};j.historyId='history_'+operation+'_'+i;if(bmBytes(j.data||{})>900000||bmBytes(j.history||{})>950000)throw Error('A record or recovery copy is too large. Use a smaller action; nothing was submitted.');});
+ if(jobs.reduce((n,j)=>n+1+(j.history?1:0),0)>450||jobs.reduce((n,j)=>n+bmBytes(j.data||{})+bmBytes(j.history||{}),0)>6000000)throw Error('This action is too large to save atomically. Use a smaller selection.');
+ _saving=true;bmJobs=jobs;bmGate();var root=db.collection('users').doc(owner);
+ await db.runTransaction(async tx=>{if(!bmComplete()||epoch!==bmEpoch||owner!==uid||revision!==bmRevision)throw Error('Records or connection changed. Reopen the form.');var refs=jobs.map(j=>root.collection(j.coll).doc(j.id)),snaps=[];for(var ref of refs)snaps.push(await tx.get(ref));snaps.forEach((s,i)=>{if(!bmSame(s.exists?s.data():null,jobs[i].prev))throw Error('Another device changed '+jobs[i].coll+'. Your update was stopped to protect it.');});if(!bmComplete()||epoch!==bmEpoch||owner!==uid||revision!==bmRevision)throw Error('Connection changed during save.');jobs.forEach((j,i)=>{if(j.history)tx.set(root.collection(j.coll.split('_')[0]+'_meta').doc(j.historyId),j.history);if(j.data)tx.set(refs[i],j.data);else tx.delete(refs[i]);});});
+ if(owner!==uid||epoch!==bmEpoch)return false;jobs.forEach(j=>{if(j.coll.endsWith('_meta')){var f=j.coll.split('_')[0];if(bmSame(bmMeta[f],j.prev)||bmSame(bmMeta[f],j.data))bmMeta[f]=bmClone(j.data);}else if(bmSame(bmBase[j.coll][j.id]||null,j.prev)||bmSame(bmBase[j.coll][j.id]||null,j.data)){if(j.data)bmBase[j.coll][j.id]=bmClone(j.data);else delete bmBase[j.coll][j.id];}});bmIntent={};bmApply();bmHydrated=true;bmSuccess++;return true;
+ }catch(e){failed=true;bmDraft={_app:'business-manager-unconfirmed-action',ownerUid:owner,at:new Date().toISOString(),jobs:bmClone(jobs)};bmFatal=bmFatal||bmIsFatal(e);bmError=e.message||String(e);bmIntent={};if(uid===owner)bmApply();alert('Save was not confirmed.\n\n'+bmError+'\n\nCheck the reloaded cloud records before retrying.');return false;}
+ finally{_saving=false;bmJobs=[];bmGate();if(!bmFatal){if(failed&&uid&&isOnline)subscribeData();else bmSchedule();}}
+}
+function migrateLegacyIfNeeded(done){if(done)done();} // Old single-document recovery source remains untouched.
+function markLoadedBM(){}function reconcileCountersBM(){} // Numbering changes only through explicit invoicing actions.
+function bmDownload(data,name){var url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function bmExport(){if(!bmSnapshot||bmSnapshot.ownerUid!==uid){alert('No complete snapshot is available this session. Your old local backup is preserved.');return;}bmDownload(bmSnapshot,'business-manager-'+bmSnapshot.confirmedAt.slice(0,10)+'.json');}
+function bmOldBackup(){var raw=localStorage.getItem(LS_KEY());if(!raw){alert('No old local backup on this device.');return;}try{bmDownload(JSON.parse(raw),'business-manager-old-unverified.json');}catch(e){alert('Could not decode the old copy. It has been left untouched.');}}
+var bmBackupDay='';async function bmDailySnapshot(data){var key=uid+'/'+new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});if(bmBackupDay===key||!window.indexedDB)return;bmBackupDay=key;try{var handle=await new Promise((resolve,reject)=>{var r=indexedDB.open('business-manager-confirmed-backups',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});await new Promise((resolve,reject)=>{var tx=handle.transaction('snapshots','readwrite'),store=tx.objectStore('snapshots'),r=store.get(key);r.onsuccess=()=>{if(!r.result)store.put(data,key);};tx.oncomplete=resolve;tx.onabort=tx.onerror=()=>reject(tx.error);});handle.close();}catch(e){bmBackupDay='';console.warn('Daily backup unavailable',e);}}
+async function bmClearBank(){if(!bmCanEdit())return;var d=D();if(d.bankTxns.some(t=>t.matchId||t.assigned||d.payments.some(p=>p.source==='bank'&&p.bankTxnId===t.id))){alert('Some entries have linked payments or assignments. Delete those entries individually so their effects are reversed safely.');return;}if(!confirm('Remove all unassigned bank entries? A recovery copy will be kept.'))return;d.bankTxns=bmFilter(d.bankTxns,()=>false);if(!await saveToCloud())return;renderBank();}
+window.addEventListener('beforeunload',e=>{if(_saving){e.preventDefault();e.returnValue='Save awaiting confirmation';}});
+var bmActionDepth=0,bmSuccess=0;
+function bmBeginAction(){if(!bmCanEdit())return null;bmActionDepth++;return {success:bmSuccess,editPartyId,editBillId,editInvId,editExpId,editAssetId,editReserveId,editLoanId,expAttach:_expAttach};}
+function bmEndAction(token){bmActionDepth=Math.max(0,bmActionDepth-1);if(!bmActionDepth&&!_saving&&token.success===bmSuccess){bmIntent={};bmApply();editPartyId=token.editPartyId;editBillId=token.editBillId;editInvId=token.editInvId;editExpId=token.editExpId;editAssetId=token.editAssetId;editReserveId=token.editReserveId;editLoanId=token.editLoanId;_expAttach=token.expAttach;}}
+async function bmBackupPanel(){closeDrawer();document.getElementById('cf-msg').innerHTML='<h3>Backup &amp; recovery</h3><p>Download complete confirmed records. Recovery files are never uploaded automatically.</p><button class="btn pri" onclick="bmExport()">Download complete JSON</button> <button class="btn" onclick="bmOldBackup()">Old local backup</button> <button class="btn" onclick="bmHistory()">Previous versions</button> <button class="btn" onclick="bmBrowserCopies()">Daily browser copies</button><div id="bm-recovery-list"></div>';document.getElementById('cf-ok').style.display='none';openModal('cf');}
+async function bmHistory(){if(!bmComplete())return;var owner=uid,firm=curBiz;try{var snap=await _col(firm+'_meta').orderBy('createdAt','desc').limit(100).get({source:'server'});if(uid!==owner||curBiz!==firm)return;window.bmHistoryRows=snap.docs.map(d=>d.data()).filter(r=>r.kind==='history');document.getElementById('bm-recovery-list').innerHTML=bmHistoryRows.map((r,i)=>'<p>'+esc(r.createdAt)+' · '+esc(r.collection+'/'+r.recordId)+' <button class="btn sm" onclick="bmDownload(bmHistoryRows['+i+'],\'business-record-history.json\')">Download</button></p>').join('')||'No previous versions yet.';}catch(e){alert('Recovery history could not load: '+(e.code||e.message));}}
+async function bmBrowserCopies(){if(!window.indexedDB){alert('Browser backup storage is unavailable.');return;}var owner=uid;try{var handle=await new Promise((resolve,reject)=>{var r=indexedDB.open('business-manager-confirmed-backups',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});var rows=await new Promise((resolve,reject)=>{var r=handle.transaction('snapshots','readonly').objectStore('snapshots').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});handle.close();if(owner!==uid)return;window.bmBackupRows=rows.filter(r=>r.ownerUid===uid).sort((a,b)=>b.confirmedAt.localeCompare(a.confirmedAt));document.getElementById('bm-recovery-list').innerHTML=bmBackupRows.map((r,i)=>'<p>'+esc(r.confirmedAt)+' <button class="btn sm" onclick="bmDownload(bmBackupRows['+i+'],\'business-daily-backup.json\')">Download</button></p>').join('')||'No daily browser copies yet.';}catch(e){alert('Could not read browser copies: '+e.message);}}
 
-function ensureFirm(firm){
-  if(!S[firm]) S[firm]={};
-  const b=S[firm];
-  ENTITIES.forEach(e=>{ if(!Array.isArray(b[e])) b[e]=[]; });
-  if(!Array.isArray(b.bankTxns)) b.bankTxns=[];
-  if(!Array.isArray(b.trash)) b.trash=[];
-  if(b.pC==null)b.pC=1; if(b.bC==null)b.bC=1; if(b.iC==null)b.iC=1; if(b.nC==null)b.nC=1;
-  if(b.loanC==null)b.loanC=1; if(b.assetC==null)b.assetC=1; if(b.reserveC==null)b.reserveC=1;
-  if(b.cfStock==null)b.cfStock=0; if(!b.invMeta)b.invMeta={}; if(!Array.isArray(b.cancelledInvs))b.cancelledInvs=[]; if(!Array.isArray(b.bankAliases))b.bankAliases=[]; if(!Array.isArray(b.openingHsn))b.openingHsn=[];
-  if(!_lastSaved[firm]) _lastSaved[firm]={};
-  return b;
+function bmRawFirms(){var out={};FIRMS.forEach(f=>{out[f]=bmClone(bmMeta[f]||{});ENTITIES.forEach(e=>out[f][e]=Object.values(bmClone(bmBase[f+'_'+e]||{})));});return out;}
+
+function bmResolveBankOwner(d,t){
+ if(!['expense','loan','asset','reserve'].includes(t.assigned))return true;
+ var list=t.assigned==='expense'?d.expenses:(d[t.assigned==='loan'?'loans':t.assigned==='asset'?'assets':'reserves'].find(x=>x.id===t[t.assigned==='loan'?'assignedLoan':t.assigned==='asset'?'assignedAsset':'assignedReserve'])?.txns||[]);
+ var exact=list.filter(x=>t.createdId?x.id===t.createdId:x.bankTxnId&&x.bankTxnId===t.id);
+ if(exact.length===1){if(!exact[0].id)exact[0].id=uniqId('BT');t.createdId=exact[0].id;return true;}
+ if(!t.createdId){var note='Bank: '+(t.desc||'').substring(0,50);var legacy=list.filter(x=>x.date===t.date&&Math.abs(Number(x.amt??x.amount)-t.amount)<0.005&&(t.assigned==='expense'?x.mode==='bank'&&x.desc===(t.desc||'').substring(0,80):x.note===note));if(legacy.length===1){if(!legacy[0].id)legacy[0].id=uniqId('BT');t.createdId=legacy[0].id;return true;}}
+ alert('The original '+t.assigned+' record cannot be identified uniquely. Nothing has been deleted. Review this assignment before removing the bank entry.');return false;
 }
 
-const LS_KEY=function(){return 'bizmgr_backup_'+(uid||'anon');};
-function saveLocal(){ try{ localStorage.setItem(LS_KEY(), JSON.stringify({MI:S.MI,KF:S.KF})); }catch(e){} }
-function loadLocal(){
-  try{ var raw=localStorage.getItem(LS_KEY()); if(!raw)return false;
-    var d=JSON.parse(raw);
-    if(d.MI)S.MI=d.MI; if(d.KF)S.KF=d.KF;
-    return !!(d.MI||d.KF);
-  }catch(e){ return false; }
-}
-function updateSyncUI(){ setSyncDot(isOnline?'ok':'offline'); }
-function flushPendingSave(){ /* no stale-push on reconnect; Firestore auto-flushes its own queue */ }
+function bmClearRemovedPaymentLinks(f){var d=S[f],removed=Object.keys(bmBase[f+'_payments']||{}).filter(id=>!d.payments.some(p=>p.id===id)&&bmIntent[f+'_payments/'+id]);d.bankTxns.forEach(t=>{if(removed.includes(t.matchId)){t.matchId=null;delete t.matchMeta;if(t.assigned==='party'){t.assigned=null;t.autoCreated=null;t.createdId=null;}}});}
+function bmFatalEvent(e){if(bmIsFatal(e.reason||e.error||e.message)){bmFatal=true;bmHydrated=false;bmRevision++;bmError='The database connection needs a restart. Check cloud records after reopening.';bmGate();}}
+window.addEventListener('error',bmFatalEvent);window.addEventListener('unhandledrejection',bmFatalEvent);
 
-function markLoadedBM(firm, cache){
-  loadedOnce=true;
-  normalizeGstData(S[firm]);          // idempotent GST reclassification (totals untouched)
-  reconcileCountersBM(firm);
-  allocateLegacyPayments(S[firm]);    // derived FIFO allocations for pre-R41 payments (deterministic, in-memory)
-  healBankExpenseMode(S[firm]);       // derive missing mode='bank' on pre-R100 bank-assigned expenses
-  pullGstCacheOnce();                 // merge cross-device GST library into local
-  saveLocal();
-  setSyncDot(cache ? (isOnline?'busy':'offline') : 'ok');
-  renderAll();
-  if(!window._bm2Boot){window._bm2Boot=1;setTimeout(function(){try{bm2Recheck({notify:true});bmPrepaidNotify();if(typeof renderBank==='function')renderBank();}catch(e){}},1200);}
-}
+function bmHash(s){var n=2166136261;for(var i=0;i<s.length;i++)n=Math.imul(n^s.charCodeAt(i),16777619);return (n>>>0).toString(36);}
 
-function subscribeData(){
-  if(unsubscribe)unsubscribe();
-  setSyncDot('busy');
-  const unsubs=[];
-  // Migrate the old single-doc first, THEN attach listeners (no empty flash).
-  migrateLegacyIfNeeded(function(){
-    FIRMS.forEach(firm=>{
-      ensureFirm(firm);
-      ENTITIES.forEach(ent=>{
-        const u=_col(firm+'_'+ent).onSnapshot({includeMetadataChanges:true}, snap=>{
-          ensureFirm(firm);
-          S[firm][ent]=snap.docs.map(x=>x.data());
-          _lastSaved[firm][ent]=_indexById(S[firm][ent]);
-          markLoadedBM(firm, snap.metadata&&snap.metadata.fromCache);
-        }, err=>onSubErrBM(firm+'_'+ent, err));
-        unsubs.push(u);
-      });
-      const um=_col(firm+'_meta').doc('state').onSnapshot({includeMetadataChanges:true}, snap=>{
-        ensureFirm(firm);
-        if(snap.exists){ const d=snap.data(); META_FIELDS.forEach(f=>{ if(d[f]!==undefined) S[firm][f]=d[f]; }); }
-        markLoadedBM(firm, snap.metadata&&snap.metadata.fromCache);
-      }, err=>onSubErrBM(firm+'_meta', err));
-      unsubs.push(um);
-    });
-    unsubscribe=function(){ unsubs.forEach(u=>{try{u&&u();}catch(e){}}); };
-  });
-}
-
-function onSubErrBM(which, err){
-  console.warn('Read blocked ('+which+'):', err&&err.code);
-  if(!loadedOnce && loadLocal()) renderAll();
-  setSyncDot(isOnline?'err':'offline');
-}
-
-// Keep numbering counters ahead of the highest existing number (offline devices may drift).
-function reconcileCountersBM(firm){
-  const b=S[firm]; if(!b)return;
-  const maxNum=(arr,re)=>(arr||[]).reduce((m,x)=>{ const a=re.exec(x.num||''); const i=re.exec(x.id||''); const v=parseInt((a&&a[1])||(i&&i[1])||0,10); return v>m?v:m; },0);
-  b.bC=Math.max(b.bC||1, maxNum(b.bills, /(\d+)/)+1);
-  b.iC=Math.max(b.iC||1, maxNum(b.invoices, /(\d+)/)+1);
-  // parties/notes/loans/assets/reserves now use unique ids; counters only seed any legacy display.
-}
-
-// Align stored party.state and invoice gstStr with the authoritative GSTIN.
-// Returns number of fixes. Pure reclassification — totals (gstAmt, grand) are untouched.
 function normalizeGstData(store){
   if(!store)return 0;
   let fixes=0;
@@ -1397,82 +1396,6 @@ function normalizeGstData(store){
   return fixes;
 }
 
-function deepSanitize(obj){
-  if(Array.isArray(obj)){ obj.forEach(deepSanitize); return; }
-  if(obj && typeof obj==='object'){ Object.keys(obj).forEach(k=>{ if(obj[k]===undefined||obj[k]===null)obj[k]=''; else if(typeof obj[k]==='object')deepSanitize(obj[k]); }); }
-}
-function _clean(o){ const c=JSON.parse(JSON.stringify(o)); deepSanitize(c); return c; }
-
-function diffWrite(coll, arr, lastIndex){
-  const nowIndex={};
-  (arr||[]).forEach(item=>{
-    if(!item||item.id==null) return;
-    const id=String(item.id);
-    nowIndex[id]=JSON.parse(JSON.stringify(item));
-    const prev=lastIndex[id];
-    if(!prev || JSON.stringify(prev)!==JSON.stringify(item))
-      _col(coll).doc(id).set(_clean(item)).catch(e=>console.warn(coll+' write deferred:', e&&e.code));
-  });
-  Object.keys(lastIndex).forEach(id=>{ if(!(id in nowIndex)) _col(coll).doc(id).delete().catch(e=>console.warn(coll+' delete deferred:', e&&e.code)); });
-  Object.keys(lastIndex).forEach(k=>{ delete lastIndex[k]; });
-  Object.assign(lastIndex, nowIndex);
-}
-
-function saveToCloud(){
-  if(!uid) return Promise.resolve();
-  if(!loadedOnce){ console.warn('Save skipped — initial read not confirmed; data left untouched.'); setSyncDot(isOnline?'err':'offline'); return Promise.resolve(); }
-  saveLocal();
-  setSyncDot(isOnline?'busy':'offline');
-  const ps=[];
-  try{
-    FIRMS.forEach(firm=>{
-      if(!S[firm]) return;
-      ensureFirm(firm);
-      if(!_lastSaved[firm]) _lastSaved[firm]={};
-      ENTITIES.forEach(ent=>{
-        if(!_lastSaved[firm][ent]) _lastSaved[firm][ent]={};
-        diffWrite(firm+'_'+ent, S[firm][ent]||[], _lastSaved[firm][ent]);
-      });
-      const meta={updated:new Date().toISOString()};
-      META_FIELDS.forEach(f=>{ meta[f]=S[firm][f]; });
-      ps.push(_col(firm+'_meta').doc('state').set(_clean(meta)));
-    });
-    Promise.all(ps).then(function(){ setSyncDot(isOnline?'ok':'offline'); })
-      .catch(function(err){ console.warn('meta write deferred:', err&&err.code); setSyncDot(isOnline?'err':'offline'); });
-  }catch(e){ console.warn('save threw:', e); setSyncDot(isOnline?'err':'offline'); }
-  return Promise.resolve();
-}
-
-/* One-time migration from old single-doc bizdata/main → per-document. Calls done() when finished.
-   Copy-only: the old document is never modified or deleted (kept as a backup). */
-function migrateLegacyIfNeeded(done){
-  done=done||function(){};
-  const legacy=db.collection('users').doc(uid).collection('bizdata').doc('main');
-  const flag=_col('biz_meta').doc('migration');
-  flag.get().then(function(fs){
-    if(fs.exists && fs.data().done){ done(); return; }
-    legacy.get().then(function(snap){
-      if(!snap.exists){ flag.set({done:true,note:'nothing',at:new Date().toISOString()}); done(); return; }
-      const d=snap.data();
-      // Only migrate if new collections are still empty (don't clobber newer data).
-      _col('MI_parties').limit(1).get().then(function(probe){
-        if(!probe.empty){ flag.set({done:true,note:'already-present',at:new Date().toISOString()}); done(); return; }
-        const writes=[];
-        FIRMS.forEach(firm=>{
-          const src=d[firm]; if(!src) return;
-          ENTITIES.forEach(ent=>{ (src[ent]||[]).forEach(rec=>{ if(rec&&rec.id!=null) writes.push(_col(firm+'_'+ent).doc(String(rec.id)).set(_clean(rec))); }); });
-          const meta={}; META_FIELDS.forEach(f=>{ if(src[f]!==undefined) meta[f]=src[f]; });
-          meta.updated=new Date().toISOString();
-          writes.push(_col(firm+'_meta').doc('state').set(_clean(meta)));
-        });
-        Promise.all(writes).then(function(){ flag.set({done:true,note:'migrated',at:new Date().toISOString()}); console.log('BM migration complete (old data preserved untouched).'); })
-          .catch(function(e){ console.warn('migration write deferred:', e&&e.code); });
-        done();
-      }).catch(function(e){ console.warn('migration probe failed:', e&&e.code); done(); });
-    }).catch(function(e){ console.warn('legacy read skipped:', e&&e.code); done(); });
-  }).catch(function(e){ console.warn('migration flag read skipped:', e&&e.code); done(); });
-}
-
 // ═══ BUSINESS TOGGLE ═══
 function applyBiz(){
   if(!BIZ[curBiz])curBiz='MI'; // guard: stale 'TEST' in localStorage from removed sandbox
@@ -1484,7 +1407,7 @@ function applyBiz(){
   document.documentElement.style.setProperty('--pri3',biz.color3);
   var tb=document.getElementById('test-banner');if(tb)tb.style.display='none';
 }
-function toggleBiz(){
+function toggleBiz(){if(_saving){alert("Please wait for the save result.");return;}bmRevision++;document.querySelectorAll(".ov.show").forEach(e=>{e.classList.remove("show");e.style.display="none";});
   curBiz=curBiz==='MI'?'KF':'MI';
   try{ localStorage.setItem('bm_curBiz', curBiz); }catch(e){}
   applyBiz();
@@ -1624,7 +1547,7 @@ function goTab(t){
   });
   renderTab(t);
 }
-function renderAll(){renderTab(curTab);updateTrashBadge();}
+function renderAll(){if(!loadedOnce||_saving){bmGate();return;}renderTab(curTab);updateTrashBadge();}
 function renderTab(t){
   if(t==='home')renderHome();
   else if(t==='parties')renderParties();
@@ -1655,7 +1578,7 @@ function renderItemsPage(){
   const d=D();if(!d.items)d.items=[];
   const q=(document.getElementById('itp-search')?.value||'').toLowerCase().trim();
   let list=d.items.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  if(q)list=list.filter(i=>((i.name||'')+' '+(i.code||'')+' '+(i.hsn||'')).toLowerCase().includes(q));
+  if(q)list=bmFilter(list,i=>((i.name||'')+' '+(i.code||'')+' '+(i.hsn||'')).toLowerCase().includes(q));
   const rows=list.length?list.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--bdr);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:#fff">
     <div style="min-width:0"><div style="font-weight:700">${esc(i.name)}</div><div style="font-size:11px;color:var(--sub);margin-top:2px">${i.code?'Code '+esc(i.code)+' · ':''}${i.hsn?'HSN '+esc(i.hsn)+' · ':''}${esc(i.unit||'')} · GST ${i.gstSlab||0}%</div></div>
     <div style="display:flex;gap:6px;flex-shrink:0"><button class="btn sm" type="button" onclick="pageEditItem('${i.id}')">Edit</button><button class="btn sm" type="button" style="background:#FEF2F2;color:#DC2626;border-color:#FECACA" onclick="delItem('${i.id}')">✕</button></div>
@@ -1971,7 +1894,9 @@ function renderCash(){
   document.getElementById('pg-cash').style.display='block';
 }
 // Manual cash adjustment (opening, miscellaneous in/out) recorded as a Cash expense entry
-function openCashAdjust(dir){
+async function openCashAdjust(dir){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const amtStr=prompt((dir==='in'?'Cash IN':'Cash OUT')+' amount (₹):');
   if(amtStr===null)return;
   const amt=parseFloat(amtStr)||0;
@@ -1979,7 +1904,9 @@ function openCashAdjust(dir){
   const note=prompt('Note (e.g. "petty cash", "owner withdrawal"):')||'';
   const d=D();if(!d.expenses)d.expenses=[];
   d.expenses.push({id:'EXP'+uid4(),date:td(),desc:note||'Cash adjustment',amount:amt,cat:'Cash Adjustment',dir:dir,mode:'cash'});
-  saveToCloud();renderCash();
+  if(!await saveToCloud())return;renderCash();
+
+}finally{bmEndAction(_bmAction); }
 }
 function _fyStartISO(){
   // Indian FY starts 1 April. If today is Jan–Mar, FY started 1 Apr of previous calendar year.
@@ -1987,7 +1914,9 @@ function _fyStartISO(){
   const startY=(m>=4)?y:y-1;
   return startY+'-04-01';
 }
-function openCashOpening(){
+async function openCashOpening(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const curAmt=d.cashOpening||0;
   const curDate=d.cashOpeningDate||_fyStartISO();
@@ -1998,11 +1927,15 @@ function openCashOpening(){
   const iso=/^\d{4}-\d{2}-\d{2}$/.test((dt||'').trim())?dt.trim():curDate;
   d.cashOpening=parseFloat(v)||0;
   d.cashOpeningDate=iso;
-  saveToCloud();renderCash();
+  if(!await saveToCloud())return;renderCash();
   toast('Opening cash set: '+fmt(d.cashOpening)+' as on '+fmtD(iso),'ok');
+
+}finally{bmEndAction(_bmAction); }
 }
 // Edit a cash-ledger entry at its source (expense / payment / asset / opening)
-function editCashRow(kind,id){
+async function editCashRow(kind,id){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   if(kind==='opening'){openCashOpening();return;}
   if(kind==='exp'){editExpense(id);return;}        // full expense editor (incl. category)
@@ -2018,41 +1951,47 @@ function editCashRow(kind,id){
       p.amt=amt;if(c!==null)p.cashPart=parseFloat(c)||0;
     } else { p.amt=amt; }
     const dt=prompt('Date (YYYY-MM-DD):',p.date);if(dt!==null&&dt.trim())p.date=dt.trim();
-    saveToCloud();renderCash();
+    if(!await saveToCloud())return;renderCash();
     return;
   }
   alert('This entry can be edited from its own section.');
+
+}finally{bmEndAction(_bmAction); }
 }
 // Delete a cash-ledger entry at its source, then stay on the Cash screen
-function delCashRow(kind,id){
+async function delCashRow(kind,id){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   if(kind==='opening'){
     if(!confirm('Clear the opening cash balance?'))return;
-    d.cashOpening=0;saveToCloud();renderCash();return;
+    d.cashOpening=0;if(!await saveToCloud())return;renderCash();return;
   }
   if(kind==='exp'){
     const e=(d.expenses||[]).find(x=>x.id===id);if(!e){alert('Entry not found.');return;}
     if(!confirm('Delete this cash entry?\n\n'+(e.cat||'')+' · '+fmt(e.amount)+' · '+fmtD(e.date)+'\n\nIt will move to the Recycle Bin.'))return;
     if(!d.trash)d.trash=[];
     d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
-    d.expenses=d.expenses.filter(x=>x.id!==id);
-    saveToCloud();renderCash();try{updateTrashBadge();}catch(_){}toast('🗑 Moved to Recycle Bin','warn');
+    d.expenses=bmFilter(d.expenses,x=>x.id!==id);
+    if(!await saveToCloud())return;renderCash();try{updateTrashBadge();}catch(_){}toast('🗑 Moved to Recycle Bin','warn');
     return;
   }
   if(kind==='pay'){
     const p=(d.payments||[]).find(x=>x.id===id);if(!p){alert('Entry not found.');return;}
     if(!confirm('Delete this cash payment/receipt?\n\n'+fmt(p.amt)+' · '+fmtD(p.date)+'\n\nThis also removes it from the party ledger.'))return;
-    d.payments=d.payments.filter(x=>x.id!==id);
-    saveToCloud();renderCash();
+    d.payments=bmFilter(d.payments,x=>x.id!==id);
+    if(!await saveToCloud())return;renderCash();
     return;
   }
   if(kind==='asset'){
     const a=(d.assets||[]).find(x=>x.id===id);if(!a){alert('Entry not found.');return;}
     if(!confirm('Delete asset "'+(a.name||'')+'"?\n\nThis removes it from your books entirely.'))return;
-    d.assets=d.assets.filter(x=>x.id!==id);
-    saveToCloud();renderCash();
+    d.assets=bmFilter(d.assets,x=>x.id!==id);
+    if(!await saveToCloud())return;renderCash();
     return;
   }
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══════════════════════════════
@@ -2091,8 +2030,8 @@ function renderExpenses(){
 
   // Filter (exclude the legacy "Cash Adjustment" pseudo-entries from the expense list — they belong to Cash ledger)
   let list=(d.expenses||[]).filter(isExpRow);
-  if(expMonth)list=list.filter(e=>(e.date||'').slice(0,7)===expMonth);
-  if(search){const q=search.toLowerCase();list=list.filter(e=>((e.cat||'')+' '+(e.desc||'')+' '+(e.payee||'')+' '+(e.amount||'')).toLowerCase().includes(q));}
+  if(expMonth)list=bmFilter(list,e=>(e.date||'').slice(0,7)===expMonth);
+  if(search){const q=search.toLowerCase();list=bmFilter(list,e=>((e.cat||'')+' '+(e.desc||'')+' '+(e.payee||'')+' '+(e.amount||'')).toLowerCase().includes(q));}
   list=list.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   // Refunds (dir:'in') carry a negative sign through every total below
@@ -2276,7 +2215,9 @@ function openExpAttach(id){
     window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),30000);
   }catch(err){alert('Could not open attachment.');}
 }
-function saveExpense(){
+async function saveExpense(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();if(!d.expenses)d.expenses=[];
   const date=document.getElementById('exp-date').value||td();
   const amount=parseFloat(document.getElementById('exp-amt').value)||0;
@@ -2290,7 +2231,7 @@ function saveExpense(){
   if(mode==='split'){
     cashPart=parseFloat(document.getElementById('exp-cash').value)||0;
     bankPart=parseFloat(document.getElementById('exp-bank').value)||0;
-    if(Math.abs(amount-cashPart-bankPart)>0.5){alert('Cash + Bank must add up to the total ('+fmt(amount)+').');return;}
+    if(!Number.isFinite(cashPart)||!Number.isFinite(bankPart)||cashPart<0||bankPart<0||Math.abs(amount-cashPart-bankPart)>0.005){alert('Cash + Bank must add up to the total ('+fmt(amount)+').');return;}
   }
   if(editExpId){
     const e=d.expenses.find(x=>x.id===editExpId);
@@ -2302,17 +2243,23 @@ function saveExpense(){
     d.expenses.push({id:'EXP'+uid4(),date,amount,cat,mode,desc,payee,dir:'out',cashPart,bankPart,attach:_expAttach||null});
   }
   editExpId=null;_expAttach=null;
-  saveToCloud();closeModal('expense');toast('✅ Expense saved','ok');renderExpenses();
+  if(!await saveToCloud())return;closeModal('expense');toast('✅ Expense saved','ok');renderExpenses();
+
+}finally{bmEndAction(_bmAction); }
 }
 
-function delExpense(id){
+async function delExpense(id){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const idx=(d.expenses||[]).findIndex(x=>x.id===id);if(idx<0)return;
   const e=d.expenses[idx];
   if(!confirm('Move this expense to Recycle Bin?\n\n'+(e.cat||'')+' · '+fmt(e.amount)+' · '+fmtD(e.date)))return;
   if(!d.trash)d.trash=[];
   d.trash.push({type:'expense',deletedAt:new Date().toISOString(),expense:JSON.parse(JSON.stringify(e))});
-  d.expenses.splice(idx,1);
-  saveToCloud();renderExpenses();updateTrashBadge();toast('🗑 Moved to Recycle Bin','warn');
+  bmSplice(d.expenses,idx,1);
+  if(!await saveToCloud())return;renderExpenses();updateTrashBadge();toast('🗑 Moved to Recycle Bin','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══════════════════════════════
@@ -2425,7 +2372,7 @@ function openRowAdd(){
   renderOpeningHsn();
   const el=document.getElementById('oh-hsn-'+(_openRows.length-1));if(el)el.focus();
 }
-function openRowDel(i){_openRows.splice(i,1);if(!_openRows.length)openRowAdd();else renderOpeningHsn();}
+function openRowDel(i){bmSplice(_openRows,i,1);if(!_openRows.length)openRowAdd();else renderOpeningHsn();}
 function openRowSet(i,f,v){
   if(!_openRows[i])return;
   _openRows[i][f]=(f==='qty'||f==='rate')?(parseFloat(v)||0):v;
@@ -2496,7 +2443,9 @@ function renderOpeningHsn(){
     <button class="btn sm" onclick="openRowAdd()" style="width:100%;margin-bottom:8px">+ Add HSN line</button>
     <button class="btn" onclick="saveOpeningHsn()" style="width:100%">Save opening stock</button>`;
 }
-function saveOpeningHsn(){
+async function saveOpeningHsn(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const rows=_openRows.map(r=>({hsn:(r.hsn||'').trim(),unit:r.unit||'KG',
     qty:parseFloat(r.qty)||0,rate:parseFloat(r.rate)||0,amt:_openAmt(r),date:r.date||''}))
@@ -2519,11 +2468,13 @@ function saveOpeningHsn(){
   msg+='\n\nThis adds opening quantities to the HSN stock views. It does NOT change the Balance Sheet, your purchases, or any invoice.\n\nSave?';
   if(!confirm(msg))return;
   d.openingHsn=rows;
-  saveToCloud();
+  if(!await saveToCloud())return;
   closeModal('openhsn');
   alert(rows.length+' opening HSN line(s) saved.');
   if(typeof renderInventory==='function')renderInventory();
   if(typeof syncHsnDatalist==='function')syncHsnDatalist();
+
+}finally{bmEndAction(_bmAction); }
 }
 // ── JOB WORK REVIEW ───────────────────────────────────────────────────────────
 // Printing, dyeing and similar processing bills are SERVICES: they add cost, not
@@ -2592,7 +2543,9 @@ function renderJwFix(){
     <button class="btn" onclick="applyJwFix()" style="width:100%;margin-top:4px">Retype selected bills as Job Work</button>
     <div style="font-size:10px;color:var(--sub);text-align:center;margin-top:6px">You will see a full summary before anything is saved.</div>`;
 }
-function applyJwFix(){
+async function applyJwFix(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const ids=[...document.querySelectorAll('[data-jwid]')].filter(el=>el.checked).map(el=>el.dataset.jwid);
   if(!ids.length){alert('Tick at least one bill.');return;}
@@ -2610,9 +2563,11 @@ function applyJwFix(){
     +'\n\nEffect:\n– '+fmtR(qty)+' units leave stock\n– '+fmt(tot)+' moves out of Purchases and COGS\n'
     +'– these bills leave the GSTR-1 purchase register\n\nAmounts, dates, parties and payments are NOT changed.\nSupplier balances are NOT changed.\n\nApply?'))return;
   targets.forEach(b=>{b.jw=true;});
-  saveToCloud();
+  if(!await saveToCloud())return;
   alert(targets.length+' bill(s) retyped as Job Work.\n\n'+fmtR(qty)+' units removed from stock. Re-check your Stock Report and HSN Review.');
   renderJwFix();
+
+}finally{bmEndAction(_bmAction); }
 }
 // ── HSN REVIEW ────────────────────────────────────────────────────────────────
 // Temporary clean-up tool for historical documents saved before HSN became mandatory.
@@ -2699,7 +2654,9 @@ function hsnFixHint(i){
   el.innerHTML=info?'<span style="color:#059669">✓ '+esc(info.desc)+'</span>'
     :'<span style="color:#B45309">⚠ not a heading I recognise — check it</span>';
 }
-function applyHsnFix(){
+async function applyHsnFix(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const gaps=hsnGaps();
   const plan=[];const bad=[];
   gaps.forEach((g,i)=>{
@@ -2727,10 +2684,12 @@ function applyHsnFix(){
   if(!confirm('These HSN codes will be written to existing bills and invoices:\n\n• '
       +touched.join('\n• ')+'\n\nTotal '+n+' line(s). Quantities, rates and amounts are NOT changed.\n\nApply?'))return;
   targets.forEach(t=>t.hits.forEach(it=>{it.hsn=t.hsn;}));
-  saveToCloud();
+  if(!await saveToCloud())return;
   alert(n+' line(s) updated. Re-export GSTR-1 to pick up the new codes.');
   renderHsnFix();
   if(typeof renderInventory==='function'&&document.getElementById('pg-inventory')?.style.display==='block')renderInventory();
+
+}finally{bmEndAction(_bmAction); }
 }
 var _hsnOpen='';
 function buildHsnStock(){
@@ -2858,7 +2817,7 @@ function renderInventory(){
   // ---- HSN VIEW (stock keyed by HSN + unit, with purchase rates) ----
   if(invDim==='hsn'){
     let rows=buildHsnStock();
-    if(search){const q=search.toLowerCase();rows=rows.filter(r=>(r.hsn+' '+r.unit+' '+r.names.join(' ')+' '+(r.info?r.info.desc:'')).toLowerCase().includes(q));}
+    if(search){const q=search.toLowerCase();rows=bmFilter(rows,r=>(r.hsn+' '+r.unit+' '+r.names.join(' ')+' '+(r.info?r.info.desc:'')).toLowerCase().includes(q));}
     // Same HSN appearing under more than one unit means purchases and sales were booked
     // in different units — surfaced rather than silently added together.
     const unitCount={},unitsOf={};
@@ -2915,7 +2874,7 @@ function renderInventory(){
 
   if(invDim!=='item'){
     let groups=buildGroupStock(invDim);
-    if(search){const q=search.toLowerCase();groups=groups.filter(g=>g.key.toLowerCase().includes(q));}
+    if(search){const q=search.toLowerCase();groups=bmFilter(groups,g=>g.key.toLowerCase().includes(q));}
     const dimLabel=invDim==='hsn'?'HSN Code':invDim==='design'?'Design No.':'Colour';
     const rows=groups.length?groups.map(g=>`<div class="prow" style="cursor:default">
       <div class="pav" style="background:#1E40AF;font-size:13px">${invDim==='hsn'?'#':invDim==='design'?'🎨':'🌈'}</div>
@@ -2935,13 +2894,13 @@ function renderInventory(){
 
   // ---- ITEM VIEW ----
   let list=allItems.slice();
-  if(invFilter==='instock')list=list.filter(i=>i.stock>0.001);
-  else if(invFilter==='low')list=list.filter(i=>i.status==='low');
-  else if(invFilter==='out')list=list.filter(i=>i.status==='out');
-  else if(invFilter==='dead')list=list.filter(i=>i.dead);
-  else if(invFilter==='slow')list=list.filter(i=>i.slow);
-  else if(invFilter==='fast')list=list.filter(i=>i.fast);
-  if(search){const q=search.toLowerCase();list=list.filter(i=>(i.name+' '+i.hsn).toLowerCase().includes(q));}
+  if(invFilter==='instock')list=bmFilter(list,i=>i.stock>0.001);
+  else if(invFilter==='low')list=bmFilter(list,i=>i.status==='low');
+  else if(invFilter==='out')list=bmFilter(list,i=>i.status==='out');
+  else if(invFilter==='dead')list=bmFilter(list,i=>i.dead);
+  else if(invFilter==='slow')list=bmFilter(list,i=>i.slow);
+  else if(invFilter==='fast')list=bmFilter(list,i=>i.fast);
+  if(search){const q=search.toLowerCase();list=bmFilter(list,i=>(i.name+' '+i.hsn).toLowerCase().includes(q));}
   if(invFilter==='fast')list.sort((a,b)=>b.recentOut-a.recentOut);
   else if(invSort==='value')list.sort((a,b)=>b.value-a.value);
   else if(invSort==='name')list.sort((a,b)=>a.name.localeCompare(b.name));
@@ -3064,12 +3023,16 @@ function openItemDetail(key){
   openModal('item');
 }
 
-function setItemLow(key){
+async function setItemLow(key){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();if(!d.invMeta)d.invMeta={};
   const v=parseFloat(document.getElementById('item-low-input').value);
   if(isNaN(v)||v<0){alert('Enter a valid number');return;}
   d.invMeta[key]={low:v};
-  saveToCloud();closeModal('item');renderInventory();
+  if(!await saveToCloud())return;closeModal('item');renderInventory();
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══════════════════════════════
@@ -3377,7 +3340,9 @@ function calcAssetTotal(){
     } else pc.innerHTML='Enter the value above, then how much was paid by cash / bank.';
   }
 }
-function saveAsset(){
+async function saveAsset(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();ensureAssets();
   const name=document.getElementById('as-name').value.trim();
   if(!name){alert('Enter asset name');return;}
@@ -3412,16 +3377,22 @@ function saveAsset(){
     note:document.getElementById('as-note').value.trim(),
     txns:editAssetId?(d.assets.find(x=>x.id===editAssetId)?.txns||[]):[]
   };
-  if(editAssetId){const i=d.assets.findIndex(x=>x.id===editAssetId);if(i>=0)d.assets[i]=obj;}
+  if(editAssetId){const i=d.assets.findIndex(x=>x.id===editAssetId);if(i>=0)d.assets[i]=Object.assign({},d.assets[i],obj);}
   else{d.assets.push(obj);d.assetC=(d.assetC||1)+1;}
   editAssetId=null;
-  saveToCloud();closeModal('asset');renderLoans();
+  if(!await saveToCloud())return;closeModal('asset');renderLoans();
+
+}finally{bmEndAction(_bmAction); }
 }
-function delAsset(aid){
+async function delAsset(aid){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const a=d.assets.find(x=>x.id===aid);if(!a)return;
   if(!confirm('Delete asset "'+a.name+'"?'))return;
-  d.assets=d.assets.filter(x=>x.id!==aid);
-  saveToCloud();renderLoans();toast('🗑 Asset deleted','warn');
+  d.assets=bmFilter(d.assets,x=>x.id!==aid);
+  if(!await saveToCloud())return;renderLoans();toast('🗑 Asset deleted','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══ RESERVES & SURPLUS MODAL ═══
@@ -3459,14 +3430,20 @@ function openOpeningBSModal(){
   const plEl=document.getElementById('ob-pl');if(plEl){const r=(d.reserves||[]).find(x=>x.id===o.plReserveId);const v=r?parseFloat(r.amount):NaN;plEl.value=(!isNaN(v)&&v!==0)?v:'';}
   openModal('openingbs');
 }
-function clearOpeningBS(){
+async function clearOpeningBS(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   if(!confirm('Clear all opening balances? This removes the prior-year figures from the Balance Sheet. Your invoices, payments and other data are not affected.'))return;
   const d=D();
   d.openingBS={date:'',pl:0,dutiesTaxes:0,itc:0,debtors:0,creditors:0,stock:0,cash:0,bank:0,custAdv:0,supplierAdv:0};
-  saveToCloud();renderLoans();
+  if(!await saveToCloud())return;renderLoans();
   toast('Opening balances cleared','ok');
+
+}finally{bmEndAction(_bmAction); }
 }
-function saveOpeningBS(){
+async function saveOpeningBS(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const o=ensureOpeningBS();
   const num=id=>{const el=document.getElementById(id);const v=el?parseFloat(el.value):0;return isNaN(v)?0:v;};
   o.date=document.getElementById('ob-date').value||'';
@@ -3503,16 +3480,20 @@ function saveOpeningBS(){
     else{r={id:'RS'+String(d.reserveC||1).padStart(3,'0'),name:'Opening P&L (b/f)',cat:'Retained Earnings',amount:_pl,date:o.date||_fyStartISO(),note:'Opening balance carried forward',txns:[]};d.reserves.push(r);d.reserveC=(d.reserveC||1)+1;}
     o.plReserveId=r.id;
   } else if(o.plReserveId){
-    const i=d.reserves.findIndex(x=>x.id===o.plReserveId);if(i>=0)d.reserves.splice(i,1);o.plReserveId=null;
+    const i=d.reserves.findIndex(x=>x.id===o.plReserveId);if(i>=0)bmSplice(d.reserves,i,1);o.plReserveId=null;
   }
   o.stock=0;o.cash=0;o.pl=0;   // cleared so the Balance Sheet reads the real fields (cfStock/cashOpening/reserve), no double-count
   // Remaining figures have no separate operating section — they exist only as balances on the sheet:
   ['dutiesTaxes','itc','debtors','creditors','bank','custAdv','supplierAdv'].forEach(k=>{o[k]=num('ob-'+k);});
   d.openingBS=o;
-  saveToCloud();closeModal('openingbs');renderLoans();
+  if(!await saveToCloud())return;closeModal('openingbs');renderLoans();
   toast('✅ Opening balances saved — stock, cash &amp; P&amp;L now also live in their own sections','ok');
+
+}finally{bmEndAction(_bmAction); }
 }
-function saveReserve(){
+async function saveReserve(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();ensureReserves();
   const name=document.getElementById('rs-name').value.trim();
   if(!name){alert('Enter a name');return;}
@@ -3525,16 +3506,22 @@ function saveReserve(){
     note:document.getElementById('rs-note').value.trim(),
     txns:editReserveId?(d.reserves.find(x=>x.id===editReserveId)?.txns||[]):[]
   };
-  if(editReserveId){const i=d.reserves.findIndex(x=>x.id===editReserveId);if(i>=0)d.reserves[i]=obj;}
+  if(editReserveId){const i=d.reserves.findIndex(x=>x.id===editReserveId);if(i>=0)d.reserves[i]=Object.assign({},d.reserves[i],obj);}
   else{d.reserves.push(obj);d.reserveC=(d.reserveC||1)+1;}
   editReserveId=null;
-  saveToCloud();closeModal('reserve');renderLoans();
+  if(!await saveToCloud())return;closeModal('reserve');renderLoans();
+
+}finally{bmEndAction(_bmAction); }
 }
-function delReserve(rid){
+async function delReserve(rid){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const r=d.reserves.find(x=>x.id===rid);if(!r)return;
   if(!confirm('Delete reserve "'+r.name+'" and its '+(r.txns||[]).length+' transaction(s)?'))return;
-  d.reserves=d.reserves.filter(x=>x.id!==rid);
-  saveToCloud();renderLoans();toast('🗑 Reserve deleted','warn');
+  d.reserves=bmFilter(d.reserves,x=>x.id!==rid);
+  if(!await saveToCloud())return;renderLoans();toast('🗑 Reserve deleted','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 var _reserveTxnTarget=null,_reserveTxnDir=null;
 function openReserveTxn(rid,dir){
@@ -3546,13 +3533,17 @@ function openReserveTxn(rid,dir){
   document.getElementById('rt-note').value='';
   openModal('reservetxn');
 }
-function saveReserveTxn(){
+async function saveReserveTxn(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const r=d.reserves.find(x=>x.id===_reserveTxnTarget);if(!r)return;
   const amt=parseFloat(document.getElementById('rt-amt').value)||0;
   if(amt<=0){alert('Enter a valid amount');return;}
   if(!r.txns)r.txns=[];
   r.txns.push({id:'RT'+uid4(),date:document.getElementById('rt-date').value||td(),dir:_reserveTxnDir,amt,note:document.getElementById('rt-note').value.trim()});
-  saveToCloud();closeModal('reservetxn');renderLoans();
+  if(!await saveToCloud())return;closeModal('reservetxn');renderLoans();
+
+}finally{bmEndAction(_bmAction); }
 }
 
 var editLoanId=null;
@@ -3580,7 +3571,9 @@ function onLoanKindChange(){
   document.getElementById('ln-relation-wrap').style.display=isOD?'none':'block';
   document.getElementById('ln-bank-wrap').style.display=isOD?'block':'block';
 }
-function saveLoan(){
+async function saveLoan(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();ensureLoans();
   const name=document.getElementById('ln-name').value.trim();
   if(!name){alert('Enter a name');return;}
@@ -3596,16 +3589,22 @@ function saveLoan(){
     note:document.getElementById('ln-note').value.trim(),
     txns:editLoanId?(d.loans.find(x=>x.id===editLoanId)?.txns||[]):[]
   };
-  if(editLoanId){const i=d.loans.findIndex(x=>x.id===editLoanId);if(i>=0)d.loans[i]=obj;}
+  if(editLoanId){const i=d.loans.findIndex(x=>x.id===editLoanId);if(i>=0)d.loans[i]=Object.assign({},d.loans[i],obj);}
   else{d.loans.push(obj);d.loanC=(d.loanC||1)+1;}
   editLoanId=null;
-  saveToCloud();closeModal('loan');renderLoans();
+  if(!await saveToCloud())return;closeModal('loan');renderLoans();
+
+}finally{bmEndAction(_bmAction); }
 }
-function delLoan(lid){
+async function delLoan(lid){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const l=d.loans.find(x=>x.id===lid);if(!l)return;
   if(!confirm('Delete "'+l.name+'" and its '+(l.txns||[]).length+' transaction(s)?'))return;
-  d.loans=d.loans.filter(x=>x.id!==lid);
-  saveToCloud();renderLoans();toast('🗑 Loan deleted','warn');
+  d.loans=bmFilter(d.loans,x=>x.id!==lid);
+  if(!await saveToCloud())return;renderLoans();toast('🗑 Loan deleted','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 var _loanTxnTarget=null,_loanTxnDir=null;
 function openLoanTxn(lid,dir){
@@ -3620,13 +3619,17 @@ function openLoanTxn(lid,dir){
   document.getElementById('lt-note').value='';
   openModal('loantxn');
 }
-function saveLoanTxn(){
+async function saveLoanTxn(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const l=d.loans.find(x=>x.id===_loanTxnTarget);if(!l)return;
   const amt=parseFloat(document.getElementById('lt-amt').value)||0;
   if(amt<=0){alert('Enter a valid amount');return;}
   if(!l.txns)l.txns=[];
   l.txns.push({id:'LT'+uid4(),date:document.getElementById('lt-date').value||td(),dir:_loanTxnDir,amt,note:document.getElementById('lt-note').value.trim()});
-  saveToCloud();closeModal('loantxn');renderLoans();
+  if(!await saveToCloud())return;closeModal('loantxn');renderLoans();
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══ PARTIES ═══
@@ -3864,10 +3867,14 @@ function verifyPartyBanksAsync(pid){
     var d=D();var p=(d.parties||[]).find(function(x){return x.id===pid;});if(!p||!Array.isArray(p.banks))return;
     var todo=p.banks.filter(function(b){return (b.ifsc||b.bankName)&&(!b.verAt||b.verIfsc!==String(b.ifsc||'').toUpperCase());});
     if(!todo.length)return;
-    Promise.all(todo.map(function(b){b.verIfsc=String(b.ifsc||'').toUpperCase();return verifyBankAccount(b);})).then(function(){
-      saveToCloud();
+    Promise.all(todo.map(function(b){b.verIfsc=String(b.ifsc||'').toUpperCase();return verifyBankAccount(b);})).then(async function(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+      if(!await saveToCloud())return;
       if(typeof curParty!=='undefined'&&curParty===pid&&typeof openPartyDetail==='function')try{openPartyDetail(pid);}catch(e){}
-    });
+    
+}finally{bmEndAction(_bmAction); }
+});
   }catch(e){}
 }
 function bmVerBadge(b){
@@ -3955,7 +3962,7 @@ function renderItemMaster(){
   const d=D();if(!d.items)d.items=[];
   const q=(document.getElementById('im-search')?.value||'').toLowerCase().trim();
   let list=d.items.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-  if(q)list=list.filter(i=>((i.name||'')+' '+(i.code||'')+' '+(i.hsn||'')).toLowerCase().includes(q));
+  if(q)list=bmFilter(list,i=>((i.name||'')+' '+(i.code||'')+' '+(i.hsn||'')).toLowerCase().includes(q));
   const el=document.getElementById('im-list');if(!el)return;
   el.innerHTML=list.length?list.map(i=>`<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;margin-bottom:6px">
     <div><div style="font-weight:700">${esc(i.name)}</div><div style="font-size:11px;color:var(--sub)">${i.code?'Code '+esc(i.code)+' · ':''}${i.hsn?'HSN '+esc(i.hsn)+' · ':''}${esc(i.unit||'')} · GST ${i.gstSlab||0}%</div></div>
@@ -3963,7 +3970,9 @@ function renderItemMaster(){
   </div>`).join(''):'<div style="color:var(--sub);text-align:center;padding:16px">No items yet. Add your first product above.</div>';
   syncItemDatalist();
 }
-function saveItem(){
+async function saveItem(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();if(!d.items)d.items=[];
   const name=document.getElementById('im-name').value.trim();
   if(!name){alert('Product name required');return;}
@@ -3972,8 +3981,10 @@ function saveItem(){
   const dup=d.items.find(x=>x.id!==id&&(x.name||'').toLowerCase()===name.toLowerCase());
   if(dup&&!confirm('An item named "'+name+'" already exists. Save anyway?'))return;
   const i=d.items.findIndex(x=>x.id===id);
-  if(i>=0)d.items[i]=rec;else d.items.push(rec);
-  saveToCloud();resetItemForm();renderItemMaster();if(document.getElementById('itp-list')||document.getElementById('pg-items')&&curTab==='items')renderItemsPage();toast('✅ Item saved','ok');
+  if(i>=0)d.items[i]=Object.assign({},d.items[i],rec);else d.items.push(rec);
+  if(!await saveToCloud())return;resetItemForm();renderItemMaster();if(document.getElementById('itp-list')||document.getElementById('pg-items')&&curTab==='items')renderItemsPage();toast('✅ Item saved','ok');
+
+}finally{bmEndAction(_bmAction); }
 }
 function editItem(id){
   const it=(D().items||[]).find(x=>x.id===id);if(!it)return;
@@ -3985,9 +3996,13 @@ function editItem(id){
   document.getElementById('im-gst').value=String(it.gstSlab||0);
   document.getElementById('im-name').scrollIntoView({block:'center'});
 }
-function delItem(id){
+async function delItem(id){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();if(!confirm('Delete this item from the master?'))return;
-  d.items=(d.items||[]).filter(x=>x.id!==id);saveToCloud();renderItemMaster();if(curTab==='items')renderItemsPage();toast('🗑 Item deleted','warn');
+  d.items=bmFilter(d.items||[],x=>x.id!==id);if(!await saveToCloud())return;renderItemMaster();if(curTab==='items')renderItemsPage();toast('🗑 Item deleted','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 function syncItemDatalist(){
   const dl=document.getElementById('item-list');if(!dl)return;
@@ -4041,7 +4056,9 @@ function getBankRows(){
   return rows;
 }
 function editParty(pid){openPartyModal(pid);}
-function fixGstTypes(){
+async function fixGstTypes(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   // Build a before/after report for invoices whose split will change
   const changes=[];
@@ -4064,9 +4081,11 @@ function fixGstTypes(){
   const preview=changes.slice(0,12).join('\n')+(changes.length>12?'\n…and '+(changes.length-12)+' more':'');
   if(confirm('Found '+changes.length+' invoice(s) and '+partyFixes+' party state(s) to correct based on GSTIN.\n\n'+preview+'\n\nThese only change the IGST vs CGST+SGST split — totals stay the same. Apply?')){
     const n=normalizeGstData(d);
-    saveToCloud();renderAll();
+    if(!await saveToCloud())return;renderAll();
     alert('✅ Fixed. Re-open or re-print the invoices to see the correct tax type.');
   }
+
+}finally{bmEndAction(_bmAction); }
 }
 function syncPartyStateFromGstin(){
   const g=(document.getElementById('p-gstin')?.value||'').trim();
@@ -4090,7 +4109,7 @@ function _gstCacheGet(g){
   if(!info)return null;
   if((info.gstin||'').toUpperCase()!==g){ // legacy/poisoned record — drop it
     delete c[g];try{localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}
-    try{if(ready&&uid)_col('gst_cache').doc(g).delete().catch(function(){});}catch(e){}
+    try{if(ready&&uid)Promise.resolve();}catch(e){}
     return null;
   }
   return info;
@@ -4139,7 +4158,7 @@ function _gstCachePurge(){
     const i=c[g]||{};
     if((i.gstin||'').toUpperCase()!==g||i.name==='AppyFlow Technologies'){
       delete c[g];dirty=true;
-      try{if(ready&&uid)_col('gst_cache').doc(g).delete().catch(function(){});}catch(e){}
+      try{if(ready&&uid)Promise.resolve();}catch(e){}
     }
   });
   if(dirty){try{localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}}
@@ -4148,7 +4167,7 @@ function _gstCacheSet(g,info){
   info=info||{};info.gstin=g;
   try{const c=_gstCache();c[g]=info;localStorage.setItem('bm_gstCache',JSON.stringify(c));}catch(e){}
   // write-through to Firestore so every device shares the library (no repeat API credits)
-  try{if(ready&&uid)_col('gst_cache').doc(g).set(_clean(info)).catch(function(){});}catch(e){}
+  try{if(ready&&uid)Promise.resolve() /* GST lookup cache stays device-local; no offline writes */;}catch(e){}
 }
 let _gstCachePulled=false;
 function pullGstCacheOnce(){
@@ -4242,7 +4261,9 @@ function _chg(list,label,oldV,newV){
   const a=(oldV==null?'':String(oldV)),b=(newV==null?'':String(newV));
   if(a!==b)list.push(label+': '+(a||'—')+' → '+(b||'—'));
 }
-function saveParty(){
+async function saveParty(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const name=document.getElementById('p-name').value.trim();
   if(!name){alert('Party name required');return;}
   // Batch 1: block invalid GST/PAN before saving (items 1–3)
@@ -4284,18 +4305,22 @@ function saveParty(){
     const ch=[];_chg(ch,'Name',ex.name,party.name);_chg(ch,'GSTIN',ex.gstin,party.gstin);_chg(ch,'Phone',ex.phone,party.phone);_chg(ch,'State',ex.state,party.state);_chg(ch,'Type',ex.type,party.type);_chg(ch,'City',ex.city,party.city);
     if(!confirmEdit('party',ch))return;
     ['deleted'].forEach(k=>{if(ex[k]!==undefined)party[k]=ex[k];});}}
-  if(editPartyId){const i=d.parties.findIndex(x=>x.id===editPartyId);if(i>=0)d.parties[i]=party;}
+  if(editPartyId){const i=d.parties.findIndex(x=>x.id===editPartyId);if(i>=0)d.parties[i]=Object.assign({},d.parties[i],party);}
   else{d.parties.push(party);d.pC=(d.pC||1)+1;}
   const wasEdit=editPartyId;
-  saveToCloud();closeModal('party');toast(editPartyId?'✅ Party updated':'✅ Party created','ok');renderAll();
+  if(!await saveToCloud())return;closeModal('party');toast(editPartyId?'✅ Party updated':'✅ Party created','ok');renderAll();
   try{bm2Recheck({notify:true});}catch(e){}
   try{verifyPartyBanksAsync(editPartyId||party.id);}catch(e){}
   if(curParty===wasEdit)openPartyDetail(wasEdit);
+
+}finally{bmEndAction(_bmAction); }
 }
 // Share ONLY the party master (name, GSTIN, address, banks, emails…) into the other
 // firm — never bills, invoices or payments. Matches an existing party there by GSTIN
 // (or name) and updates it; otherwise creates a fresh party in that firm.
-function copyPartyToOtherFirm(pid){
+async function copyPartyToOtherFirm(pid){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const src=curBiz;
   const other=src==='MI'?'KF':'MI';
   const d=D();
@@ -4320,12 +4345,16 @@ function copyPartyToOtherFirm(pid){
     ob.parties.push(np);
     ob.pC=(ob.pC||1)+1;
   }
-  saveToCloud();
+  if(!await saveToCloud())return;
   toast('✅ Party details '+(match?'updated in ':'copied to ')+BIZ[other].name,'ok');
+
+}finally{bmEndAction(_bmAction); }
 }
 function confirmDelParty(pid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this party and all their data to Recycle Bin? You can restore everything anytime.</div>';
-  document.getElementById('cf-ok').onclick=()=>{
+  document.getElementById('cf-ok').onclick=async ()=>{
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
     const d=D();
     const party=d.parties.find(p=>p.id===pid);if(!party)return;
     const partyBills=d.bills.filter(b=>b.pid===pid);
@@ -4338,10 +4367,10 @@ function confirmDelParty(pid){
       invoices:JSON.parse(JSON.stringify(partyInvs)),
       payments:JSON.parse(JSON.stringify(partyPays))
     });
-    d.parties=d.parties.filter(p=>p.id!==pid);
-    d.bills=d.bills.filter(b=>b.pid!==pid);
-    d.invoices=d.invoices.filter(i=>i.pid!==pid);
-    d.payments=d.payments.filter(p=>p.pid!==pid);
+    d.parties=bmFilter(d.parties,p=>p.id!==pid);
+    d.bills=bmFilter(d.bills,b=>b.pid!==pid);
+    d.invoices=bmFilter(d.invoices,i=>i.pid!==pid);
+    d.payments=bmFilter(d.payments,p=>p.pid!==pid);
     // Block numbers that are no longer the top of the series (GST chronology).
     // Serials above every surviving/cancelled number stay reusable (draft region).
     (function(){var blockMax=Math.max((BIZ[curBiz]&&BIZ[curBiz].invSeed)||0,_maxActiveSerial(d,null),_maxCancelledSerial(d));
@@ -4350,8 +4379,10 @@ function confirmDelParty(pid){
         if(s>0&&s<=blockMax)recordCancelledInv(d,inv,'Party deleted');
       });})();
     closeModal('cf');
-    saveToCloud().then(function(){goTab('parties');renderAll();});toast('🗑 Party moved to Recycle Bin','warn');
-  };
+    if(!await saveToCloud())return;await (function(){goTab('parties');renderAll();})();toast('🗑 Party moved to Recycle Bin','warn');
+  
+}finally{bmEndAction(_bmAction); }
+};
   openModal('cf');
 }
 
@@ -4723,7 +4754,9 @@ function toggleSupUp(){
   const w=document.getElementById('b-supup-month-wrap');if(w)w.style.display=on?'':'none';
   if(on){const m=document.getElementById('b-supup-month');if(m&&!m.value)m.value=(document.getElementById('b-date')?.value||td()).slice(0,7);}
 }
-function saveBill(){
+async function saveBill(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const supplierName=document.getElementById('b-supplier').value.trim();
   if(!supplierName){alert('Select supplier');return;}
@@ -4770,13 +4803,15 @@ function saveBill(){
     const _old=d.bills.find(b=>b.id===editBillId);
     if(_old){const ch=[];_chg(ch,'Bill No.',_old.num,bill.num);_chg(ch,'Date',_old.date,bill.date);_chg(ch,'Total',fmt(_old.grand),fmt(bill.grand));_chg(ch,'Items',(_old.items||[]).length,(bill.items||[]).length);_chg(ch,'Mode',_old.mode,bill.mode);
       if(!confirmEdit('purchase bill',ch))return;}
-    const i=d.bills.findIndex(b=>b.id===editBillId);if(i>=0){bill.id=editBillId;d.bills[i]=bill;}editBillId=null;
+    const i=d.bills.findIndex(b=>b.id===editBillId);if(i>=0){bill.id=editBillId;d.bills[i]=Object.assign({},d.bills[i],bill);}editBillId=null;
   } else {
     d.bills.push(bill);d.bC=(d.bC||1)+1;
     if(bill.mode==='cash'){d.payments.push({id:'PAY'+uid4(),pid:supplier.id,bid:bill.id,amt:grand,date:bill.date,mode:'Cash',dir:'out',ref:'Cash Bill',rem:''}); }
   }
-  saveToCloud();closeModal('bill');_billAttachDraft=null;toast('✅ Purchase bill saved','ok');renderAll();
+  if(!await saveToCloud())return;closeModal('bill');_billAttachDraft=null;toast('✅ Purchase bill saved','ok');renderAll();
   if(curParty===supplier.id)openPartyDetail(supplier.id);  try{bm2Recheck({notify:true});}catch(e){}  try{bmPrepaidNotify();}catch(e){}
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══ EDIT / DELETE BILL ═══
@@ -4814,7 +4849,9 @@ function editBill(bid){
     document.getElementById('b-items-list').appendChild(div);});
   calcBillTotal();openModal('bill');
 }
-function confirmDelBill(bid){
+async function confirmDelBill(bid){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const bill=d.bills.find(b=>b.id===bid);if(!bill){alert('Bill not found.');return;}
   if(!confirm('Move purchase bill '+(bill.num||'')+' to Recycle Bin?\n\nYou can restore it anytime from the Recycle Bin.'))return;
@@ -4822,23 +4859,29 @@ function confirmDelBill(bid){
   if(!d.trash)d.trash=[];
   d.trash.push({type:'bill',deletedAt:new Date().toISOString(),bill:JSON.parse(JSON.stringify(bill)),payments:JSON.parse(JSON.stringify(billPayments))});
   const _pid=bill.pid;
-  d.bills=d.bills.filter(b=>b.id!==bid);
-  d.payments=d.payments.filter(p=>p.bid!==bid);
-  saveToCloud().then(function(){renderAll();if(curParty&&curParty===_pid)openPartyDetail(_pid);});toast('🗑 Bill moved to Recycle Bin','warn');
+  d.bills=bmFilter(d.bills,b=>b.id!==bid);
+  d.payments=bmFilter(d.payments,p=>p.bid!==bid);
+  if(!await saveToCloud())return;await (function(){renderAll();if(curParty&&curParty===_pid)openPartyDetail(_pid);})();toast('🗑 Bill moved to Recycle Bin','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 function _confirmDelBill_OLD(bid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this purchase bill to Recycle Bin? You can restore it anytime.</div>';
-  document.getElementById('cf-ok').onclick=function(){
+  document.getElementById('cf-ok').onclick=async function(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
     const d=D();
     const bill=d.bills.find(b=>b.id===bid);if(!bill)return;
     const billPayments=d.payments.filter(p=>p.bid===bid);
     if(!d.trash)d.trash=[];
     d.trash.push({type:'bill',deletedAt:new Date().toISOString(),bill:JSON.parse(JSON.stringify(bill)),payments:JSON.parse(JSON.stringify(billPayments))});
-    d.bills=d.bills.filter(b=>b.id!==bid);
-    d.payments=d.payments.filter(p=>p.bid!==bid);
+    d.bills=bmFilter(d.bills,b=>b.id!==bid);
+    d.payments=bmFilter(d.payments,p=>p.bid!==bid);
     closeModal('cf');
-    saveToCloud().then(function(){renderAll();});
-  };openModal('cf');
+    if(!await saveToCloud())return;await (function(){renderAll();})();
+  
+}finally{bmEndAction(_bmAction); }
+};openModal('cf');
 }
 // ═══ EDIT / DELETE INVOICE ═══
 function editInvoice(iid){
@@ -4881,7 +4924,9 @@ function editInvoice(iid){
   document.getElementById('inv-mo-title').textContent='Edit Sales Invoice';var _ib=document.getElementById('inv-save-btn');if(_ib)_ib.textContent='Update Invoice';
   syncItemDatalist();syncHsnDatalist();openModal('inv');
 }
-function confirmDelInv(iid){
+async function confirmDelInv(iid){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const inv=d.invoices.find(i=>i.id===iid);if(!inv){alert('Invoice not found.');return;}
   const reuse=canReuseLastInvoice(d,inv);
@@ -4894,25 +4939,31 @@ function confirmDelInv(iid){
   d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
   if(!reuse)recordCancelledInv(d,inv,'Deleted/Cancelled');
   const _pid=inv.pid;
-  d.invoices=d.invoices.filter(i=>i.id!==iid);
-  d.payments=d.payments.filter(p=>p.iid!==iid);
-  saveToCloud().then(function(){renderAll();if(curParty&&curParty===_pid)openPartyDetail(_pid);});
+  d.invoices=bmFilter(d.invoices,i=>i.id!==iid);
+  d.payments=bmFilter(d.payments,p=>p.iid!==iid);
+  if(!await saveToCloud())return;await (function(){renderAll();if(curParty&&curParty===_pid)openPartyDetail(_pid);})();
   toast(reuse?('🗑 Invoice deleted — number '+(inv.num||'')+' freed for reuse'):('🚫 '+(inv.num||'')+' cancelled permanently (see Reports → Cancelled Invoices)'),'warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 function _confirmDelInv_OLD(iid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox">Move this sales invoice to Recycle Bin? You can restore it anytime.</div>';
-  document.getElementById('cf-ok').onclick=function(){
+  document.getElementById('cf-ok').onclick=async function(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
     const d=D();
     const inv=d.invoices.find(i=>i.id===iid);if(!inv)return;
     const invPayments=d.payments.filter(p=>p.iid===iid);
     if(!d.trash)d.trash=[];
     d.trash.push({type:'invoice',deletedAt:new Date().toISOString(),invoice:JSON.parse(JSON.stringify(inv)),payments:JSON.parse(JSON.stringify(invPayments))});
     if(!canReuseLastInvoice(d,inv))recordCancelledInv(d,inv,'Deleted/Cancelled');
-    d.invoices=d.invoices.filter(i=>i.id!==iid);
-    d.payments=d.payments.filter(p=>p.iid!==iid);
+    d.invoices=bmFilter(d.invoices,i=>i.id!==iid);
+    d.payments=bmFilter(d.payments,p=>p.iid!==iid);
     closeModal('cf');
-    saveToCloud().then(function(){renderAll();});
-  };openModal('cf');
+    if(!await saveToCloud())return;await (function(){renderAll();})();
+  
+}finally{bmEndAction(_bmAction); }
+};openModal('cf');
 }
 
 // ═══ INVOICE NUMBERING (GST chronological — R56) ═════════════════════════
@@ -4974,7 +5025,9 @@ function fyLabel(dateStr){
 // One-time renumber of already-created invoices so they run consecutively after the manual
 // books, ordered by date (tie-break: existing serial, then id). Payments link by invoice id,
 // so allocations/ledgers are unaffected. Guarded per firm via invMeta (synced via meta doc).
-function renumberInvoicesSeed(){
+async function renumberInvoicesSeed(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();var biz=BIZ[curBiz];
   var flagKey=(curBiz==='KF')?'renumV2':'renumV1'; // KF seed corrected 653→641, needs one re-run
   if(d.invMeta&&d.invMeta[flagKey]){toast('Already renumbered on this firm','warn');return;}
@@ -4993,8 +5046,10 @@ function renumberInvoicesSeed(){
   if(!d.invMeta)d.invMeta={};
   d.invMeta[flagKey]={done:true,at:new Date().toISOString(),count:list.length,from:first,to:last,seed:seed};
   d.cancelledInvs=[]; // renumber = fresh baseline; old blocked numbers no longer apply
-  saveToCloud().then(function(){renderAll();});
+  if(!await saveToCloud())return;await (function(){renderAll();})();
   toast('✅ '+list.length+' invoice(s) renumbered: '+first+' → '+last,'ok');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══ INVOICE MODAL ═══
@@ -5326,7 +5381,9 @@ function calcInvTotal(){
     }
   }
 }
-function saveInvoice(){
+async function saveInvoice(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const custName=document.getElementById('i-cust').value.trim();
   if(!custName){alert('Enter customer name');return;}
@@ -5424,9 +5481,10 @@ function saveInvoice(){
   };
   if(editInvId){
     const _oldI=d.invoices.find(x=>x.id===editInvId);
+    if(_oldI&&d.payments.some(p=>p.iid===_oldI.id||(p.allocations||[]).some(a=>a.iid===_oldI.id))&&(_oldI.pid!==inv.pid||(_oldI.mode==='cash'&&(Math.abs(_oldI.grand-inv.grand)>0.005||_oldI.mode!==inv.mode)))){alert('This change affects an existing receipt. Reverse or correct the linked payment first, then edit the invoice.');return;}
     if(_oldI){const ch=[];_chg(ch,'Invoice No.',_oldI.num,inv.num);_chg(ch,'Date',_oldI.date,inv.date);_chg(ch,'Total',fmt(_oldI.grand),fmt(inv.grand));_chg(ch,'Items',(_oldI.items||[]).length,(inv.items||[]).length);_chg(ch,'Mode',_oldI.mode,inv.mode);
       if(!confirmEdit('invoice',ch))return;}
-    const i=d.invoices.findIndex(x=>x.id===editInvId);if(i>=0){inv.id=editInvId;d.invoices[i]=inv;}editInvId=null;
+    const i=d.invoices.findIndex(x=>x.id===editInvId);if(i>=0){inv.id=editInvId;d.invoices[i]=Object.assign({},d.invoices[i],inv);}editInvId=null;
   } else {
     d.invoices.push(inv);d.iC=(d.iC||1)+1;
     if(selMode==='cash'){
@@ -5439,8 +5497,10 @@ function saveInvoice(){
       }
     }
   }
-  saveToCloud();closeModal('inv');toast('✅ Invoice saved','ok');printInvoice(inv.id);renderAll();
+  if(!await saveToCloud())return;closeModal('inv');toast('✅ Invoice saved','ok');printInvoice(inv.id);renderAll();
   if(curParty===customer.id)openPartyDetail(customer.id);  try{bm2Recheck({notify:true});}catch(e){}  try{bmPrepaidNotify();}catch(e){}
+
+}finally{bmEndAction(_bmAction); }
 }
 
 
@@ -5450,15 +5510,19 @@ function openCFModal(){
   document.getElementById('cf-value').value=D().cfStock||0;
   openModal('cf-stock');
 }
-function saveCF(){
+async function saveCF(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var val=parseFloat(document.getElementById('cf-value').value)||0;
   var yr=document.getElementById('cf-year').value.trim();
   var notes=document.getElementById('cf-notes').value.trim();
-  D().cfStock=val;
+  var biz=BIZ[curBiz];D().cfStock=val;
   D().cfYear=yr;
   D().cfNotes=notes;
-  saveToCloud();closeModal('cf-stock');renderAll();
+  if(!await saveToCloud())return;closeModal('cf-stock');renderAll();
   alert('Carry forward stock of '+fmt(val)+' saved for '+biz.name+'.');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══ PAYMENT ═══
@@ -5587,7 +5651,7 @@ function allocateLegacyPayments(d){
       excess=Math.round((excess-cut)*100)/100;
     }
     // drop any allocation entries that were trimmed to ~0
-    d.payments.forEach(p=>{if(p.allocations)p.allocations=p.allocations.filter(a=>Math.abs(a.amt)>0.005||(a.iid||a.bid)!==docId);});
+    d.payments.forEach(p=>{if(p.allocations)p.allocations=bmFilter(p.allocations,a=>Math.abs(a.amt)>0.005||(a.iid||a.bid)!==docId);});
   });
   const _docExists={};
   (d.invoices||[]).forEach(i=>_docExists[i.id]=1);
@@ -5728,11 +5792,13 @@ function previewAlloc(){
     return '<b>'+esc(a.num||'')+'</b> '+fmt(a.amt)+(full?' ✓':' (part)');
   }).join(' · ')+(leftover>0.5?' · <span style="color:var(--o)">'+fmt(leftover)+' on account</span>':'');
 }
-function savePayment(){
+async function savePayment(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const amt=parseFloat(document.getElementById('pay-amt').value)||0;
   if(amt<=0){alert('Enter valid amount');return;}
-  const party=d.parties.find(p=>p.id===payTargetId);
+  const party=d.parties.find(p=>p.id===payTargetId);if(!party){alert('Select an existing party before recording a payment.');return;}
   // Direction: when settling a SPECIFIC document, the document type decides (a purchase
   // bill is always an outflow, a sales invoice an inflow) — this is authoritative even for
   // 'Both' parties. Only fall back to party type for open/on-account payments.
@@ -5757,15 +5823,17 @@ function savePayment(){
   if(mode==='Split'){
     const cash=parseFloat(document.getElementById('pay-cash').value)||0;
     const bank=parseFloat(document.getElementById('pay-bank').value)||0;
-    if(Math.abs(amt-cash-bank)>0.5){alert('Cash + Bank must add up to the total amount ('+fmt(amt)+').');return;}
+    if(!Number.isFinite(cash)||!Number.isFinite(bank)||cash<0||bank<0||Math.abs(amt-cash-bank)>0.005){alert('Cash + Bank must add up to the total amount ('+fmt(amt)+').');return;}
     pay.cashPart=cash;pay.bankPart=bank;
   }
   // Invoice-driven outstanding: allocate FIFO so invoices/bills carry their own settlement history
   const _al=allocFIFO(payTargetId,dir,amt,payTargetDoc);
   if(_al.allocations.length)pay.allocations=_al.allocations.map(a=>{const c={amt:a.amt};if(a.iid)c.iid=a.iid;if(a.bid)c.bid=a.bid;return c;});
   d.payments.push(pay);
-  saveToCloud();closeModal('pay');toast('✅ Payment recorded','ok');renderAll();
+  if(!await saveToCloud())return;closeModal('pay');toast('✅ Payment recorded','ok');renderAll();
   if(curParty===payTargetId)openPartyDetail(payTargetId);
+
+}finally{bmEndAction(_bmAction); }
 }
 function openCashSettle(pid){
   openPayModal(pid);
@@ -5782,11 +5850,15 @@ function openCashSettle(pid){
 }
 function delPayment(pid){
   document.getElementById('cf-msg').innerHTML='<div class="ibox red">Delete this payment entry?</div>';
-  document.getElementById('cf-ok').onclick=()=>{
-    const d=D();d.payments=d.payments.filter(p=>p.id!==pid);
-    saveToCloud();closeModal('cf');toast('🗑 Payment deleted','warn');renderAll();
+  document.getElementById('cf-ok').onclick=async ()=>{
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+    const d=D();d.payments=bmFilter(d.payments,p=>p.id!==pid);
+    if(!await saveToCloud())return;closeModal('cf');toast('🗑 Payment deleted','warn');renderAll();
     if(curParty)openPartyDetail(curParty);
-  };
+  
+}finally{bmEndAction(_bmAction); }
+};
   openModal('cf');
 }
 
@@ -6150,7 +6222,7 @@ function openModal(id){
   try{ if(el.parentNode!==document.body) document.body.appendChild(el); }catch(e){}
   el.style.zIndex='2147483600';
   el.style.display='flex';
-  el.classList.add('show');
+  el._bmRevision=bmRevision;el._bmFirm=curBiz;el.classList.add('show');
   var mb=el.querySelector('.mb');
   if(mb){ mb.style.maxHeight='90vh'; }
   // A11y: label icon-only close buttons; focus first field (desktop only — avoids mobile keyboard pop)
@@ -6335,7 +6407,9 @@ function showImpPreview(data){
   btn.disabled=false;
 }
 
-function doImport(){
+async function doImport(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var prev=document.getElementById('imp-preview')||document.getElementById('imp-preview2');
   if(!prev||!prev.dataset.bills)return;
   var bills=JSON.parse(prev.dataset.bills);
@@ -6401,8 +6475,10 @@ function doImport(){
     imported++;
   });
 
-  saveToCloud();closeModal('imp');renderAll();
+  if(!await saveToCloud())return;closeModal('imp');renderAll();
   alert(imported+' bill(s) imported successfully'+(skipped?' ('+skipped+' skipped)':'')+'!');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 
@@ -6740,7 +6816,9 @@ function extractPdfText(arrayBuffer,input){
   });
 }
 
-function doImportFromScan(){
+async function doImportFromScan(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   if(!_importData||!_importData.length)return;
   var d=D();var count=0;
   _importData.forEach(function(data){
@@ -6815,8 +6893,10 @@ function doImportFromScan(){
   if(d.bills)d.bills.forEach(fsafeObj);
   if(d.invoices)d.invoices.forEach(fsafeObj);
   if(d.parties)d.parties.forEach(fsafeObj);
-  saveToCloud();closeModal('scan');clearImport('scan');renderAll();
+  if(!await saveToCloud())return;closeModal('scan');clearImport('scan');renderAll();
   alert(count+' bill(s) imported successfully!');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 
@@ -6904,7 +6984,7 @@ function handlePregFile(e) {
         });
       } else if (Array.isArray(data)) {
         // Format B — flat array (allow both purchase and invoice type)
-        flatInvoices = data.filter(function(x) { return x.partyName || x.billNo || x.grandTotal; });
+        flatInvoices = bmFilter(data,function(x) { return x.partyName || x.billNo || x.grandTotal; });
       } else if (data.type === 'invoice' || data.billNo) {
         // Single invoice object
         flatInvoices = [data];
@@ -6997,7 +7077,9 @@ function handlePregFile(e) {
   reader.readAsText(file);
 }
 
-function doImportPartyReg() {
+async function doImportPartyReg() {
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   if (!_pregData || !_pregData.length) return;
   var d = D();
   var count = 0;
@@ -7127,7 +7209,7 @@ function doImportPartyReg() {
     count++;
   });
 
-  saveToCloud();
+  if(!await saveToCloud())return;
   closeModal('preg');
   clearPregImport();
   renderAll();
@@ -7137,6 +7219,8 @@ function doImportPartyReg() {
   if (billCount) msg += '\n📦 ' + billCount + ' purchase bill(s)';
   if (partyCreated) msg += '\n📋 ' + partyCreated + ' new party(ies) auto-created.';
   alert(msg);
+
+}finally{bmEndAction(_bmAction); }
 }
 
 function clearPregImport() {
@@ -7179,7 +7263,7 @@ function renderTrash(){
               <span style="background:#EFF6FF;color:#1E40AF;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">📦 ${esc(b.num)}</span>
               <span style="font-size:11px;color:#666">${fmtD(b.date)}</span>
             </div>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+            <span style="font-size:10px;color:${urgColor}">Kept until you remove it</span>
           </div>
           <div style="font-size:13px;margin-bottom:4px"><strong>${esc(party?party.name:b.pid)}</strong> · ${fmt(b.grand)}</div>
           <div style="font-size:11px;color:#888;margin-bottom:10px">${b.items.length} item(s) · Deleted ${age===0?'today':age+'d ago'}</div>
@@ -7198,7 +7282,7 @@ function renderTrash(){
               <span style="background:#ECFDF5;color:#065F46;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🧾 ${esc(inv.num)}</span>
               <span style="font-size:11px;color:#666">${fmtD(inv.date)}</span>
             </div>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+            <span style="font-size:10px;color:${urgColor}">Kept until you remove it</span>
           </div>
           <div style="font-size:13px;margin-bottom:4px"><strong>${esc(party?party.name:inv.pid)}</strong> · ${fmt(inv.grand)}</div>
           <div style="font-size:11px;color:#888;margin-bottom:10px">${inv.items.length} item(s) · Deleted ${age===0?'today':age+'d ago'}</div>
@@ -7216,7 +7300,7 @@ function renderTrash(){
               <span style="background:#FFF7ED;color:#9A3412;font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px">🧾 ${esc(e.cat||'Expense')}</span>
               <span style="font-size:11px;color:#666">${fmtD(e.date)}</span>
             </div>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+            <span style="font-size:10px;color:${urgColor}">Kept until you remove it</span>
           </div>
           <div style="font-size:13px;margin-bottom:4px"><strong>${fmt(e.amount)}</strong> · ${esc((e.mode||'cash').toUpperCase())}${e.payee?' · '+esc(e.payee):''}</div>
           <div style="font-size:11px;color:#888;margin-bottom:10px">${e.desc?esc(e.desc)+' · ':''}Deleted ${age===0?'today':age+'d ago'}</div>
@@ -7234,7 +7318,7 @@ function renderTrash(){
               <div style="width:34px;height:34px;border-radius:50%;background:#374151;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px">${esc((p.name||'?')[0].toUpperCase())}</div>
               <div><div style="font-size:14px;font-weight:700">${esc(p.name)}</div><div style="font-size:11px;color:#888">${p.phone||''}</div></div>
             </div>
-            <span style="font-size:10px;color:${urgColor}">⏳ ${daysLeft}d left</span>
+            <span style="font-size:10px;color:${urgColor}">Kept until you remove it</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
             <div style="background:#F5F5F5;border-radius:8px;padding:7px;text-align:center"><div style="font-weight:700">${(t.bills||[]).length}</div><div style="font-size:10px;color:#888">Bills</div></div>
@@ -7259,54 +7343,56 @@ function renderTrash(){
 // If the number WAS reused meanwhile (it had been freed as latest), give the restored
 // invoice the next free number instead — numbers must stay unique.
 function _restoreInvSafely(d,inv){
-  if(Array.isArray(d.cancelledInvs))d.cancelledInvs=d.cancelledInvs.filter(function(c){return c.iid!==inv.id;});
+  if(Array.isArray(d.cancelledInvs))d.cancelledInvs=bmFilter(d.cancelledInvs,function(c){return c.iid!==inv.id;});
   if(inv.num&&d.invoices.some(function(x){return x.num===inv.num;})){
     var old=inv.num;inv.num=genInvNum(d);
     toast('⚠ '+old+' was reused meanwhile — restored invoice renumbered to '+inv.num,'warn');
   }
   d.invoices.push(inv);
 }
-function restoreTrashItem(idx){
-  const d=D();if(!d.trash||!d.trash[idx])return;
-  const t=d.trash[idx];
-  if(t.type==='bill'){
-    d.bills.push(t.bill);
-    (t.payments||[]).forEach(p=>d.payments.push(p));
-    alert('✅ Bill '+t.bill.num+' restored!');
-  } else if(t.type==='invoice'){
-    _restoreInvSafely(d,t.invoice);
-    (t.payments||[]).forEach(p=>d.payments.push(p));
-    alert('✅ Invoice '+t.invoice.num+' restored!');
-  } else if(t.type==='expense'){
-    if(!d.expenses)d.expenses=[];
-    d.expenses.push(t.expense);
-    alert('✅ Expense restored!');
-  } else if(t.type==='party'){
-    d.parties.push(t.party);
-    (t.bills||[]).forEach(b=>d.bills.push(b));
-    (t.invoices||[]).forEach(i=>_restoreInvSafely(d,i));
-    (t.payments||[]).forEach(p=>d.payments.push(p));
-    alert('✅ Party "'+t.party.name+'" and all data restored!');
-  }
-  d.trash.splice(idx,1);
-  saveToCloud().then(function(){renderAll();});toast('♻️ Restored','ok');
+async function restoreTrashItem(idx){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+ const d=D(),t=d.trash?.[idx];if(!t)return;
+ const add={parties:[],bills:[],invoices:[],expenses:[],payments:t.payments||[]};
+ if(t.type==='party'){add.parties=[t.party];add.bills=t.bills||[];add.invoices=t.invoices||[];}
+ else if(t.type==='bill')add.bills=[t.bill];else if(t.type==='invoice')add.invoices=[t.invoice];else if(t.type==='expense')add.expenses=[t.expense];else return;
+ for(const [key,rows]of Object.entries(add))for(const row of rows){
+  if(!row?.id){alert('This recovery entry is incomplete. It has been preserved.');return;}
+  const live=d[key].find(x=>x.id===row.id);
+  if(live&&!bmSame(live,row)){alert('A different version of this record already exists. Nothing was restored or overwritten. Download the recovery copy for review.');return;}
+  if(key==='invoices'&&d.invoices.some(x=>x.id!==row.id&&String(x.num).trim().toUpperCase()===String(row.num).trim().toUpperCase())){alert('This invoice number is already in use. Resolve the numbering conflict before restoring. Nothing was changed.');return;}
+ }
+ for(const [key,rows]of Object.entries(add))rows.forEach(row=>{if(!d[key].some(x=>x.id===row.id))d[key].push(bmClone(row));});
+ d.cancelledInvs=bmFilter(d.cancelledInvs||[],c=>!add.invoices.some(i=>i.id===c.iid));
+ bmSplice(d.trash,idx,1);if(!await saveToCloud())return;renderAll();toast('Restored','ok');
+
+}finally{bmEndAction(_bmAction); }
 }
 
-function permDeleteItem(idx){
+async function permDeleteItem(idx){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();if(!d.trash||!d.trash[idx])return;
   const t=d.trash[idx];
   const label=t.type==='bill'?'bill '+t.bill?.num:t.type==='invoice'?'invoice '+t.invoice?.num:t.type==='expense'?'expense '+(t.expense?.cat||''):'party "'+t.party?.name+'"';
   if(!confirm('Permanently delete '+label+'? This CANNOT be undone.'))return;
-  d.trash.splice(idx,1);
-  saveToCloud().then(function(){renderTrash();});
+  bmSplice(d.trash,idx,1);
+  if(!await saveToCloud())return;await (function(){renderTrash();})();
+
+}finally{bmEndAction(_bmAction); }
 }
 
-function emptyTrash(){
+async function emptyTrash(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   if(!d.trash||!d.trash.length)return;
   if(!confirm('Permanently delete ALL '+d.trash.length+' item(s)? This CANNOT be undone.'))return;
   d.trash=[];
-  saveToCloud().then(function(){renderTrash();});
+  if(!await saveToCloud())return;await (function(){renderTrash();})();
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // ═══════════════════════════════════════
@@ -7432,7 +7518,9 @@ function openNoteModal(pid){
   openModal('note');
 }
 
-function saveNote(){
+async function saveNote(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d = D();
   const partyName = document.getElementById('n-party').value.trim();
   if(!partyName){alert('Select a party');return;}
@@ -7465,20 +7553,26 @@ function saveNote(){
   };
   d.notes.push(note);
   d.nC = (d.nC||1)+1;
-  saveToCloud().then(function(){
+  if(!await saveToCloud())return;await (function(){
     closeModal('note');
     toast('✅ Note saved','ok');
     renderAll();
     // Auto-print
     printNote(note.id);
-  });
+  })();
+
+}finally{bmEndAction(_bmAction); }
 }
 
-function deleteNote(nid){
+async function deleteNote(nid){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   if(!confirm('Delete this note permanently?'))return;
   const d = D();
-  d.notes = (d.notes||[]).filter(n=>n.id!==nid);
-  saveToCloud().then(function(){renderNotes();});toast('🗑 Note deleted','warn');
+  d.notes = bmFilter(d.notes||[],n=>n.id!==nid);
+  if(!await saveToCloud())return;await (function(){renderNotes();})();toast('🗑 Note deleted','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 function renderNotes(){
@@ -7708,12 +7802,12 @@ function renderBank(){
     </div>
     <div style="display:flex;gap:8px;padding:0 16px 12px;flex-wrap:wrap">
       <button class="btn sm pri" onclick="bm2ShowReview()" style="font-size:12px">🧠 Review Matches${BM2.sugs.length?' ('+BM2.sugs.length+')':''}</button>
-      <button class="btn sm" onclick="autoMatchBank();bm2Recheck({notify:true});renderBank();toast('🔄 '+BM2.sugs.length+' suggestion(s) after re-check','ok')" style="background:#EFF6FF;color:#1E40AF">🔄 Re-check Bank Matches</button>
+      <button class="btn sm" onclick="bmRecheckBank()" style="background:#EFF6FF;color:#1E40AF">🔄 Re-check Bank Matches</button>
       <button class="btn sm" onclick="bmPrepaidReview()" style="background:#FFFBEB;color:#92400E">🔔 Prepaid Matches${(BM2.prepaid&&BM2.prepaid.length)?' ('+BM2.prepaid.length+')':''}</button>
       <button class="btn sm" onclick="document.getElementById('bnk-file').click()">📂 Import New</button>
       <button class="btn sm" onclick="repairPaymentDirections()" style="background:#FFF7ED;color:#92400E">🔧 Fix Receipt/Payment Mix-ups</button>
       <button class="btn sm" onclick="bmBankHealth()" style="background:#F0FDF4;color:#166534">🩺 Data Health</button>
-      <button class="btn sm red" onclick="if(confirm('Clear all imported transactions?')){D().bankTxns=[];saveToCloud();renderBank();}">🗑 Clear</button>
+      <button class="btn sm red" onclick="bmClearBank()">🗑 Clear</button>
     </div>
     <div style="padding:0 16px 10px">
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
@@ -8221,7 +8315,7 @@ function bseParseLines(text){
     // still accepted as amounts when no better-formatted candidate exists (whole-rupee).
     (function(){
       var hasFormatted=amts.some(function(a){return /[.,]/.test(a.raw);});
-      if(hasFormatted)amts=amts.filter(function(a){return /[.,]/.test(a.raw)||a.flag||a.neg;});
+      if(hasFormatted)amts=bmFilter(amts,function(a){return /[.,]/.test(a.raw)||a.flag||a.neg;});
     })();
     var textOnly=line;
     if(amts.length)textOnly=line.slice(0,amts[0].idx);
@@ -8532,11 +8626,13 @@ function bseShowReview(){
          '<button class="btn pri" onclick="bseImport(false)">Import Verified ('+ok+')</button>')+
     '</div>'+
   '</div>';
-  document.body.appendChild(ov);
+  ov._bmRevision=bmRevision;ov._bmFirm=curBiz;ov.setAttribute('data-bm-form','true');document.body.appendChild(ov);
 }
 
 /* ── Stage 15+16: import → merge → auto-match ── */
-function bseImport(withWarnings,override){
+async function bseImport(withWarnings,override){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var ov=document.getElementById('bse-review');if(ov)ov.remove();
   var pick=BSE.txns.filter(function(t){return withWarnings?true:bseStatusOf(t)==='ok';});
   var skipped=BSE.txns.length-pick.length;
@@ -8560,7 +8656,7 @@ function bseImport(withWarnings,override){
   });
   var m=mergeBankTxns(norm);
   autoMatchBank();
-  saveToCloud().then(function(){renderAll();});
+  if(!await saveToCloud())return;await (function(){renderAll();})();
   var unk=pick.filter(function(t){return t.type==='UNK';}).length;
   alert('✅ '+m.added+' transaction(s) imported'+
     (override?'\n⚠ '+overrideNote+'\n   (recorded on each imported entry — not marked as verified)':'')+
@@ -8569,6 +8665,8 @@ function bseImport(withWarnings,override){
     '\n✓ Auto-matching completed'+
     (BM2.sugs.length?'\n🧠 '+BM2.sugs.length+' match suggestion(s) ready — press Review Matches in the Bank tab':'')+
     (unk?'\n⚠ '+unk+' entry(ies) need CR/DR classification — see the ❓ Miscellaneous section':''));
+
+}finally{bmEndAction(_bmAction); }
 }
 
 function parseBankPaste(){
@@ -8577,7 +8675,9 @@ function parseBankPaste(){
   parseBankCSV(txt);
 }
 
-function parseBankCSV(csv){
+async function parseBankCSV(csv){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const lines=csv.split('\n').map(l=>l.trim()).filter(l=>l);
   const txns=[];
   // Detect header
@@ -8622,10 +8722,15 @@ function parseBankCSV(csv){
   }
   var _m=mergeBankTxns(txns);
   autoMatchBank();
+  if(!await saveToCloud())return;
   alert('✅ Added '+_m.added+' new transaction(s)'+(_m.dup?' ('+_m.dup+' duplicate(s) skipped)':'')+'.\nTotal bank entries: '+_m.total+'.');
+
+}finally{bmEndAction(_bmAction); }
 }
 
-function flipTxnDir(idx){
+async function flipTxnDir(idx){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();const t=bankTxns[idx];if(!t)return;
   setTimeout(function(){try{bm2Recheck({notify:false});renderBank();}catch(e){}},0);
   // Toggle CR<->DR (also resolves an UNK by picking the opposite of nothing → default to CR first tap)
@@ -8640,12 +8745,16 @@ function flipTxnDir(idx){
     const exp=(d.expenses||[]).find(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);
     if(exp)exp.dir=t.type==='CR'?'in':'out';
   }
-  saveToCloud();renderBank();
+  if(!await saveToCloud())return;renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // Delete a single bank statement entry, reversing any side-effects it created.
-function deleteBankTxn(idx){
-  const d=D();const t=bankTxns[idx];if(!t)return;
+async function deleteBankTxn(idx){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+  const d=D();const t=bankTxns[idx];if(!t)return;if(!bmResolveBankOwner(d,t))return;
   if(!t.id)t.id='BTX'+uid4();
   // BANK ENTRY = SOURCE OF TRUTH: everything this entry created gets reversed with it.
   const summary=bmSettlementSummary(d,t);
@@ -8672,7 +8781,7 @@ function deleteBankTxn(idx){
   // payments, so removing the payment restores every outstanding automatically.
   if(summary){
     const ownedIds=summary.owned.map(p=>p.id);
-    d.payments=(d.payments||[]).filter(p=>ownedIds.indexOf(p.id)<0);
+    d.payments=bmFilter(d.payments||[],p=>ownedIds.indexOf(p.id)<0);
   }
   // A merely-LINKED manual payment (never owned): unlink happens by deleting the txn.
   if(t.assigned==='loan'&&t.assignedLoan){
@@ -8680,8 +8789,8 @@ function deleteBankTxn(idx){
     if(loan&&loan.txns){
       // remove the matching loan txn (same date+amount+note from this bank entry)
       const note='Bank: '+(t.desc||'').substring(0,50);
-      const j=loan.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);
-      if(j>=0)loan.txns.splice(j,1);
+      const j=loan.txns.findIndex(x=>t.createdId?x.id===t.createdId:x.bankTxnId&&x.bankTxnId===t.id);
+      if(j>=0)bmSplice(loan.txns,j,1);
     }
   }
   if(t.assigned==='asset'&&t.assignedAsset){
@@ -8689,8 +8798,8 @@ function deleteBankTxn(idx){
     if(a){
       if(a.txns){
         const note='Bank: '+(t.desc||'').substring(0,50);
-        const j=a.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);
-        if(j>=0)a.txns.splice(j,1);
+        const j=a.txns.findIndex(x=>t.createdId?x.id===t.createdId:x.bankTxnId===t.id);
+        if(j>=0)bmSplice(a.txns,j,1);
       }
       a.value=(parseFloat(a.value)||0)-t.amount;
       if(a.value<0)a.value=0;
@@ -8700,29 +8809,33 @@ function deleteBankTxn(idx){
     }
   }
   if(t.assigned==='expense'){
-    const j=(d.expenses||[]).findIndex(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);
-    if(j>=0)d.expenses.splice(j,1);
+    const j=(d.expenses||[]).findIndex(e=>t.createdId?e.id===t.createdId:e.bankTxnId&&e.bankTxnId===t.id);
+    if(j>=0)bmSplice(d.expenses,j,1);
   }
   if(t.assigned==='reserve'&&t.assignedReserve){
     const r=(d.reserves||[]).find(x=>x.id===t.assignedReserve);
     if(r&&r.txns){
       const note='Bank: '+(t.desc||'').substring(0,50);
-      const j=r.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);
-      if(j>=0)r.txns.splice(j,1);
+      const j=r.txns.findIndex(x=>t.createdId?x.id===t.createdId:x.bankTxnId===t.id);
+      if(j>=0)bmSplice(r.txns,j,1);
     }
   }
 
   // Remove the bank entry itself
-  bankTxns.splice(idx,1);
+  bmSplice(bankTxns,idx,1);
   d.bankTxns=bankTxns;
-  saveToCloud();renderAll();renderBank();toast('🗑 Bank entry deleted','warn');
+  if(!await saveToCloud())return;renderAll();renderBank();toast('🗑 Bank entry deleted','warn');
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // Reverse an assignment/match but KEEP the bank entry — it goes back to the "needs action" list so you can re-assign it.
-function unassignTxn(idx){
+async function unassignTxn(idx){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   bankTxns=d.bankTxns||bankTxns;          // ensure the global points at the CURRENT firm's array before indexing
-  const t=bankTxns[idx];if(!t)return;
+  const t=bankTxns[idx];if(!t)return;if(!bmResolveBankOwner(d,t))return;
   if(!(t.matchId||t.assigned)){renderBank();return;}
   let extra='';
   if(t.assigned==='party'||t.autoCreated)extra='The receipt/payment it created will be removed from the party ledger.';
@@ -8734,18 +8847,18 @@ function unassignTxn(idx){
   if(!confirm('Send this entry back to the unassigned bank list?\n\n'+extra+'\n\nThe bank entry itself stays — only the assignment is reversed, so you can assign it again correctly.'))return;
   // Reverse side-effects (same ownership rule as delete) but keep the entry
   const _owned=bmOwnedPayments(d,t).map(p=>p.id);
-  if(_owned.length)d.payments=(d.payments||[]).filter(p=>_owned.indexOf(p.id)<0);
+  if(_owned.length)d.payments=bmFilter(d.payments||[],p=>_owned.indexOf(p.id)<0);
   if(t.assigned==='loan'&&t.assignedLoan){
     const loan=(d.loans||[]).find(l=>l.id===t.assignedLoan);
     if(loan&&loan.txns){
-      if(t.createdId){loan.txns=loan.txns.filter(x=>x.id!==t.createdId);}
-      else{const note='Bank: '+(t.desc||'').substring(0,50);const j=loan.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)loan.txns.splice(j,1);}
+      if(t.createdId){loan.txns=bmFilter(loan.txns,x=>x.id!==t.createdId);}
+      else{const note='Bank: '+(t.desc||'').substring(0,50);const j=loan.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)bmSplice(loan.txns,j,1);}
     }
   }
   if(t.assigned==='asset'&&t.assignedAsset){
     const a=(d.assets||[]).find(x=>x.id===t.assignedAsset);
     if(a){
-      if(a.txns){const note='Bank: '+(t.desc||'').substring(0,50);const j=a.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)a.txns.splice(j,1);}
+      if(a.txns){const note='Bank: '+(t.desc||'').substring(0,50);const j=a.txns.findIndex(x=>t.createdId?x.id===t.createdId:x.bankTxnId===t.id);if(j>=0)bmSplice(a.txns,j,1);}
       a.value=(parseFloat(a.value)||0)-t.amount;if(a.value<0)a.value=0;
       if(a.grand!=null){a.grand=(parseFloat(a.grand)||0)-t.amount;if(a.grand<0)a.grand=0;}
       if(a.bankPaid!=null){a.bankPaid=(parseFloat(a.bankPaid)||0)-t.amount;if(a.bankPaid<0)a.bankPaid=0;}
@@ -8753,26 +8866,30 @@ function unassignTxn(idx){
     }
   }
   if(t.assigned==='expense'){
-    if(t.createdId){d.expenses=(d.expenses||[]).filter(e=>e.id!==t.createdId);}
-    else{const j=(d.expenses||[]).findIndex(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);if(j>=0)d.expenses.splice(j,1);}
+    if(t.createdId){d.expenses=bmFilter(d.expenses||[],e=>e.id!==t.createdId);}
+    else{const j=(d.expenses||[]).findIndex(e=>e.date===t.date&&Math.abs(e.amount-t.amount)<0.5);if(j>=0)bmSplice(d.expenses,j,1);}
   }
   if(t.assigned==='reserve'&&t.assignedReserve){
     const r=(d.reserves||[]).find(x=>x.id===t.assignedReserve);
     if(r&&r.txns){
-      if(t.createdId){r.txns=r.txns.filter(x=>x.id!==t.createdId);}
-      else{const note='Bank: '+(t.desc||'').substring(0,50);const j=r.txns.findIndex(x=>Math.abs(x.amt-t.amount)<0.01&&x.date===t.date&&x.note===note);if(j>=0)r.txns.splice(j,1);}
+      if(t.createdId){r.txns=bmFilter(r.txns,x=>x.id!==t.createdId);}
+      else{const note='Bank: '+(t.desc||'').substring(0,50);const j=r.txns.findIndex(x=>t.createdId?x.id===t.createdId:x.bankTxnId===t.id);if(j>=0)bmSplice(r.txns,j,1);}
     }
   }
   // Clear all assignment flags → entry returns to the "needs action" list
   t.matchId=null;delete t.matchMeta;delete t.skipMatch;t.assigned=null;t.assignedLoan=null;t.assignedAsset=null;t.assignedReserve=null;t.autoCreated=null;t.createdId=null;
   d.bankTxns=bankTxns;
-  saveToCloud();
+  if(!await saveToCloud())return;
   try{renderAll();}catch(e){}
   try{renderBank();}catch(e){}
   toast('↩ Entry sent back to Miscellaneous — assign it again from there','ok');
+
+}finally{bmEndAction(_bmAction); }
 }
 
-function repairPaymentDirections(){
+async function repairPaymentDirections(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   const d=D();
   const plan=[];const details=[];
   (d.payments||[]).forEach(p=>{
@@ -8799,9 +8916,11 @@ function repairPaymentDirections(){
   const preview=details.slice(0,12).join('\n')+(details.length>12?'\n…and '+(details.length-12)+' more':'');
   if(confirm('Found '+plan.length+' entry(s) with the wrong direction (a receipt counted as a payment-out, or vice-versa).\n\n'+preview+'\n\nFix them now? This corrects the balances.')){
     plan.forEach(x=>{x.pay.dir=x.to;});
-    saveToCloud();renderAll();
+    if(!await saveToCloud())return;renderAll();
     alert('✅ Fixed '+plan.length+' entry(s). Balances are now correct.');
   }
+
+}finally{bmEndAction(_bmAction); }
 }
 
 // Match a bank transaction to a party using account no / IFSC / UPI / name signals.
@@ -8881,7 +9000,7 @@ function bm2LearnedScore(d,party,feat){
   var best=null;
   rels.forEach(function(r){
     var aToks=bm2Tokens(r.a);
-    if(!aToks.length)aToks=bm2Norm(r.a).split(' ').filter(Boolean);
+    if(!aToks.length)aToks=bmFilter(bm2Norm(r.a).split(' '),Boolean);
     if(!aToks.length)return;
     var hitCount=aToks.filter(function(tok){return feat.toks.some(function(n){return bm2TokEq(n,tok);});}).length;
     var full=hitCount===aToks.length;
@@ -9175,7 +9294,9 @@ function bmAdvanceForDoc(d,docId,isInv){
 }
 // Non-destructive apply of advance to one doc. Adds an allocation entry from spare money;
 // existing allocations untouched. Validates: cannot exceed available advance or doc balance.
-function bmAdvanceApply(payId,docId,isInv,silent){
+async function bmAdvanceApply(payId,docId,isInv,silent){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();
   var p=(d.payments||[]).find(function(x){return x.id===payId;});
   if(!p){if(!silent)toast('Payment not found','warn');return;}
@@ -9199,16 +9320,20 @@ function bmAdvanceApply(payId,docId,isInv,silent){
   p.reallocLog.push({at:new Date().toISOString(),by:'user-confirmed',reason:'advance applied to later bill',
     bankTxnId:p.bankTxnId||null,payId:p.id,to:{id:docId,num:doc.num,amt:apply}});
   if(!silent){
-    saveToCloud();renderAll();
+    if(!await saveToCloud())return;renderAll();
     toast('\u2705 Applied '+fmt(apply)+' advance to '+esc(doc.num)+((adv-apply)>0.5?' \u00b7 '+fmt(adv-apply)+' advance remaining':' \u00b7 fully applied'),'ok');
     var ov=document.getElementById('bm-prepaid');if(ov)bmPrepaidReview();
   }
   return apply;
+
+}finally{bmEndAction(_bmAction); }
 }
 function bmPrepaidNotify(){
   try{var d=D();var all=bmPrepaidScanAll(d);if(all.length){toast('\uD83D\uDD14 '+all.length+' possible prepaid payment match'+(all.length>1?'es':'')+' \u2014 open Prepaid Matches in the Bank tab','ok');}BM2.prepaid=all;}catch(e){}
 }
-function bmPrepaidReallocate(payId,docId,isInv,silent){
+async function bmPrepaidReallocate(payId,docId,isInv,silent){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();
   var p=(d.payments||[]).find(function(x){return x.id===payId;});
   if(!p){if(!silent)toast('Payment not found','warn');return;}
@@ -9251,12 +9376,14 @@ function bmPrepaidReallocate(payId,docId,isInv,silent){
     to:{id:docId,num:doc.num,amt:toTarget},
     leftover:leftover});
   if(!silent){
-    saveToCloud();renderAll();
+    if(!await saveToCloud())return;renderAll();
     var leftMsg=leftover>0.5?(' · '+fmt(leftover)+' remains as advance'):'';
     toast('✅ Reallocated '+fmt(p.amt)+' to '+esc(doc.num)+leftMsg+' (same payment, no duplication)','ok');
     var ov=document.getElementById('bm-prepaid');if(ov)bmPrepaidReview();
   }
   return al;
+
+}finally{bmEndAction(_bmAction); }
 }
 function bmPrepaidReview(){
   var d=D();var all=bmPrepaidScanAll(d);BM2.prepaid=all;
@@ -9308,12 +9435,16 @@ function bmPrepaidReview(){
     '<div style="overflow:auto;flex:1;padding:12px 16px">'+(all.length?all.map(card).join(''):'<div style="text-align:center;color:#6B7280;padding:30px">No prepaid matches right now.</div>')+'</div>'+
     '<div style="padding:10px 18px;border-top:1px solid #E5E7EB;text-align:right"><button class="btn" onclick="document.getElementById(\'bm-prepaid\').remove()">Close</button></div>'+
   '</div>';
-  document.body.appendChild(ov);
+  ov._bmRevision=bmRevision;ov._bmFirm=curBiz;ov.setAttribute('data-bm-form','true');document.body.appendChild(ov);
 }
-function bmPrepaidKeep(payId,docId){
+async function bmPrepaidKeep(payId,docId){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();var p=(d.payments||[]).find(function(x){return x.id===payId;});
-  if(p){if(!Array.isArray(p.prepaidDismissed))p.prepaidDismissed=[];if(p.prepaidDismissed.indexOf(docId)<0)p.prepaidDismissed.push(docId);saveToCloud();}
+  if(p){if(!Array.isArray(p.prepaidDismissed))p.prepaidDismissed=[];if(p.prepaidDismissed.indexOf(docId)<0)p.prepaidDismissed.push(docId);if(!await saveToCloud())return;}
   bmPrepaidReview();
+
+}finally{bmEndAction(_bmAction); }
 }
 function bmPrepaidSkip(i){bmPrepaidReview();}
 
@@ -9423,29 +9554,41 @@ function bmBankHealth(){
     '</div>'+
     '<div style="padding:10px 18px;border-top:1px solid #E5E7EB;text-align:right"><button class="btn" onclick="document.getElementById(\'bm-health\').remove()">Close</button></div>'+
   '</div>';
-  document.body.appendChild(ov);
+  ov._bmRevision=bmRevision;ov._bmFirm=curBiz;ov.setAttribute('data-bm-form','true');document.body.appendChild(ov);
 }
-function bmHealthDeletePay(pid2){
+async function bmHealthDeletePay(pid2){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();var p=(d.payments||[]).find(function(x){return x.id===pid2;});if(!p)return;
   var party=(d.parties||[]).find(function(q){return q.id===p.pid;});
   if(!confirm('Delete this payment permanently?\n\n'+(party?party.name:'?')+' · '+fmtD(p.date||'')+' · '+fmt(p.amt||0)+'\n\nIts allocations reverse and outstanding balances are restored.'))return;
-  d.payments=d.payments.filter(function(x){return x.id!==pid2;});
+  d.payments=bmFilter(d.payments,function(x){return x.id!==pid2;});
   (d.bankTxns||[]).forEach(function(t){if(t.matchId===pid2){t.matchId=null;delete t.matchMeta;if(t.assigned==='party')t.assigned=null;}});
-  saveToCloud();renderAll();bmBankHealth();
+  if(!await saveToCloud())return;renderAll();bmBankHealth();
   toast('Payment removed — balances restored','ok');
+
+}finally{bmEndAction(_bmAction); }
 }
-function bmConfirmSweep(i){
+async function bmConfirmSweep(i){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var t=bankTxns[i];if(!t)return;
   t.clsUser='sweep';t.cls='SWEEP';delete t.skipMatch;
-  bmClassifySweeps(D());saveToCloud();bm2Recheck({notify:false});renderBank();
+  bmClassifySweeps(D());if(!await saveToCloud())return;bm2Recheck({notify:false});renderBank();
   var ov=document.getElementById('bm2-review');if(ov)bm2ShowReview();
   toast('⇄ Marked as Sweep / Internal Transfer','ok');
+
+}finally{bmEndAction(_bmAction); }
 }
-function bmNotSweep(i){
+async function bmNotSweep(i){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var t=bankTxns[i];if(!t)return;
   t.clsUser='no';t.cls=null;delete t.transferGroupId;
-  saveToCloud();bm2Recheck({notify:true});renderBank();
+  if(!await saveToCloud())return;bm2Recheck({notify:true});renderBank();
   var ov=document.getElementById('bm2-review');if(ov)bm2ShowReview();
+
+}finally{bmEndAction(_bmAction); }
 }
 /* build/refresh all suggestions */
 function bm2Recheck(opts){
@@ -9453,7 +9596,7 @@ function bm2Recheck(opts){
   var d=D();if(!Array.isArray(d.bankTxns))d.bankTxns=[];
   bankTxns=d.bankTxns;
   bmClassifySweeps(d);                                // classification FIRST (sweeps never enter party matching)
-  bm2LearnBoot(d);                                    // one-time: seed learning from clearly user-handled history
+  /* Learning occurs on explicit confirmation only. */                                    // one-time: seed learning from clearly user-handled history
   var sugs=[];var fresh=0;
   bankTxns.forEach(function(t,ti){
     if(t.matchId||t.assigned)return;
@@ -9557,7 +9700,7 @@ function bm2ShowReview(){
       '<div style="flex:1"></div>'+
       '<button class="btn" onclick="document.getElementById(\'bm2-review\').remove();renderBank()">Close</button>'+
     '</div></div>';
-  document.body.appendChild(ov);
+  ov._bmRevision=bmRevision;ov._bmFirm=curBiz;ov.setAttribute('data-bm-form','true');document.body.appendChild(ov);
 }
 /* learn a narration alias for a confirmed party (also called from manual assignment) */
 function bm2LearnAlias(d,t,pid,manual){
@@ -9573,7 +9716,7 @@ function bm2LearnAlias(d,t,pid,manual){
         return w&&!BM2_STOP[w]&&!/^\d+$/.test(w)&&!/^XX\d+$/.test(w)&&!/\d{6,}/.test(w);
       }).slice(0,4);
     }
-    else pick=feat.toks.filter(function(w){return sig.some(function(x){return bm2TokEq(w,x);});});
+    else pick=bmFilter(feat.toks,function(w){return sig.some(function(x){return bm2TokEq(w,x);});});
     var alias=pick.join(' ').trim();
     if(alias.length<4)return;
     var c=bm2Compact(alias);
@@ -9618,27 +9761,39 @@ function bm2Reject(d,t,wrongPid){
   }catch(e){}
 }
 function bm2RelConf(r){var cc=r.cc||1,rc=r.rc||0;return Math.min(98,Math.round(100*cc/(cc+rc+0.3)));}
-function bm2Forget(idx){
+async function bm2Forget(idx){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();if(!d.bankAliases||!d.bankAliases[idx])return;
   var r=d.bankAliases[idx];
   if(!confirm('Forget learned relationship "'+r.a+'"?\n\nHistorical bank transactions and payments are NOT affected - only future suggestions.'))return;
-  d.bankAliases.splice(idx,1);
-  saveToCloud();bm2Recheck({notify:false});bm2ShowReview();
+  bmSplice(d.bankAliases,idx,1);
+  if(!await saveToCloud())return;bm2Recheck({notify:false});bm2ShowReview();
+
+}finally{bmEndAction(_bmAction); }
 }
-function bm2EditRel(idx){
+async function bm2EditRel(idx){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();if(!d.bankAliases||!d.bankAliases[idx])return;
   var r=d.bankAliases[idx];
   var v=prompt('Edit the learned bank pattern for this party:',r.a);
   if(v==null)return;v=v.trim();
   if(v.length<4){toast('Pattern too short','warn');return;}
-  r.a=v;saveToCloud();bm2Recheck({notify:false});bm2ShowReview();
+  r.a=v;if(!await saveToCloud())return;bm2Recheck({notify:false});bm2ShowReview();
+
+}finally{bmEndAction(_bmAction); }
 }
-function bm2Never(si){
+async function bm2Never(si){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var s2=BM2.sugs[si];if(!s2)return;
   var t=bankTxns[s2.ti];if(!t)return;
   if(!confirm('Never suggest a party match for this bank entry again?'))return;
   t.noMatch=true;delete t.skipMatch;
-  saveToCloud();bm2ShowReview();renderBank();
+  if(!await saveToCloud())return;bm2ShowReview();renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
 /* one-time bootstrap: seed learning from clearly user-handled history only —
    manual party assignments and previously user-confirmed bank matches.
@@ -9657,13 +9812,15 @@ function bm2LearnBoot(d){
   d.invMeta.bmLearnBootV1={done:true,at:new Date().toISOString()};
 }
 /* confirm suggestion si using candidate ci */
-function bm2Confirm(si,ci,silent){
+async function bm2Confirm(si,ci,silent){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var d=D();var s=BM2.sugs[si];if(!s)return;
   var t=bankTxns[s.ti];if(!t||t.matchId||t.assigned)return;             // never duplicate
   if(!t.id)t.id='BTX'+uid4();
   // idempotency: if a bank-owned payment for this entry already exists, LINK it — never create a second
   var already=(d.payments||[]).find(function(p){return p.source==='bank'&&p.bankTxnId===t.id;});
-  if(already){t.matchId=already.id;t.autoCreated=true;if(!silent){saveToCloud();bm2ShowReview();renderBank();}return;}
+  if(already){t.matchId=already.id;t.autoCreated=true;if(!silent){if(!await saveToCloud())return;bm2ShowReview();renderBank();}return;}
   var b=s.cands[ci||0]||s.best;
   if((ci||0)>0&&s.cands[0]&&s.cands[0].pid!==b.pid)bm2Reject(d,t,s.cands[0].pid); // user corrected the top suggestion
   // re-derive allocation for the chosen candidate at confirm time (state may have moved)
@@ -9704,18 +9861,24 @@ function bm2Confirm(si,ci,silent){
     bm2LearnAlias(d,t,b.pid,false);
   }
   if(!silent){
-    saveToCloud();
+    if(!await saveToCloud())return;
     toast('✅ '+esc(b.pname)+' — '+fmt(t.amount)+' posted'+(al.allocations.length?' against '+al.allocations.length+' document(s)':' as advance'),'ok');
     bm2ShowReview();renderBank();
   }
+
+}finally{bmEndAction(_bmAction); }
 }
-function bm2ConfirmAllHigh(){
+async function bm2ConfirmAllHigh(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var list=BM2.sugs.map(function(s,i){return {s:s,i:i};}).filter(function(x){return x.s.level==='high'&&!x.s.ambiguous;});
   var n=0;
   list.forEach(function(x){var t=bankTxns[x.s.ti];if(t&&!t.matchId&&!t.assigned){bm2Confirm(x.i,0,true);n++;}});
-  saveToCloud();
+  if(!await saveToCloud())return;
   toast('✅ '+n+' high-confidence match'+(n===1?'':'es')+' posted','ok');
   bm2ShowReview();renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
 function bm2Change(si){
   var s=BM2.sugs[si];if(!s)return;
@@ -9724,11 +9887,15 @@ function bm2Change(si){
   goTab('bank');
   openAssign(s.ti);
 }
-function bm2Skip(si){
+async function bm2Skip(si){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
   var s=BM2.sugs[si];if(!s)return;
   var t=bankTxns[s.ti];if(t)t.skipMatch=true;
-  saveToCloud();
+  if(!await saveToCloud())return;
   bm2ShowReview();
+
+}finally{bmEndAction(_bmAction); }
 }
 
 function autoMatchBank(){
@@ -9744,6 +9911,7 @@ function autoMatchBank(){
     const wantDir=t.type==='CR'?'in':'out';
     const candidates=d.payments.filter(p=>{
       if(p.amt!==t.amount)return false;
+      const party=d.parties.find(x=>x.id===p.pid),name=bm2Compact(party&&party.name||'');if(name.length<6||!bm2Compact(t.desc||'').includes(name))return false;
       if(p.dir&&p.dir!==wantDir)return false;
       const diff=Math.abs(new Date(p.date)-new Date(t.date))/(864e5);
       return diff<=5;
@@ -9755,8 +9923,8 @@ function autoMatchBank(){
     }
   });
   bm2Recheck({notify:false});
-  saveToCloud();
-  renderBank();
+
+
 }
 
 /* ── MISC ASSIGNMENT: party or expense ── */
@@ -9839,16 +10007,20 @@ function openAssign(idx){
   document.getElementById('cf-ok').style.display='none';
   openModal('cf');
 }
-function assignToLoan(){
-  const d=D();const t=bankTxns[_assignIdx];
+async function assignToLoan(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+  const d=D();const t=bankTxns[_assignIdx];if(!t||t.assigned||t.matchId){alert('This entry is already assigned or no longer available. Reopen it first.');return;}if(!t.id)t.id='BTX'+uid4();
   const lid=document.getElementById('asg-loan').value;
   if(!lid){alert('Select a loan / OD account');return;}
   const loan=d.loans.find(x=>x.id===lid);if(!loan){alert('Loan not found');return;}
   if(!loan.txns)loan.txns=[];
   const dir=t.type==='CR'?'in':'out';
-  loan.txns.push({id:'LT'+uid4(),date:t.date,dir:dir,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)});
+  const loanTxn={id:'LT'+uid4(),bankTxnId:t.id,date:t.date,dir:dir,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)};loan.txns.push(loanTxn);t.createdId=loanTxn.id;
   t.assigned='loan';t.assignedLoan=lid;
-  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+  if(!await saveToCloud())return;closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
 // Apply (or, with a negative amt, reverse) a bank payment toward an asset's cost
 function _assetApplyPayment(a,amt){
@@ -9857,8 +10029,10 @@ function _assetApplyPayment(a,amt){
   if(a.bankPaid!=null){a.bankPaid=(parseFloat(a.bankPaid)||0)+amt;if(a.bankPaid<0)a.bankPaid=0;}
   if(a.unpaid!=null){a.unpaid=(parseFloat(a.unpaid)||0)-amt;if(a.unpaid<0)a.unpaid=0;}
 }
-function assignToAsset(){
-  const d=D();const t=bankTxns[_assignIdx];ensureAssets();
+async function assignToAsset(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+  const d=D();const t=bankTxns[_assignIdx];if(!t||t.assigned||t.matchId){alert('This entry is already assigned or no longer available. Reopen it first.');return;}if(!t.id)t.id='BTX'+uid4();ensureAssets();
   const existingId=document.getElementById('asg-asset').value;
   const newName=(document.getElementById('asg-asset-name').value||'').trim();
   const cat=document.getElementById('asg-asset-cat').value;
@@ -9874,17 +10048,21 @@ function assignToAsset(){
   if(a){
     if(a.bankPaid==null)a.bankPaid=0; // start tracking bank-paid on legacy assets so the top-up shows
     _assetApplyPayment(a,t.amount);
-    if(!a.txns)a.txns=[];a.txns.push({date:t.date,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)});
-    t.assigned='asset';t.assignedAsset=a.id;
+    if(!a.txns)a.txns=[];a.txns.push({id:uniqId('AT'),bankTxnId:t.id,date:t.date,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)});
+    t.assigned='asset';t.assignedAsset=a.id;t.createdId=a.txns[a.txns.length-1].id;
   }else{
-    const na={id:uniqId('AS'),name:newName,cat:cat,value:t.amount,grand:t.amount,cashPaid:0,bankPaid:t.amount,unpaid:0,payMode:'bank',date:t.date,note:'From bank: '+(t.desc||'').substring(0,40),txns:[{date:t.date,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)}]};
+    const na={id:uniqId('AS'),name:newName,cat:cat,value:t.amount,grand:t.amount,cashPaid:0,bankPaid:t.amount,unpaid:0,payMode:'bank',date:t.date,note:'From bank: '+(t.desc||'').substring(0,40),txns:[{id:uniqId('AT'),bankTxnId:t.id,date:t.date,amt:t.amount,note:'Bank: '+(t.desc||'').substring(0,50)}]};
     d.assets.push(na);d.assetC=(d.assetC||1)+1;
-    t.assigned='asset';t.assignedAsset=na.id;
+    t.assigned='asset';t.assignedAsset=na.id;t.createdId=na.txns[0].id;
   }
-  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+  if(!await saveToCloud())return;closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
-function assignToReserve(){
-  const d=D();const t=bankTxns[_assignIdx];ensureReserves();
+async function assignToReserve(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+  const d=D();const t=bankTxns[_assignIdx];if(!t||t.assigned||t.matchId){alert('This entry is already assigned or no longer available. Reopen it first.');return;}if(!t.id)t.id='BTX'+uid4();ensureReserves();
   const existingId=document.getElementById('asg-reserve').value;
   const newName=(document.getElementById('asg-reserve-name').value||'').trim();
   const cat=document.getElementById('asg-reserve-cat').value;
@@ -9894,20 +10072,24 @@ function assignToReserve(){
   if(existingId){
     const r=d.reserves.find(x=>x.id===existingId);if(!r){alert('Reserve not found');return;}
     if(!r.txns)r.txns=[];
-    r.txns.push({id:'RT'+uid4(),date:t.date,dir:dir,amt:t.amount,note:note});
-    t.assigned='reserve';t.assignedReserve=r.id;
+    r.txns.push({id:'RT'+uid4(),bankTxnId:t.id,date:t.date,dir:dir,amt:t.amount,note:note});
+    t.assigned='reserve';t.assignedReserve=r.id;t.createdId=r.txns[r.txns.length-1].id;
   }else{
     if(!newName){alert('Enter a reserve name (or pick an existing reserve)');return;}
     // New reserve: an inflow seeds the opening amount; an outflow starts at 0 then records the draw
     const r={id:uniqId('RS'),name:newName,cat:cat,amount:0,date:t.date,note:'From bank: '+(t.desc||'').substring(0,40),
-      txns:[{id:'RT'+uid4(),date:t.date,dir:dir,amt:t.amount,note:note}]};
+      txns:[{id:'RT'+uid4(),bankTxnId:t.id,date:t.date,dir:dir,amt:t.amount,note:note}]};
     d.reserves.push(r);d.reserveC=(d.reserveC||1)+1;
-    t.assigned='reserve';t.assignedReserve=r.id;
+    t.assigned='reserve';t.assignedReserve=r.id;t.createdId=r.txns[r.txns.length-1].id;
   }
-  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+  if(!await saveToCloud())return;closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
-function assignToParty(){
-  const d=D();const t=bankTxns[_assignIdx];
+async function assignToParty(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+  const d=D();const t=bankTxns[_assignIdx];if(!t||t.assigned||t.matchId){alert('This entry is already assigned or no longer available. Reopen it first.');return;}if(!t.id)t.id='BTX'+uid4();
   let pid=document.getElementById('asg-party').value;
   if(pid==='__new__'){
     const name=(document.getElementById('asg-newparty-name').value||'').trim();
@@ -9921,7 +10103,7 @@ function assignToParty(){
   if(!pid){alert('Select a party');return;}
   if(!t.id)t.id='BTX'+uid4();
   const _already=(d.payments||[]).find(p=>p.source==='bank'&&p.bankTxnId===t.id);
-  if(_already){t.matchId=_already.id;t.assigned='party';t.createdId=_already.id;saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();return;}
+  if(_already){t.matchId=_already.id;t.assigned='party';t.createdId=_already.id;if(!await saveToCloud())return;closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();return;}
   const pay={id:'PAY'+uid4(),pid:pid,amt:t.amount,date:t.date,mode:'NEFT',dir:t.type==='CR'?'in':'out',ref:'Bank stmt',rem:t.desc.substring(0,60),source:'bank',bankTxnId:t.id};
   d.payments.push(pay);
   (function(){try{
@@ -9930,16 +10112,22 @@ function assignToParty(){
     if(pend&&bankTxns[pend.ti]===t&&pend.pid&&pend.pid!==pid)bm2Reject(D(),t,pend.pid);
     window._bm2Pending=null;
   }catch(e){}})();t.matchId=pay.id;t.assigned='party';t.createdId=pay.id;
-  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+  if(!await saveToCloud())return;closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
-function assignToExpense(){
-  const d=D();const t=bankTxns[_assignIdx];
+async function assignToExpense(){
+const _bmAction=bmBeginAction();if(!_bmAction)return;try{
+
+  const d=D();const t=bankTxns[_assignIdx];if(!t||t.assigned||t.matchId){alert('This entry is already assigned or no longer available. Reopen it first.');return;}if(!t.id)t.id='BTX'+uid4();
   const cat=document.getElementById('asg-cat').value;
   const note=document.getElementById('asg-note').value.trim();
-  const _exp={id:'EXP'+uid4(),date:t.date,desc:note||t.desc.substring(0,80),amount:t.amount,cat:cat,dir:t.type==='CR'?'in':'out',mode:'bank'};
+  const _exp={id:'EXP'+uid4(),bankTxnId:t.id,date:t.date,desc:note||t.desc.substring(0,80),amount:t.amount,cat:cat,dir:t.type==='CR'?'in':'out',mode:'bank'};
   d.expenses.push(_exp);
   t.assigned='expense';t.createdId=_exp.id;
-  saveToCloud();closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+  if(!await saveToCloud())return;closeModal('cf');document.getElementById('cf-ok').style.display='';renderBank();
+
+}finally{bmEndAction(_bmAction); }
 }
 
 function openBankMatch(idx){
@@ -10259,7 +10447,7 @@ function renderOutstanding(pg){
   // Item 15: search filter
   const q=osSearch.trim().toLowerCase();
   function matches(x){return !q||x.party.toLowerCase().includes(q)||String(x.num||'').toLowerCase().includes(q);}
-  recv=recv.filter(matches);pay=pay.filter(matches);
+  recv=bmFilter(recv,matches);pay=bmFilter(pay,matches);
   // Item 15: sort
   function srt(list){const dir=osDir==='asc'?1:-1;return list.slice().sort((a,b)=>{let r;
     if(osSort==='party')r=a.party.localeCompare(b.party);
