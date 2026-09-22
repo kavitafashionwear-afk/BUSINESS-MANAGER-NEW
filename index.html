@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta name="application-version" content="2026-09-22.1-browser-fix"><script>function bmOfflineNotice(){
+<head><meta name="application-version" content="2026-09-22.2-storage-fix"><script>function bmOfflineNotice(){
  if(!document.body){document.addEventListener('DOMContentLoaded',bmOfflineNotice,{once:true});return;}
  let box=document.getElementById('bm-offline-notice');
  if(!box){box=document.createElement('div');box.id='bm-offline-notice';box.setAttribute('role','alert');box.style.cssText='position:fixed;bottom:18px;right:18px;z-index:2147483647;max-width:350px;padding:18px;background:#fff;border:1px solid #f59e0b;border-radius:14px;box-shadow:0 12px 40px #0003;color:#0f172a;font:14px/1.5 system-ui';box.innerHTML='<strong>You are offline</strong><p>Editing is paused until all cloud records load. Daily file backups can still use your last confirmed copy.</p><button type="button" onclick="document.getElementById(\'bm-offline-notice\').hidden=true" style="padding:8px 16px;cursor:pointer">OK</button>';document.body.appendChild(box);}
@@ -13,7 +13,7 @@ if(navigator.onLine===false)bmOfflineNotice();
 window.bmRuntimeErrors=[];
 function bmReportRuntimeError(message,file,line,column,stack){
  const safeFile=String(file||'').split('?')[0].split('#')[0];
- const report='Business Manager 2026-09-22.1\n'+String(message||'Unknown error')+(safeFile?'\nFile: '+safeFile:'')+(line?'\nLine: '+line+':'+(column||0):'')+(stack?'\n'+String(stack).slice(0,4000):'');
+ const report='Business Manager 2026-09-22.2\n'+String(message||'Unknown error')+(safeFile?'\nFile: '+safeFile:'')+(line?'\nLine: '+line+':'+(column||0):'')+(stack?'\n'+String(stack).slice(0,4000):'');
  bmRuntimeErrors.push(report);if(bmRuntimeErrors.length>5)bmRuntimeErrors.shift();
  const show=()=>{let box=document.getElementById('bm-runtime-error');if(!box){box=document.createElement('div');box.id='bm-runtime-error';box.setAttribute('role','alert');box.style.cssText='position:fixed;bottom:12px;left:12px;right:12px;z-index:2147483647;padding:16px;background:#fff;border:2px solid #b91c1c;border-radius:12px;box-shadow:0 12px 40px #0003;color:#7f1d1d;font:14px/1.4 system-ui';box.innerHTML='<strong>An app error occurred</strong><p>Please copy these details if you report this error.</p><pre id="bm-runtime-details" style="white-space:pre-wrap;overflow:auto;max-height:30vh;font-size:12px"></pre><button type="button" onclick="bmCopyRuntimeError()" style="padding:8px 14px">Copy error details</button> <button type="button" onclick="document.getElementById(\'bm-runtime-error\').hidden=true" style="padding:8px 14px">Dismiss</button>';document.body.appendChild(box);}document.getElementById('bm-runtime-details').textContent=report;box.hidden=false;};
  if(document.body)show();else document.addEventListener('DOMContentLoaded',show,{once:true});
@@ -1125,7 +1125,7 @@ const bmApp=firebase.initializeApp({
 },"business-manager-online-safe-v1");
 const auth=firebase.auth(bmApp),db=firebase.firestore(bmApp);
 /* Read cache only. Ledger writes use online transactions and are never queued. */
-try{ db.enablePersistence({synchronizeTabs:true}).catch(function(err){console.warn('Offline persistence not enabled:',err&&err.code);}); }catch(e){console.warn('Persistence setup skipped',e);}
+try{ db.enablePersistence({synchronizeTabs:false}).catch(function(err){console.warn('Offline persistence not enabled:',err&&err.code);}); }catch(e){console.warn('Persistence setup skipped',e);}
 let isOnline=(typeof navigator!=='undefined')?navigator.onLine:true;
 let loadedOnce=false; // true after a successful cloud read; guards against blank overwrites
 // On reconnect, fetch confirmed cloud state. This build does not queue ledger writes,
@@ -1336,7 +1336,7 @@ function updateSyncUI(){bmGate();}
 function bmCanEdit(){if(_saving||!bmComplete()||!bmHydrated){bmGate();alert(_saving?'Please wait for the current save.':'Editing is paused until all cloud records are confirmed.');return false;}var stale=Array.from(document.querySelectorAll('.ov.show,[data-bm-form]')).some(el=>el._bmRevision!=null&&(el._bmRevision!==bmRevision||el._bmFirm!==curBiz));if(stale){alert('Records or the selected firm changed. Close this form and reopen it before saving.');return false;}return true;}
 function bmApply(){FIRMS.forEach(f=>{S[f]={};ENTITIES.forEach(e=>S[f][e]=Object.values(bmClone(bmBase[f+'_'+e]||{})));META_FIELDS.forEach(k=>{if(bmMeta[f]?.[k]!==undefined)S[f][k]=bmClone(bmMeta[f][k]);});ensureFirm(f);S[f].bankTxns.forEach((t,i)=>{if(!t.id)t.id='LEGACYBANK-'+i+'-'+bmHash(bmCanon(t));});bmViewMeta[f]={};META_FIELDS.forEach(k=>bmViewMeta[f][k]=bmClone(S[f][k]));allocateLegacyPayments(S[f]);healBankExpenseMode(S[f]);ENTITIES.forEach(e=>bmViewBase[f+'_'+e]=_indexById(S[f][e]));});bankTxns=D().bankTxns;}
 function bmSchedule(){clearTimeout(bmTimer);bmTimer=setTimeout(()=>{if(bmComplete()&&!_saving){bmApply();bmHydrated=true;bmSnapshot={_app:'business-manager',ownerUid:uid,confirmedAt:new Date().toISOString(),firms:bmRawFirms()};bmDailySnapshot(bmSnapshot);if(typeof bmFolderQueueCapture==="function")bmFolderQueueCapture();bmGate();renderAll();}},40);}
-function bmIsFatal(e){return /INTERNAL ASSERTION FAILED|Unexpected state|AsyncQueue is already failed/i.test(String(e?.message||e||''));}
+function bmIsFatal(e){var detail=String(e?.message||e||'')+' '+String(e?.stack||'');return /INTERNAL ASSERTION FAILED|Unexpected state|AsyncQueue is already failed/i.test(detail)||(/firestore/i.test(detail)&&/QuotaExceeded|exceeded.{0,30}quota|quota.{0,30}exceeded/i.test(detail));}
 function bmReadError(key,e){bmStates[key]={ok:false,error:e.code||e.message};bmHydrated=false;bmRevision++;bmFatal=bmFatal||bmIsFatal(e);bmError=bmFatal?'Restart the app and check your records before retrying.':key+': '+(e.code||e.message||'read failed');bmGate();}
 function bmAccept(f,e,snap){var key=f+'_'+e,m=snap.metadata||{};if(m.fromCache!==false||m.hasPendingWrites!==false){bmStates[key]={ok:false};bmGate();return;}
  try{var next=e==='meta'?(snap.exists?snap.data():null):_indexById(snap.docs.map(d=>{var r=d.data();if(String(r.id)!==d.id)throw Error('Record ID mismatch: '+key+'/'+d.id);return r;})),old=e==='meta'?bmMeta[f]:bmBase[key];
