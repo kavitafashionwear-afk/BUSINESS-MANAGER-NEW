@@ -1,6 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta name="application-version" content="2026-09-21.1"><script>function bmOfflineNotice(){alert("You are offline. Editing is paused until all cloud records can be loaded. No offline changes will be uploaded.");}window.addEventListener("offline",bmOfflineNotice);if(navigator.onLine===false)bmOfflineNotice();</script>
+<head><meta name="application-version" content="2026-09-22.1-browser-fix"><script>function bmOfflineNotice(){
+ if(!document.body){document.addEventListener('DOMContentLoaded',bmOfflineNotice,{once:true});return;}
+ let box=document.getElementById('bm-offline-notice');
+ if(!box){box=document.createElement('div');box.id='bm-offline-notice';box.setAttribute('role','alert');box.style.cssText='position:fixed;bottom:18px;right:18px;z-index:2147483647;max-width:350px;padding:18px;background:#fff;border:1px solid #f59e0b;border-radius:14px;box-shadow:0 12px 40px #0003;color:#0f172a;font:14px/1.5 system-ui';box.innerHTML='<strong>You are offline</strong><p>Editing is paused until all cloud records load. Daily file backups can still use your last confirmed copy.</p><button type="button" onclick="document.getElementById(\'bm-offline-notice\').hidden=true" style="padding:8px 16px;cursor:pointer">OK</button>';document.body.appendChild(box);}
+ box.hidden=false;
+}
+window.addEventListener('offline',bmOfflineNotice);
+window.addEventListener('online',()=>{const box=document.getElementById('bm-offline-notice');if(box)box.hidden=true;});
+if(navigator.onLine===false)bmOfflineNotice();
+// Keep errors readable, including startup failures before Firebase has loaded.
+window.bmRuntimeErrors=[];
+function bmReportRuntimeError(message,file,line,column,stack){
+ const safeFile=String(file||'').split('?')[0].split('#')[0];
+ const report='Business Manager 2026-09-22.1\n'+String(message||'Unknown error')+(safeFile?'\nFile: '+safeFile:'')+(line?'\nLine: '+line+':'+(column||0):'')+(stack?'\n'+String(stack).slice(0,4000):'');
+ bmRuntimeErrors.push(report);if(bmRuntimeErrors.length>5)bmRuntimeErrors.shift();
+ const show=()=>{let box=document.getElementById('bm-runtime-error');if(!box){box=document.createElement('div');box.id='bm-runtime-error';box.setAttribute('role','alert');box.style.cssText='position:fixed;bottom:12px;left:12px;right:12px;z-index:2147483647;padding:16px;background:#fff;border:2px solid #b91c1c;border-radius:12px;box-shadow:0 12px 40px #0003;color:#7f1d1d;font:14px/1.4 system-ui';box.innerHTML='<strong>An app error occurred</strong><p>Please copy these details if you report this error.</p><pre id="bm-runtime-details" style="white-space:pre-wrap;overflow:auto;max-height:30vh;font-size:12px"></pre><button type="button" onclick="bmCopyRuntimeError()" style="padding:8px 14px">Copy error details</button> <button type="button" onclick="document.getElementById(\'bm-runtime-error\').hidden=true" style="padding:8px 14px">Dismiss</button>';document.body.appendChild(box);}document.getElementById('bm-runtime-details').textContent=report;box.hidden=false;};
+ if(document.body)show();else document.addEventListener('DOMContentLoaded',show,{once:true});
+}
+async function bmCopyRuntimeError(){const text=bmRuntimeErrors.join('\n\n');try{await navigator.clipboard.writeText(text);}catch(e){const el=document.getElementById('bm-runtime-details');if(el&&window.getSelection){const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);}}}
+window.addEventListener('error',e=>{
+ if(e.target&&e.target!==window){if(e.target.tagName==='SCRIPT'&&String(e.target.src).includes('gstatic.com/firebasejs/'))bmReportRuntimeError('The database library could not load. Reconnect and reload the page.',e.target.src,0,0,'');return;}
+ bmReportRuntimeError(e.error?.message||e.message,e.filename,e.lineno,e.colno,e.error?.stack);
+},true);
+window.addEventListener('unhandledrejection',e=>bmReportRuntimeError(e.reason?.message||String(e.reason),'',0,0,e.reason?.stack));
+</script>
 <meta charset="UTF-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -998,7 +1022,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
         <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">By Cash (₹)</label><input id="exp-cash" type="number" placeholder="0" min="0" step="0.01" oninput="calcExpSplit()"></div>
         <div class="fl" style="margin-bottom:6px"><label style="font-size:11px">By Bank / UPI (₹)</label><input id="exp-bank" type="number" placeholder="0" min="0" step="0.01" oninput="calcExpSplit()"></div>
       </div>
-      <div id="exp-split-calc" style="font-size:11px;color:var(--sub)"></div>
+      <div id="exp-split-calc" style="font-size:11px;color:var(--sub)"></div></div>
     <div class="fl"><label>Description / Notes</label><input id="exp-desc" placeholder="e.g. June shop rent, Blue Dart courier #4471"></div>
     <div class="fl"><label>Paid To (optional)</label><input id="exp-payee" placeholder="e.g. Landlord, electricity board, staff name"></div>
     <div class="fl"><label>📎 Attachment (bill PDF or image — optional)</label>
@@ -1088,10 +1112,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
   <div id="print-body" style="max-width:800px;margin:0 auto;padding:24px 16px 80px;overflow-x:auto"></div>
 </div>
 <style>@media print{#print-toolbar{display:none!important}body>*:not(#print-overlay){display:none!important}#print-overlay{position:static!important;overflow:visible!important}}</style>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
-<style>#bm-gate{position:fixed;inset:0;z-index:2147483647;background:#0f172a55;backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:24px}.bm-loadcard{max-width:400px;background:white;border-radius:22px;padding:30px;text-align:center;box-shadow:0 20px 70px #0002}.bm-spin{width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;margin:0 auto;animation:bm-spin 1s linear infinite}@keyframes bm-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.bm-spin{animation:none}}</style><div id="bm-gate" role="dialog" aria-modal="true" aria-labelledby="bm-title"><div class="bm-loadcard"><div class="bm-spin" aria-hidden="true"></div><h2 id="bm-title">Loading your records…</h2><p id="bm-detail" role="status"></p><div id="bm-help"><button class="btn pri" id="bm-retry" onclick="bmRetry()">Try again</button><button class="btn" onclick="bmExport()">Download complete JSON</button><button class="btn" onclick="bmOldBackup()">Old local backup</button></div></div></div>
+<script crossorigin="anonymous" src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script crossorigin="anonymous" src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script crossorigin="anonymous" src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+<style>#bm-gate{position:fixed;inset:0;z-index:2147483647;background:#0f172a55;backdrop-filter:blur(5px);display:none;align-items:center;justify-content:center;padding:24px}.bm-loadcard{max-width:400px;background:white;border-radius:22px;padding:30px;text-align:center;box-shadow:0 20px 70px #0002}.bm-spin{width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;margin:0 auto;animation:bm-spin 1s linear infinite}@keyframes bm-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.bm-spin{animation:none}}</style><div id="bm-gate" role="dialog" aria-modal="true" aria-labelledby="bm-title"><div class="bm-loadcard"><div class="bm-spin" aria-hidden="true"></div><h2 id="bm-title">Loading your records…</h2><p id="bm-detail" role="status"></p><div id="bm-help"><button class="btn pri" id="bm-retry" onclick="bmRetry()">Try again</button><button class="btn" onclick="bmExport()">Download complete JSON</button><button class="btn" onclick="bmOldBackup()">Old local backup</button><button class="btn" onclick="bmFolderOpen()">Daily file saves</button></div></div></div>
 <script>
 // ═══ FIREBASE ═══
 const bmApp=firebase.initializeApp({
@@ -1224,7 +1248,7 @@ function showApp(user){
 }
 
 function showLogin(){
-  appIsReady=false;ready=false;uid=null;loadedOnce=false;bmEpoch++;bmRevision++;bmSnapshot=null;bmHydrated=false;S={};bmHistoryRows=[];bmBackupRows=[];document.querySelectorAll("[data-bm-form]").forEach(e=>e.remove());bmGate();
+  appIsReady=false;ready=false;uid=null;loadedOnce=false;bmEpoch++;bmRevision++;bmSnapshot=null;bmHydrated=false;S={};if(document.getElementById("bm-file-panel"))bmFolderClose();bmHistoryRows=[];bmBackupRows=[];document.querySelectorAll("[data-bm-form]").forEach(e=>e.remove());bmGate();
   if(typeof unsubscribe!=='undefined'&&unsubscribe){unsubscribe();unsubscribe=null;}
   document.getElementById('pg-load').style.display='none';
   document.getElementById('pg-login').style.display='flex';
@@ -1311,7 +1335,7 @@ function bmGate(){loadedOnce=bmComplete()&&bmHydrated;var visible=!!(uid&&(!load
 function updateSyncUI(){bmGate();}
 function bmCanEdit(){if(_saving||!bmComplete()||!bmHydrated){bmGate();alert(_saving?'Please wait for the current save.':'Editing is paused until all cloud records are confirmed.');return false;}var stale=Array.from(document.querySelectorAll('.ov.show,[data-bm-form]')).some(el=>el._bmRevision!=null&&(el._bmRevision!==bmRevision||el._bmFirm!==curBiz));if(stale){alert('Records or the selected firm changed. Close this form and reopen it before saving.');return false;}return true;}
 function bmApply(){FIRMS.forEach(f=>{S[f]={};ENTITIES.forEach(e=>S[f][e]=Object.values(bmClone(bmBase[f+'_'+e]||{})));META_FIELDS.forEach(k=>{if(bmMeta[f]?.[k]!==undefined)S[f][k]=bmClone(bmMeta[f][k]);});ensureFirm(f);S[f].bankTxns.forEach((t,i)=>{if(!t.id)t.id='LEGACYBANK-'+i+'-'+bmHash(bmCanon(t));});bmViewMeta[f]={};META_FIELDS.forEach(k=>bmViewMeta[f][k]=bmClone(S[f][k]));allocateLegacyPayments(S[f]);healBankExpenseMode(S[f]);ENTITIES.forEach(e=>bmViewBase[f+'_'+e]=_indexById(S[f][e]));});bankTxns=D().bankTxns;}
-function bmSchedule(){clearTimeout(bmTimer);bmTimer=setTimeout(()=>{if(bmComplete()&&!_saving){bmApply();bmHydrated=true;bmSnapshot={_app:'business-manager',ownerUid:uid,confirmedAt:new Date().toISOString(),firms:bmRawFirms()};bmDailySnapshot(bmSnapshot);bmGate();renderAll();}},40);}
+function bmSchedule(){clearTimeout(bmTimer);bmTimer=setTimeout(()=>{if(bmComplete()&&!_saving){bmApply();bmHydrated=true;bmSnapshot={_app:'business-manager',ownerUid:uid,confirmedAt:new Date().toISOString(),firms:bmRawFirms()};bmDailySnapshot(bmSnapshot);if(typeof bmFolderQueueCapture==="function")bmFolderQueueCapture();bmGate();renderAll();}},40);}
 function bmIsFatal(e){return /INTERNAL ASSERTION FAILED|Unexpected state|AsyncQueue is already failed/i.test(String(e?.message||e||''));}
 function bmReadError(key,e){bmStates[key]={ok:false,error:e.code||e.message};bmHydrated=false;bmRevision++;bmFatal=bmFatal||bmIsFatal(e);bmError=bmFatal?'Restart the app and check your records before retrying.':key+': '+(e.code||e.message||'read failed');bmGate();}
 function bmAccept(f,e,snap){var key=f+'_'+e,m=snap.metadata||{};if(m.fromCache!==false||m.hasPendingWrites!==false){bmStates[key]={ok:false};bmGate();return;}
@@ -1352,7 +1376,7 @@ window.addEventListener('beforeunload',e=>{if(_saving){e.preventDefault();e.retu
 var bmActionDepth=0,bmSuccess=0;
 function bmBeginAction(){if(!bmCanEdit())return null;bmActionDepth++;return {success:bmSuccess,editPartyId,editBillId,editInvId,editExpId,editAssetId,editReserveId,editLoanId,expAttach:_expAttach};}
 function bmEndAction(token){bmActionDepth=Math.max(0,bmActionDepth-1);if(!bmActionDepth&&!_saving&&token.success===bmSuccess){bmIntent={};bmApply();editPartyId=token.editPartyId;editBillId=token.editBillId;editInvId=token.editInvId;editExpId=token.editExpId;editAssetId=token.editAssetId;editReserveId=token.editReserveId;editLoanId=token.editLoanId;_expAttach=token.expAttach;}}
-async function bmBackupPanel(){closeDrawer();document.getElementById('cf-msg').innerHTML='<h3>Backup &amp; recovery</h3><p>Download complete confirmed records. Recovery files are never uploaded automatically.</p><button class="btn pri" onclick="bmExport()">Download complete JSON</button> <button class="btn" onclick="bmOldBackup()">Old local backup</button> <button class="btn" onclick="bmHistory()">Previous versions</button> <button class="btn" onclick="bmBrowserCopies()">Daily browser copies</button><div id="bm-recovery-list"></div>';document.getElementById('cf-ok').style.display='none';openModal('cf');}
+async function bmBackupPanel(){closeDrawer();document.getElementById('cf-msg').innerHTML='<h3>Backup &amp; recovery</h3><button class="btn pri" onclick="bmFolderOpen()">Daily JSON file saves</button><p>Download complete confirmed records. Recovery files are never uploaded automatically.</p><button class="btn pri" onclick="bmExport()">Download complete JSON</button> <button class="btn" onclick="bmOldBackup()">Old local backup</button> <button class="btn" onclick="bmHistory()">Previous versions</button> <button class="btn" onclick="bmBrowserCopies()">Daily browser copies</button><div id="bm-recovery-list"></div>';document.getElementById('cf-ok').style.display='none';openModal('cf');}
 async function bmHistory(){if(!bmComplete())return;var owner=uid,firm=curBiz;try{var snap=await _col(firm+'_meta').orderBy('createdAt','desc').limit(100).get({source:'server'});if(uid!==owner||curBiz!==firm)return;window.bmHistoryRows=snap.docs.map(d=>d.data()).filter(r=>r.kind==='history');document.getElementById('bm-recovery-list').innerHTML=bmHistoryRows.map((r,i)=>'<p>'+esc(r.createdAt)+' · '+esc(r.collection+'/'+r.recordId)+' <button class="btn sm" onclick="bmDownload(bmHistoryRows['+i+'],\'business-record-history.json\')">Download</button></p>').join('')||'No previous versions yet.';}catch(e){alert('Recovery history could not load: '+(e.code||e.message));}}
 async function bmBrowserCopies(){if(!window.indexedDB){alert('Browser backup storage is unavailable.');return;}var owner=uid;try{var handle=await new Promise((resolve,reject)=>{var r=indexedDB.open('business-manager-confirmed-backups',1);r.onupgradeneeded=()=>r.result.createObjectStore('snapshots');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});var rows=await new Promise((resolve,reject)=>{var r=handle.transaction('snapshots','readonly').objectStore('snapshots').getAll();r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});handle.close();if(owner!==uid)return;window.bmBackupRows=rows.filter(r=>r.ownerUid===uid).sort((a,b)=>b.confirmedAt.localeCompare(a.confirmedAt));document.getElementById('bm-recovery-list').innerHTML=bmBackupRows.map((r,i)=>'<p>'+esc(r.confirmedAt)+' <button class="btn sm" onclick="bmDownload(bmBackupRows['+i+'],\'business-daily-backup.json\')">Download</button></p>').join('')||'No daily browser copies yet.';}catch(e){alert('Could not read browser copies: '+e.message);}}
 
@@ -6236,15 +6260,6 @@ function openModal(id){
 }
 function closeModal(id){const el=document.getElementById('mo-'+id);if(el){el.style.display='none';el.classList.remove('show');}if(id==='cf'){const ok=document.getElementById('cf-ok');if(ok)ok.style.display='';}}
 // Surface any uncaught error visibly (so a failing Print/Delete shows the real reason instead of doing nothing)
-window.addEventListener('error',function(ev){
-  try{
-    var m=(ev&&ev.error&&ev.error.message)||ev.message||'Unknown error';
-    var t=document.getElementById('__errtoast');
-    if(!t){t=document.createElement('div');t.id='__errtoast';t.style.cssText='position:fixed;left:12px;right:12px;bottom:12px;z-index:99999;background:#7F1D1D;color:#fff;padding:12px 14px;border-radius:10px;font-size:13px;line-height:1.4;box-shadow:0 4px 20px rgba(0,0,0,.35);font-family:system-ui,sans-serif';t.onclick=function(){t.remove();};document.body.appendChild(t);}
-    t.textContent='⚠️ '+m+' — tap to dismiss';
-    clearTimeout(t.__to);t.__to=setTimeout(function(){if(t&&t.remove)t.remove();},9000);
-  }catch(_){}
-});
 function closePrint(){document.getElementById('print-overlay').style.display='none';document.body.style.overflow='';_printEmails=[];_printEmailSubject='';_printEmailBody='';}
 // Show the built print content reliably. Force the overlay to the very top of the page
 // (re-parent to <body> + maximum z-index) so it can never render behind the app.
@@ -12064,5 +12079,162 @@ function generateAccountantPackage(){
   </div>
 </div>
 </div>
+<style>
+#bm-file-panel{display:none;position:fixed;inset:0;z-index:2147483647;background:#0f172a88;align-items:center;justify-content:center;padding:16px}#bm-file-panel .bm-folder-card{background:#fff;border-radius:18px;padding:24px;width:min(640px,100%);max-height:90vh;overflow:auto;box-shadow:0 20px 70px #0003}#bm-file-panel p{font-size:13px;line-height:1.5;color:#475569}#bm-file-panel button{margin:4px 0}#bm-file-panel input{padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:16px}.bm-folder-row{padding:12px;border:1px solid #dbe2ea;border-radius:10px;margin:10px 0;overflow-wrap:anywhere}.bm-folder-row p{margin:5px 0}
+</style>
+<div id="bm-file-panel" role="dialog" aria-modal="true" aria-labelledby="bm-folder-heading"><div class="bm-folder-card">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:16px"><h2 id="bm-folder-heading" style="margin:0">Daily JSON file saves</h2><button class="btn" onclick="bmFolderClose()" aria-label="Close backup settings">✕</button></div>
+<p>Choose one or more PC folders or pendrive folders. Every JSON includes both firms’ current records and settings. Older files are kept.</p>
+<label for="bm-folder-time">Daily time (India / IST)</label><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input id="bm-folder-time" type="time" value="21:00" required><button class="btn pri" onclick="bmFolderSaveTime()">Save time</button></div>
+<p id="bm-folder-active">Daily saves paused</p>
+<button class="btn pri" onclick="bmFolderChoose()">＋ Add destination</button> <button class="btn" onclick="bmFolderPulse(Date.now(),true)">Save now</button>
+<div id="bm-folder-destinations"></div>
+<button class="btn" onclick="bmFolderEnable(true)">Resume daily saves</button> <button class="btn" onclick="bmFolderEnable(false)">Pause daily saves</button>
+<p id="bm-folder-status" role="status" aria-live="polite"></p>
+<div style="background:#f1f5f9;border-radius:10px;padding:12px"><p style="margin:0"><strong>Keep this app open and Windows awake.</strong> An offline save uses the last complete confirmed copy, with its original data timestamp. A missing drive is retried while the app is open. After sleep or reopening, the latest missed schedule is caught up; past daily states cannot be recreated. Chrome or Edge may ask you to reconnect a folder after restarting the browser. These settings belong to this browser and signed-in account.</p></div>
+</div></div>
+
+<script>/* One-way JSON exports only: no database reads, ledger mutations or restores. */
+const BM_FOLDER_ZONE='Asia/Kolkata';
+let bmFolderBusy=false,bmFolderCaptureTimer=null,bmFolderMessage='',bmFolderNotice='',bmFolderRetryAt=0;
+function bmFolderTime(c){return /^([01]\d|2[0-3]):[0-5]\d$/.test(c?.time||'')?c.time:'21:00';}
+function bmFolderClock(now=Date.now(),time='21:00'){
+ const d=new Date(now+330*60000),date=d.toISOString().slice(0,10),minutes=d.getUTCHours()*60+d.getUTCMinutes(),parts=time.split(':').map(Number);
+ return {date,due:minutes>=parts[0]*60+parts[1]?date:new Date(+d-86400000).toISOString().slice(0,10)};
+}
+function bmFolderDB(){return new Promise((resolve,reject)=>{
+ if(!window.indexedDB){reject(Error('Browser backup storage is unavailable.'));return;}
+ const r=indexedDB.open('business-manager-folder-backups-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('records');r.onerror=()=>reject(r.error||Error('Cannot open backup storage.'));r.onsuccess=()=>resolve(r.result);
+});}
+async function bmFolderStore(key,value){
+ const writing=arguments.length>1,database=await bmFolderDB();
+ return new Promise((resolve,reject)=>{const tx=database.transaction('records',writing?'readwrite':'readonly'),st=tx.objectStore('records');let result;const r=writing?st.put(value,key):st.get(key);r.onsuccess=()=>result=r.result;tx.oncomplete=()=>{database.close();resolve(result);};tx.onabort=tx.onerror=()=>{database.close();reject(tx.error||Error('Backup storage did not confirm the operation.'));};});
+}
+function bmFolderConfig(raw){return {...(raw||{}),time:bmFolderTime(raw),destinations:Array.isArray(raw?.destinations)?raw.destinations:[]};}
+function bmFolderStatus(message){bmFolderMessage=message;const e=document.getElementById('bm-folder-status');if(e)e.textContent=message;}
+function bmFolderFail(e){bmFolderStatus('Backup not confirmed: '+(e.message||String(e)));}
+async function bmFolderLock(owner,fn,skip=false){
+ if(!navigator.locks?.request)throw Error('Automatic folder saves need Windows Chrome or Edge with browser lock support. Manual JSON download is still available.');
+ return navigator.locks.request('business-manager-folder-backup:'+owner,skip?{ifAvailable:true}:{},async lock=>{if(lock&&uid===owner)return fn();});
+}
+async function bmFolderChange(owner,fn){return bmFolderLock(owner,async()=>{const c=bmFolderConfig(await bmFolderStore('config:'+owner));if(uid!==owner)return;await fn(c);if(uid!==owner)return;await bmFolderStore('config:'+owner,c);});}
+function bmFolderValid(body,owner){
+ return !!(body&&body._app==='business-manager'&&body.ownerUid===owner&&Number.isFinite(Date.parse(body.confirmedAt))&&FIRMS.every(f=>body.firms?.[f]&&ENTITIES.every(e=>Array.isArray(body.firms[f][e]))));
+}
+async function bmFolderCapture(owner){
+ // bmSnapshot is created only by the complete server-confirmed load path, never from S or forms.
+ if(uid!==owner||_saving||!bmFolderValid(bmSnapshot,owner))return;
+ const body=bmClone(bmSnapshot);bmValidate(body,'Backup');const signature=bmCanon(body.firms),prior=await bmFolderStore('source:'+owner);
+ if(uid!==owner)return;
+ if(prior&&Date.parse(prior.body?.confirmedAt)>Date.parse(body.confirmedAt))return;
+ if(prior?.signature===signature&&Date.parse(body.confirmedAt)-Date.parse(prior.body.confirmedAt)<60000)return;
+ await bmFolderStore('source:'+owner,{body,signature});
+}
+function bmFolderQueueCapture(){clearTimeout(bmFolderCaptureTimer);bmFolderCaptureTimer=setTimeout(()=>bmFolderPulse(),1000);}
+function bmFolderStamp(at){return new Date(at).toLocaleString('en-IN',{timeZone:BM_FOLDER_ZONE});}
+async function bmFolderRender(){
+ const owner=uid,el=document.getElementById('bm-folder-destinations');if(!owner||!el)return;
+ try{const c=bmFolderConfig(await bmFolderStore('config:'+owner));if(uid!==owner)return;
+ const active=document.getElementById('bm-folder-active');if(active)active.textContent=c.enabled?'Daily saves enabled · '+c.time+' IST':'Daily saves paused';
+ el.innerHTML=c.destinations.length?c.destinations.map((d,i)=>'<div class="bm-folder-row"><strong>'+esc((i+1)+'. '+(d.folder?.name||'Folder'))+'</strong><p style="color:'+(d.error?'#b91c1c':'#475569')+'">'+esc(d.error||(d.lastSaved?'Verified: '+bmFolderStamp(d.lastSaved):'Waiting for first backup'))+'</p>'+(d.lastSource?'<p>Data confirmed: '+esc(bmFolderStamp(d.lastSource))+'</p>':'')+'<button class="btn sm" onclick="bmFolderChoose('+esc(JSON.stringify(d.id))+')">Reconnect / change</button> <button class="btn sm" onclick="bmFolderRemove('+esc(JSON.stringify(d.id))+')">Remove</button></div>').join(''):'<p>No backup destinations selected.</p>';
+ }catch(e){bmFolderFail(e);}
+}
+async function bmFolderOpen(){
+ if(!uid){alert('Sign in first to configure backups for your account.');return;}
+ closeDrawer();closeModal('cf');document.getElementById('bm-file-panel').style.display='flex';
+ document.getElementById('bm-folder-status').textContent=bmFolderMessage;
+ const owner=uid;try{const c=bmFolderConfig(await bmFolderStore('config:'+owner));if(uid!==owner)return;document.getElementById('bm-folder-time').value=c.time;await bmFolderRender();}catch(e){bmFolderFail(e);}
+}
+function bmFolderClose(){document.getElementById('bm-file-panel').style.display='none';}
+async function bmFolderChoose(replaceId){
+ const owner=uid;if(!owner)return;
+ if(!window.showDirectoryPicker||window.isSecureContext===false){alert('Open the hosted app in Windows Chrome or Edge to choose a backup folder.');return;}
+ try{
+  // The picker must run directly from the user's click, before any asynchronous storage work.
+  const folder=await window.showDirectoryPicker({id:'business-manager-json',mode:'readwrite'});if(uid!==owner)return;
+  await bmFolderChange(owner,async c=>{
+   let duplicate=null;for(const d of c.destinations){if(d.folder===folder||await d.folder.isSameEntry(folder))duplicate=d;}
+   if(duplicate&&duplicate.id!==replaceId){duplicate.folder=folder;duplicate.error='';c.enabled=true;return;}
+   const old=c.destinations.find(d=>d.id===replaceId),same=old&&(old.folder===folder||await old.folder.isSameEntry(folder));
+   const dest={...(same?old:{}),id:old?.id||uniqId('DEST'),folder,startDate:same?old.startDate:bmFolderClock().date,error:''};
+   if(old)c.destinations[c.destinations.indexOf(old)]=dest;else c.destinations.push(dest);c.enabled=true;
+  });
+  bmFolderRetryAt=0;bmFolderStatus('Destination ready: '+folder.name+'. Use Save now to check it.');await bmFolderRender();await bmFolderPulse();
+ }catch(e){if(e.name!=='AbortError')bmFolderFail(e);}
+}
+async function bmFolderSaveTime(){
+ const time=document.getElementById('bm-folder-time').value,owner=uid;if(!owner)return;
+ if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)){alert('Choose a valid daily backup time.');return;}
+ try{await bmFolderChange(owner,c=>c.time=time);bmFolderRetryAt=0;bmFolderStatus('Daily time saved: '+time+' IST. Each destination gets one scheduled backup per day.');await bmFolderRender();await bmFolderPulse();}catch(e){bmFolderFail(e);}
+}
+async function bmFolderEnable(enabled){if(!uid)return;try{await bmFolderChange(uid,c=>c.enabled=enabled);bmFolderStatus(enabled?'Daily saves enabled.':'Daily saves paused. Existing backup files are kept.');bmFolderRetryAt=0;await bmFolderRender();if(enabled)await bmFolderPulse();}catch(e){bmFolderFail(e);}}
+async function bmFolderRemove(id){
+ if(!uid||!confirm('Remove this destination? Files already saved there will be kept.'))return;
+ try{await bmFolderChange(uid,c=>{c.destinations=c.destinations.filter(d=>d.id!==id);if(!c.destinations.length)c.enabled=false;});bmFolderStatus('Destination removed. Saved files were kept.');await bmFolderRender();}catch(e){bmFolderFail(e);}
+}
+async function bmFolderWrite(dest,body,owner,due,time,now,manual){
+ if(!bmFolderValid(body,owner))throw Error('No complete confirmed copy is available. Open the app online once to prepare it.');
+ bmValidate(body,'Backup');
+ if(await dest.folder.queryPermission({mode:'readwrite'})!=='granted')throw Error('Permission needed. Click Reconnect / change and select this folder again.');
+ if(uid!==owner)throw Error('Account changed. Backup cancelled.');
+ const savedAt=new Date(now).toISOString(),payload={...body,_export:{formatVersion:1,scope:'Both firms: all current ledger collections and settings; historical cloud versions are separate',scheduledFor:manual?null:due+'T'+time+':00+05:30',savedAt,sourceConfirmedAt:body.confirmedAt,offline:!isOnline||navigator.onLine===false,timezone:BM_FOLDER_ZONE,missedDatesNotReconstructed:true}},text=JSON.stringify(payload,null,2);
+ // Never open an existing backup for writing, even if a name collision occurs.
+ let name,handle,stream,created=false;
+ try{
+  for(let attempt=0;attempt<5;attempt++){
+   name='BusinessManager_'+(manual?'manual':due)+'_'+savedAt.replace(/[:.]/g,'-')+'_'+uniqId('B')+'.json';
+   try{await dest.folder.getFileHandle(name);}catch(e){if(e.name==='NotFoundError'){created=true;handle=await dest.folder.getFileHandle(name,{create:true});break;}throw e;}
+  }
+  if(!handle)throw Error('Could not choose a unique backup filename.');
+  if(uid!==owner)throw Error('Account changed. Backup cancelled.');
+  stream=await handle.createWritable();await stream.write(text);await stream.close();stream=null;
+  if(await (await handle.getFile()).text()!==text)throw Error('The saved file could not be verified.');
+  return name;
+ }catch(e){
+  if(stream)try{await stream.abort();}catch(ignore){}
+  // Clean up only this newly created, unverified file. Existing backups are never removed.
+  if(created&&handle)try{await dest.folder.removeEntry(name);}catch(ignore){}
+  throw e;
+ }
+}
+async function bmFolderWork(owner,now,manual=false){
+ const c=bmFolderConfig(await bmFolderStore('config:'+owner));if(uid!==owner||(!manual&&!c.enabled))return;
+ if(!c.destinations.length){if(manual)throw Error('Add at least one backup destination.');return;}
+ await bmFolderCapture(owner);if(uid!==owner)return;
+ const due=bmFolderClock(now,c.time).due,pending=c.destinations.filter(d=>manual||(due>=d.startDate&&(!d.lastDue||due>d.lastDue)));
+ if(!pending.length){await bmFolderRender();return;}
+ const source=await bmFolderStore('source:'+owner);if(!bmFolderValid(source?.body,owner))throw Error('No complete confirmed copy exists on this device yet. Open the app online and let all records load.');
+ let good=0,bad=0;
+ for(const d of pending){
+  if(uid!==owner)return;
+  try{const name=await bmFolderWrite(d,source.body,owner,due,c.time,now,manual);d.lastFile=name;d.lastSaved=new Date(now).toISOString();d.lastSource=source.body.confirmedAt;if(due>=d.startDate)d.lastDue=due;d.error='';good++;}
+  catch(e){d.error=(e.message||String(e))+' Reconnect the drive or check folder access; the app will retry.';bad++;}
+  // Completion is recorded only after close AND readback; destinations retry independently.
+  await bmFolderStore('config:'+owner,c);
+ }
+ bmFolderStatus(good+' destination(s) saved and verified'+(bad?' · '+bad+' need attention. Retrying in one minute while the app is open.':'.')+' Data confirmed: '+bmFolderStamp(source.body.confirmedAt)+'.');
+ await bmFolderRender();
+ if(bad){const msg=pending.filter(d=>d.error).map(d=>(d.folder?.name||'Folder')+': '+d.error).join('\n');if(msg!==bmFolderNotice){bmFolderNotice=msg;bmFolderNotify('Some backups are still pending. '+msg);}}else{bmFolderNotice='';const notice=document.getElementById('bm-folder-notice');if(notice)notice.hidden=true;}
+}
+async function bmFolderPulse(now=Date.now(),manual=false){
+ if(bmFolderBusy){if(manual)bmFolderStatus('A backup is already running. Please wait.');return false;}
+ if(!uid||(!manual&&Date.now()<bmFolderRetryAt)||!window.indexedDB)return false;
+ bmFolderBusy=true;const owner=uid;
+ try{await bmFolderLock(owner,()=>bmFolderWork(owner,now,manual),true);return true;}
+ catch(e){bmFolderRetryAt=Date.now()+60000;bmFolderFail(e);if(manual||bmFolderNotice!==e.message){bmFolderNotice=e.message;bmFolderNotify(bmFolderMessage);}return false;}
+ finally{bmFolderBusy=false;}
+}
+setInterval(()=>bmFolderPulse(),60000);
+setTimeout(()=>bmFolderPulse(),15000);
+window.addEventListener('focus',()=>{bmFolderRetryAt=0;bmFolderPulse();});
+window.addEventListener('online',()=>{bmFolderRetryAt=0;bmFolderPulse();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){bmFolderRetryAt=0;bmFolderPulse();}});
+
+function bmFolderNotify(message){
+ let box=document.getElementById('bm-folder-notice');
+ if(!box){box=document.createElement('div');box.id='bm-folder-notice';box.setAttribute('role','alert');box.style.cssText='position:fixed;top:18px;right:18px;z-index:2147483647;max-width:350px;padding:18px;background:#fff;border:1px solid #f59e0b;border-radius:14px;box-shadow:0 12px 40px #0003;color:#0f172a;font:14px/1.5 system-ui';document.body.appendChild(box);}
+ box.innerHTML='<strong>Backup needs attention</strong><p>'+esc(message)+'</p><button type="button" class="btn" onclick="bmFolderOpen();document.getElementById(\'bm-folder-notice\').hidden=true">Open backup settings</button> <button type="button" class="btn" onclick="document.getElementById(\'bm-folder-notice\').hidden=true">Dismiss</button>';box.hidden=false;
+}
+</script>
 </body>
 </html>
